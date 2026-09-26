@@ -1,0 +1,27 @@
+{
+  "id": 1789009617362,
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "text": "{\"name\":\"projects/981872862694368119/screens/b3f47f01de3c4e00a531d91c6bee8c96\",\"title\":\"SKYRental Brand Logo\",\"screenshot\":{\"name\":\"projects/981872862694368119/screens/de57f88c0c47e3402c842d1a961547fb2fb96a280f04ceee6817beabdd7d09f7/fileEntries/screenshot\",\"downloadUrl\":\"https://lh3.googleusercontent.com/aida/AEtjO1UCuE9IVXKGx24Hr9cC7X3e5ajDx4Pgye7oUkJbnGqmYyn2orKi4fxRRRSuB6_Vzfskgpl-qWrQLj7qHQkT3hkOSALtT_xVNPf0f1jbg6dtClyNHDQVCOLDt0cMDsXQPQ4l-N8fZkmS0QaR23kZQhQ3sI_wDYJwHudU37DNKLY4CZDRXB6hVrSfq8LNx6LIZM7PejU-4HKyaH_DtzpfrQBkYb3I6qBtGzYjK_EpprSWfa5tTzK8vZKmFA\"},\"htmlCode\":{\"name\":\"projects/981872862694368119/screens/b3f47f01de3c4e00a531d91c6bee8c96/fileEntries/html\",\"downloadUrl\":\"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzAwMDY1YjE3OWI0NmM0MzUwMzM4NjBlMjAwMGFhOTExEgsSBxCfx6ehyw0YAZIBIgoKcHJvamVjdF9pZBIUQhI5ODE4NzI4NjI2OTQzNjgxMTk&filename=&opi=89354086\",\"mimeType\":\"image/svg+xml\"},\"width\":\"120\",\"height\":\"120\"}",
+        "type": "text"
+      }
+    ],
+    "structuredContent": {
+      "height": "120",
+      "htmlCode": {
+        "downloadUrl": "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzAwMDY1YjE3OWI0NmM0MzUwMzM4NjBlMjAwMGFhOTExEgsSBxCfx6ehyw0YAZIBIgoKcHJvamVjdF9pZBIUQhI5ODE4NzI4NjI2OTQzNjgxMTk&filename=&opi=89354086",
+        "mimeType": "image/svg+xml",
+        "name": "projects/981872862694368119/screens/b3f47f01de3c4e00a531d91c6bee8c96/fileEntries/html"
+      },
+      "name": "projects/981872862694368119/screens/b3f47f01de3c4e00a531d91c6bee8c96",
+      "screenshot": {
+        "downloadUrl": "https://lh3.googleusercontent.com/aida/AEtjO1UCuE9IVXKGx24Hr9cC7X3e5ajDx4Pgye7oUkJbnGqmYyn2orKi4fxRRRSuB6_Vzfskgpl-qWrQLj7qHQkT3hkOSALtT_xVNPf0f1jbg6dtClyNHDQVCOLDt0cMDsXQPQ4l-N8fZkmS0QaR23kZQhQ3sI_wDYJwHudU37DNKLY4CZDRXB6hVrSfq8LNx6LIZM7PejU-4HKyaH_DtzpfrQBkYb3I6qBtGzYjK_EpprSWfa5tTzK8vZKmFA",
+        "name": "projects/981872862694368119/screens/de57f88c0c47e3402c842d1a961547fb2fb96a280f04ceee6817beabdd7d09f7/fileEntries/screenshot"
+      },
+      "title": "SKYRental Brand Logo",
+      "width": "120"
+    }
+  }
+}

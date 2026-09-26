@@ -1,0 +1,28 @@
+{
+  "id": 1789009623649,
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "text": "{\"name\":\"projects/981872862694368119/screens/7e9a3a81ca764af18850e2f48806f54c\",\"title\":\"Buat Booking Baru\",\"screenshot\":{\"name\":\"projects/981872862694368119/screens/7e9a3a81ca764af18850e2f48806f54c/fileEntries/screenshot\",\"downloadUrl\":\"https://lh3.googleusercontent.com/aida/AEtjO1WqhrbpDmeX3QntJc66tzirkhOL98JsfI3iSFyRRB8HVolqeAb5wbA07Ces92V-E--sEVyAdAYwx9-V7K_cCUMaIVGqud6hVMFxNuof-rN7eQEpjSyYgAQ45cWn3VSunUeF4TqRyKry8vtsQASWtpaLzVxmw5wN3FGd0TZXjOYwrj0LN5Dud50amQCDgcZBSD22JY236Ozh2_SZc7nFMN8VI4_gn3gBBFt9Jf0BE_Z0kE45VV8e_Qikxg\"},\"htmlCode\":{\"name\":\"projects/981872862694368119/screens/7e9a3a81ca764af18850e2f48806f54c/fileEntries/html\",\"downloadUrl\":\"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzAwMDY1YjE3ZjMwMGU4N2EwN2ZlZTE4NmE2MGU0NGRhEgsSBxCfx6ehyw0YAZIBIgoKcHJvamVjdF9pZBIUQhI5ODE4NzI4NjI2OTQzNjgxMTk&filename=&opi=89354086\",\"mimeType\":\"text/html\"},\"width\":\"780\",\"height\":\"4058\",\"deviceType\":\"MOBILE\"}",
+        "type": "text"
+      }
+    ],
+    "structuredContent": {
+      "deviceType": "MOBILE",
+      "height": "4058",
+      "htmlCode": {
+        "downloadUrl": "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzAwMDY1YjE3ZjMwMGU4N2EwN2ZlZTE4NmE2MGU0NGRhEgsSBxCfx6ehyw0YAZIBIgoKcHJvamVjdF9pZBIUQhI5ODE4NzI4NjI2OTQzNjgxMTk&filename=&opi=89354086",
+        "mimeType": "text/html",
+        "name": "projects/981872862694368119/screens/7e9a3a81ca764af18850e2f48806f54c/fileEntries/html"
+      },
+      "name": "projects/981872862694368119/screens/7e9a3a81ca764af18850e2f48806f54c",
+      "screenshot": {
+        "downloadUrl": "https://lh3.googleusercontent.com/aida/AEtjO1WqhrbpDmeX3QntJc66tzirkhOL98JsfI3iSFyRRB8HVolqeAb5wbA07Ces92V-E--sEVyAdAYwx9-V7K_cCUMaIVGqud6hVMFxNuof-rN7eQEpjSyYgAQ45cWn3VSunUeF4TqRyKry8vtsQASWtpaLzVxmw5wN3FGd0TZXjOYwrj0LN5Dud50amQCDgcZBSD22JY236Ozh2_SZc7nFMN8VI4_gn3gBBFt9Jf0BE_Z0kE45VV8e_Qikxg",
+        "name": "projects/981872862694368119/screens/7e9a3a81ca764af18850e2f48806f54c/fileEntries/screenshot"
+      },
+      "title": "Buat Booking Baru",
+      "width": "780"
+    }
+  }
+}

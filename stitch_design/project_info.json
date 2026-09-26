@@ -1,0 +1,273 @@
+{
+  "id": 1789009613411,
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "text": "{\"name\":\"projects/981872862694368119\",\"title\":\"SKYRental Admin Mobile UI\",\"visibility\":\"PRIVATE\",\"createTime\":\"2026-09-10T02:19:44.987531Z\",\"updateTime\":\"2026-09-10T02:55:20.405644Z\",\"projectType\":\"TEXT_TO_UI_PRO\",\"thumbnailScreenshot\":{\"name\":\"projects/981872862694368119/screens/de57f88c0c47e3402c842d1a961547fb2fb96a280f04ceee6817beabdd7d09f7/fileEntries/screenshot\",\"downloadUrl\":\"https://lh3.googleusercontent.com/aida/AEtjO1UCuE9IVXKGx24Hr9cC7X3e5ajDx4Pgye7oUkJbnGqmYyn2orKi4fxRRRSuB6_Vzfskgpl-qWrQLj7qHQkT3hkOSALtT_xVNPf0f1jbg6dtClyNHDQVCOLDt0cMDsXQPQ4l-N8fZkmS0QaR23kZQhQ3sI_wDYJwHudU37DNKLY4CZDRXB6hVrSfq8LNx6LIZM7PejU-4HKyaH_DtzpfrQBkYb3I6qBtGzYjK_EpprSWfa5tTzK8vZKmFA\"},\"origin\":\"STITCH\",\"deviceType\":\"MOBILE\",\"designTheme\":{\"colorMode\":\"LIGHT\",\"font\":\"INTER\",\"roundness\":\"ROUND_EIGHT\",\"customColor\":\"#0f172a\",\"headlineFont\":\"INTER\",\"bodyFont\":\"INTER\",\"labelFont\":\"INTER\",\"namedColors\":{\"primary_container\":\"#131b2e\",\"primary_fixed_dim\":\"#bec6e0\",\"on_primary_container\":\"#7c839b\",\"on_primary_fixed_variant\":\"#3f465c\",\"on_secondary\":\"#ffffff\",\"inverse_primary\":\"#bec6e0\",\"on_tertiary_fixed\":\"#002113\",\"secondary\":\"#006591\",\"tertiary_fixed_dim\":\"#4edea3\",\"tertiary\":\"#000000\",\"surface_dim\":\"#cbdbf5\",\"tertiary_container\":\"#002113\",\"surface_container_lowest\":\"#ffffff\",\"on_background\":\"#0b1c30\",\"inverse_surface\":\"#213145\",\"surface_variant\":\"#d3e4fe\",\"tertiary_fixed\":\"#6ffbbe\",\"on_primary_fixed\":\"#131b2e\",\"surface_container_low\":\"#eff4ff\",\"on_tertiary_container\":\"#009668\",\"on_error\":\"#ffffff\",\"on_surface\":\"#0b1c30\",\"primary_fixed\":\"#dae2fd\",\"on_primary\":\"#ffffff\",\"surface\":\"#f8f9ff\",\"error\":\"#ba1a1a\",\"primary\":\"#000000\",\"background\":\"#f8f9ff\",\"surface_container_highest\":\"#d3e4fe\",\"outline_variant\":\"#c6c6cd\",\"secondary_fixed\":\"#c9e6ff\",\"secondary_container\":\"#39b8fd\",\"on_error_container\":\"#93000a\",\"secondary_fixed_dim\":\"#89ceff\",\"surface_container\":\"#e5eeff\",\"on_secondary_fixed_variant\":\"#004c6e\",\"on_tertiary_fixed_variant\":\"#005236\",\"on_surface_variant\":\"#45464d\",\"on_secondary_container\":\"#004666\",\"surface_bright\":\"#f8f9ff\",\"on_tertiary\":\"#ffffff\",\"on_secondary_fixed\":\"#001e2f\",\"outline\":\"#76777d\",\"inverse_on_surface\":\"#eaf1ff\",\"surface_container_high\":\"#dce9ff\",\"error_container\":\"#ffdad6\",\"surface_tint\":\"#565e74\"},\"designMd\":\"---\\nname: SkyOps Mobile Utility\\ncolors:\\n  surface: '#f8f9ff'\\n  surface-dim: '#cbdbf5'\\n  surface-bright: '#f8f9ff'\\n  surface-container-lowest: '#ffffff'\\n  surface-container-low: '#eff4ff'\\n  surface-container: '#e5eeff'\\n  surface-container-high: '#dce9ff'\\n  surface-container-highest: '#d3e4fe'\\n  on-surface: '#0b1c30'\\n  on-surface-variant: '#45464d'\\n  inverse-surface: '#213145'\\n  inverse-on-surface: '#eaf1ff'\\n  outline: '#76777d'\\n  outline-variant: '#c6c6cd'\\n  surface-tint: '#565e74'\\n  primary: '#000000'\\n  on-primary: '#ffffff'\\n  primary-container: '#131b2e'\\n  on-primary-container: '#7c839b'\\n  inverse-primary: '#bec6e0'\\n  secondary: '#006591'\\n  on-secondary: '#ffffff'\\n  secondary-container: '#39b8fd'\\n  on-secondary-container: '#004666'\\n  tertiary: '#000000'\\n  on-tertiary: '#ffffff'\\n  tertiary-container: '#002113'\\n  on-tertiary-container: '#009668'\\n  error: '#ba1a1a'\\n  on-error: '#ffffff'\\n  error-container: '#ffdad6'\\n  on-error-container: '#93000a'\\n  primary-fixed: '#dae2fd'\\n  primary-fixed-dim: '#bec6e0'\\n  on-primary-fixed: '#131b2e'\\n  on-primary-fixed-variant: '#3f465c'\\n  secondary-fixed: '#c9e6ff'\\n  secondary-fixed-dim: '#89ceff'\\n  on-secondary-fixed: '#001e2f'\\n  on-secondary-fixed-variant: '#004c6e'\\n  tertiary-fixed: '#6ffbbe'\\n  tertiary-fixed-dim: '#4edea3'\\n  on-tertiary-fixed: '#002113'\\n  on-tertiary-fixed-variant: '#005236'\\n  background: '#f8f9ff'\\n  on-background: '#0b1c30'\\n  surface-variant: '#d3e4fe'\\ntypography:\\n  display-lg:\\n    fontFamily: Inter\\n    fontSize: 30px\\n    fontWeight: '700'\\n    lineHeight: 36px\\n    letterSpacing: -0.02em\\n  headline-lg:\\n    fontFamily: Inter\\n    fontSize: 22px\\n    fontWeight: '600'\\n    lineHeight: 28px\\n    letterSpacing: -0.015em\\n  headline-md:\\n    fontFamily: Inter\\n    fontSize: 18px\\n    fontWeight: '600'\\n    lineHeight: 24px\\n    letterSpacing: -0.01em\\n  headline-sm:\\n    fontFamily: Inter\\n    fontSize: 16px\\n    fontWeight: '600'\\n    lineHeight: 22px\\n    letterSpacing: -0.005em\\n  body-lg:\\n    fontFamily: Inter\\n    fontSize: 15px\\n    fontWeight: '400'\\n    lineHeight: 22px\\n    letterSpacing: 0em\\n  body-md:\\n    fontFamily: Inter\\n    fontSize: 13px\\n    fontWeight: '400'\\n    lineHeight: 18px\\n    letterSpacing: 0em\\n  body-sm:\\n    fontFamily: Inter\\n    fontSize: 11px\\n    fontWeight: '400'\\n    lineHeight: 16px\\n    letterSpacing: 0.01em\\n  data-mono-lg:\\n    fontFamily: Inter\\n    fontSize: 18px\\n    fontWeight: '700'\\n    lineHeight: 24px\\n    letterSpacing: -0.02em\\n  data-mono-md:\\n    fontFamily: Inter\\n    fontSize: 13px\\n    fontWeight: '600'\\n    lineHeight: 18px\\n    letterSpacing: -0.01em\\n  label-md:\\n    fontFamily: Inter\\n    fontSize: 12px\\n    fontWeight: '600'\\n    lineHeight: 16px\\n    letterSpacing: 0.02em\\n  label-sm:\\n    fontFamily: Inter\\n    fontSize: 10px\\n    fontWeight: '700'\\n    lineHeight: 14px\\n    letterSpacing: 0.04em\\nrounded:\\n  sm: 0.25rem\\n  DEFAULT: 0.5rem\\n  md: 0.75rem\\n  lg: 1rem\\n  xl: 1.5rem\\n  full: 9999px\\nspacing:\\n  space-xxs: 0.125rem\\n  space-xs: 0.25rem\\n  space-sm: 0.5rem\\n  space-md: 0.75rem\\n  space-base: 1rem\\n  space-lg: 1.25rem\\n  space-xl: 1.5rem\\n  space-2xl: 2rem\\n  screen-edge: 1rem\\n  dock-safe-bottom: 2.25rem\\n---\\n\\n## Brand & Style\\n\\nThis design system establishes a high-velocity, precision-oriented internal operational tool designed for retail counter staff, field technicians, and store supervisors managing high-value hardware rentals. \\n\\n### Aesthetic Philosophy\\nThe system prioritizes functional transparency, extreme speed, and tactile accuracy. Built upon an ultra-clean modern utility aesthetic that harmonizes iOS human interface standards with the performance requirements of warehouse and point-of-sale inventory tools, it eschews purely decorative chrome. Data density is achieved without cognitive friction through deliberate grouping, tonal separation, and typographic contrast.\\n\\n### Key Tenets\\n- **Operational Trust:** Every interaction reinforces audit readiness. Status changes require unequivocal, high-contrast feedback.\\n- **Glanceable Legibility:** Core data points—IMEI numbers, rental durations, battery health percentages, currency totals—are scannable under harsh retail lighting or on moving handoffs.\\n- **Finger-First Precision:** Active touch targets remain strictly at 44pt or higher, while visual presentation remains compact, using generous hit-slop allowances around compact badges.\\n\\n## Colors\\n\\nThe color palette is engineered for rapid visual routing and high-contrast indoor visibility. The foundation relies on cool, slate-tinted neutrals that minimize eye fatigue during full-shift usage, accented by deliberate semantic signals.\\n\\n### Palette Architecture\\n- **Primary Surface & Ink (`#0F172A`):** Deep Navy/Slate used for primary actions, structural framing, high-emphasis text, and bar-navigation surfaces.\\n- **Brand Accent (`#0EA5E9`):** Vibrant Sky Blue indicating active selection, interactive states, digital receipts, and device-sync indicators.\\n- **Operational Accent (`#2563EB`):** Electric Indigo reserved for critical CTA pathways (e.g., \\\"Complete Handover\\\", \\\"Print Invoice\\\").\\n- **Success & Availability (`#10B981`):** Crisp Emerald for units marked as \\\"Tersedia\\\" (Ready), completed inspections, and collected cash payments.\\n- **Cautionary Operational Alert (`#F59E0B`):** Amber for \\\"Pending Return\\\", return grace periods (H-1), and battery health warnings (\\u003c80%).\\n- **Critical Failure / Damage (`#EF4444`):** Rose Crimson for physical inspection dents/scratches, overdue status (\\\"Terlambat\\\"), and unpaid security deposits.\\n\\n### Surface System\\n- **Base Canvas:** `#F8FAFC` (Slate 50) for contrast against white cards.\\n- **Card / Sheet Surface:** `#FFFFFF` (Pure White) with 1px hairline border overlays.\\n- **Muted Canvas / Nested Wells:** `#F1F5F9` (Slate 100) for inset scan areas, IMEI chips, and thermal print simulator backgrounds.\\n\\n## Typography\\n\\nTypography relies on a single workhorse neo-grotesque family configured with open typographic features (`tnum` for tabular lining numerals, `cv05`, `cv11`).\\n\\n### Number Formatting Rules\\n- **Monetary Figures (IDR):** All financial values must use tabular numerals (`font-feature-settings: 'tnum' on`) to ensure clean decimal and comma alignment across tabular scan lists. Format: `Rp 1.450.000`.\\n- **IMEI & Serial Numbers:** Always displayed in medium weight tabular numbers with `0.05em` letter spacing for fast character identification. Format: `3568 2911 4082 109`.\\n\\n### Hierarchy Rules\\n- High-level screens use `headline-lg` strictly for primary view titles (e.g., \\\"Serah Terima Unit\\\", \\\"Inspeksi Masuk\\\").\\n- `data-mono-lg` is prioritized for top-level operational counters (e.g., \\\"14 Unit\\\", \\\"Rp 24.850.000\\\").\\n- Micro-labels (`label-sm`) require uppercase transformation with wide tracking (`0.04em`) when designating system badges and device condition tags.\\n\\n## Layout & Spacing\\n\\nThe layout utilizes a dynamic fluid mobile grid anchored to a standard 4pt baseline rhythm.\\n\\n### Grid & Boundaries\\n- **Mobile Container (360px - 428px):** Single-column layout with 16px (`screen-edge`) screen margins. Inner nested card grids adapt to 2-column or 4-column subgrids for hardware spec pills and inspection matrices.\\n- **Card Spacing:** 8px (`space-sm`) gap between related list rows; 12px (`space-md`) gap between discrete functional modules.\\n- **Viewport Safe Zones:** Bottom elements must accommodate the persistent quick-action dock: minimum bottom scroll padding is set to 88px to avoid obstruction.\\n\\n### Breakpoints & Adaptive Rules\\n- **Compact Mobile (\\u003c 380px):** Metric pairs reflow from horizontal pairs to vertical stacked values; device preview imagery collapses to thumbnail avatar (40x40px).\\n- **Standard Mobile (380px - 440px):** Standard operational density with dual metric layouts.\\n- **Tablet / Counter Stand (\\u003e= 600px):** Split-view master-detail interface: 340px pinned sidebar (order & unit queue) and fluid primary pane (inspection checklist and receipt layout).\\n\\n## Elevation & Depth\\n\\nTo preserve an ultra-clean aesthetic without visual clutter, depth is communicated through subtle ambient shadows combined with 1px neutral hairline borders.\\n\\n### Elevation Hierarchy\\n- **Level 0 (Flat / Canvas):** Used for background canvas (`#F8FAFC`). No shadow.\\n- **Level 1 (Operational Card):** White container (`#FFFFFF`), 1px solid border (`#E2E8F0`), ambient shadow `0 1px 2px 0 rgba(15, 23, 42, 0.04)`. Used for device line-items, checklist containers, and client metadata.\\n- **Level 2 (Interactive Floating Elements / Sticky Controls):** White container, 1px solid border (`#CBD5E1`), shadow `0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04)`. Used for the Quick Action Dock and floating barcode scanner toggles.\\n- **Level 3 (Modals & Bottom Drawers):** White surface, shadow `0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08)`. Accompanied by a 32% black backdrop tint (`rgba(15, 23, 42, 0.32)`). Used for the Thermal Receipt Preview and critical handover confirmation modals.\\n\\n### Outline Rule\\nBorders are never pure black; they strictly use `#E2E8F0` (light neutral) in default states, shifting to `#0EA5E9` (brand blue) or `#EF4444` (damage/alert) during active selection or exception highlighting.\\n\\n## Shapes\\n\\nThe design system maintains a balanced roundedness model (Base: 8px / 0.5rem), instilling a crisp, modern consumer-tech feel while preserving structural grid efficiency.\\n\\n### Shape Geometry Tokens\\n- **Standard Controls & Text Inputs:** 8px (`rounded-base`) for optimal touch footprint.\\n- **Cards, Modules, Inset Wells:** 12px (`rounded-lg`) to create distinct structural isolation between order groups.\\n- **Action Dock, Modals, Top/Bottom Drawers:** 20px - 24px (`rounded-xl` to `rounded-2xl`) on upper corners for ergonomic transitions.\\n- **Status Badges, Metric Indicators, Pills:** Fully rounded (`rounded-full`, 9999px) to visually distinguish immutable status metadata from interactive rectangular cards.\\n\\n## Components\\n\\n### 1. Buttons & Triggers\\n- **Primary Operational Button:** Solid Navy (`#0F172A`) or Royal Indigo (`#2563EB`) fill, text in Pure White (`#FFFFFF`), height 48px, radius 8px, font `headline-sm`. Press state scales to 0.98 with an inset overlay of `rgba(255, 255, 255, 0.1)`.\\n- **Secondary / Action Outlined:** Background transparent, 1.5px border `#E2E8F0`, text `#0F172A`.\\n- **Destructive Action:** Soft Rose fill (`#FEF2F2`), border `#FECACA`, text `#DC2626`.\\n\\n### 2. Status Badges & Metric Pills\\n- **Available (\\\"Tersedia\\\"):** Fill `#ECFDF5`, text `#047857`, 1px border `#A7F3D0`.\\n- **Rented (\\\"Disewa\\\"):** Fill `#EFF6FF`, text `#1D4ED8`, 1px border `#BFDBFE`.\\n- **Overdue (\\\"Terlambat\\\"):** Fill `#FEF2F2`, text `#B91C1C`, 1px border `#FECACA`. Pulsing dot indicator (`#EF4444`).\\n- **Booked (\\\"Dipesan\\\"):** Fill `#FFFBEB`, text `#B45309`, 1px border `#FDE68A`.\\n- Height: 24px fixed; internal padding: 4px 8px; typography: `label-sm`.\\n\\n### 3. Inspection Checklist Toggles\\n- Row height: 48px; border-bottom: 1px solid `#F1F5F9`.\\n- Dual-state tactile segment control (Pass / Fail):\\n  - Pass (`OK`): Solid Emerald fill (`#10B981`), white icon.\\n  - Fail (`Issue`): Solid Rose fill (`#EF4444`), white icon; immediately reveals a nested defect photo capture and severity tag selector below the item.\\n\\n### 4. Input Fields\\n- Height 44px, background `#FFFFFF`, border 1px `#CBD5E1`, text `body-md` (`#0F172A`).\\n- Focus state: Border transitions to `#0EA5E9` with a 2px outer aura ring of `#E0F2FE`.\\n- Leading icon slot reserved for quick scan trigger (integrated barcode/QR icon button).\\n\\n### 5. Quick Action Dock\\n- Fixed bottom container anchored above native gesture bars (`dock-safe-bottom`).\\n- Frosted micro-glass foundation: `#FFFFFF` at 92% opacity with `backdrop-filter: blur(12px)`.\\n- Contains dynamic contextual workflows: Primary unit handover validation, scan quick-trigger, and total deposit calculator.\\n\\n### 6. Thermal Receipt Print Simulation Modal\\n- Viewport: Centered modal card or bottom sheet with off-white simulated 58mm/80mm roll presentation (`#FFFFFF` with `#E2E8F0` jagged zig-zag border rendering at bottom).\\n- Typography within receipt: Monospaced numerical values, all-caps centered header, itemized breakdown with explicit deposit, rental duration, and operational cashier initials.\\n- Actions: Immediate primary trigger \\\"Cetak Struk (Bluetooth)\\\" accompanied by \\\"Kirim Salinan WhatsApp\\\" as a secondary link.\",\"colorVariant\":\"FIDELITY\",\"overridePrimaryColor\":\"#0f172a\",\"overrideSecondaryColor\":\"#0ea5e9\",\"overrideTertiaryColor\":\"#10b981\",\"overrideNeutralColor\":\"#64748b\",\"spacingScale\":2,\"typography\":{\"display-lg\":{\"fontFamily\":\"Inter\",\"fontSize\":\"30px\",\"fontWeight\":\"700\",\"lineHeight\":\"36px\",\"letterSpacing\":\"-0.02em\"},\"data-mono-md\":{\"fontFamily\":\"Inter\",\"fontSize\":\"13px\",\"fontWeight\":\"600\",\"lineHeight\":\"18px\",\"letterSpacing\":\"-0.01em\"},\"label-md\":{\"fontFamily\":\"Inter\",\"fontSize\":\"12px\",\"fontWeight\":\"600\",\"lineHeight\":\"16px\",\"letterSpacing\":\"0.02em\"},\"data-mono-lg\":{\"fontFamily\":\"Inter\",\"fontSize\":\"18px\",\"fontWeight\":\"700\",\"lineHeight\":\"24px\",\"letterSpacing\":\"-0.02em\"},\"body-sm\":{\"fontFamily\":\"Inter\",\"fontSize\":\"11px\",\"fontWeight\":\"400\",\"lineHeight\":\"16px\",\"letterSpacing\":\"0.01em\"},\"headline-sm\":{\"fontFamily\":\"Inter\",\"fontSize\":\"16px\",\"fontWeight\":\"600\",\"lineHeight\":\"22px\",\"letterSpacing\":\"-0.005em\"},\"label-sm\":{\"fontFamily\":\"Inter\",\"fontSize\":\"10px\",\"fontWeight\":\"700\",\"lineHeight\":\"14px\",\"letterSpacing\":\"0.04em\"},\"headline-md\":{\"fontFamily\":\"Inter\",\"fontSize\":\"18px\",\"fontWeight\":\"600\",\"lineHeight\":\"24px\",\"letterSpacing\":\"-0.01em\"},\"body-md\":{\"fontFamily\":\"Inter\",\"fontSize\":\"13px\",\"fontWeight\":\"400\",\"lineHeight\":\"18px\",\"letterSpacing\":\"0em\"},\"body-lg\":{\"fontFamily\":\"Inter\",\"fontSize\":\"15px\",\"fontWeight\":\"400\",\"lineHeight\":\"22px\",\"letterSpacing\":\"0em\"},\"headline-lg\":{\"fontFamily\":\"Inter\",\"fontSize\":\"22px\",\"fontWeight\":\"600\",\"lineHeight\":\"28px\",\"letterSpacing\":\"-0.015em\"}},\"spacing\":{\"space-base\":\"1rem\",\"space-md\":\"0.75rem\",\"space-sm\":\"0.5rem\",\"space-2xl\":\"2rem\",\"dock-safe-bottom\":\"2.25rem\",\"space-xl\":\"1.5rem\",\"space-lg\":\"1.25rem\",\"space-xs\":\"0.25rem\",\"screen-edge\":\"1rem\",\"space-xxs\":\"0.125rem\"},\"headlineFontFamily\":\"Inter\",\"bodyFontFamily\":\"Inter\",\"labelFontFamily\":\"Inter\"},\"screenInstances\":[{\"id\":\"0032793547d142ce80c836892b2ab79b\",\"sourceScreen\":\"projects/981872862694368119/screens/0032793547d142ce80c836892b2ab79b\",\"x\":2902,\"width\":390,\"height\":1300},{\"id\":\"386908e6e5f34f7b8663ef6ed8a4a966\",\"sourceScreen\":\"projects/981872862694368119/screens/386908e6e5f34f7b8663ef6ed8a4a966\",\"y\":2285,\"width\":600,\"height\":600,\"hidden\":true},{\"id\":\"395a1d459a7f4933b258c8c128b96fe7\",\"sourceScreen\":\"projects/981872862694368119/screens/395a1d459a7f4933b258c8c128b96fe7\",\"x\":3356,\"width\":390,\"height\":1351,\"hidden\":true},{\"id\":\"60bc513ffce44c1ea916f2db176ab59b\",\"sourceScreen\":\"projects/981872862694368119/screens/60bc513ffce44c1ea916f2db176ab59b\",\"x\":1688,\"width\":512,\"height\":512,\"hidden\":true},{\"id\":\"7e9a3a81ca764af18850e2f48806f54c\",\"sourceScreen\":\"projects/981872862694368119/screens/7e9a3a81ca764af18850e2f48806f54c\",\"x\":3441,\"width\":390,\"height\":2029},{\"id\":\"aaeeb538008a43eabe70d38214849989\",\"sourceScreen\":\"projects/981872862694368119/screens/aaeeb538008a43eabe70d38214849989\",\"width\":600,\"height\":600},{\"id\":\"assets_79cdd906b6be47eba9b89d3931adc514\",\"x\":1432,\"y\":66,\"width\":960,\"height\":540,\"sourceAsset\":\"assets/79cdd906b6be47eba9b89d3931adc514\",\"type\":\"DESIGN_SYSTEM_INSTANCE\"},{\"id\":\"b2e99b9f8dcf457b9e5a9a201e22eb2e\",\"sourceScreen\":\"projects/981872862694368119/screens/b2e99b9f8dcf457b9e5a9a201e22eb2e\",\"x\":4006,\"y\":-15,\"width\":390,\"height\":986},{\"id\":\"b3f47f01de3c4e00a531d91c6bee8c96\",\"sourceScreen\":\"projects/981872862694368119/screens/b3f47f01de3c4e00a531d91c6bee8c96\",\"x\":2264,\"width\":120,\"height\":128},{\"id\":\"cadb900a38124fa592f1a5fb465550cc\",\"sourceScreen\":\"projects/981872862694368119/screens/cadb900a38124fa592f1a5fb465550cc\",\"x\":2448,\"width\":390,\"height\":1129},{\"id\":\"ceec92e82f0c42ed8df65b8d095a0e16\",\"sourceScreen\":\"projects/981872862694368119/screens/ceec92e82f0c42ed8df65b8d095a0e16\",\"x\":3810,\"width\":390,\"height\":1313,\"hidden\":true}],\"metadata\":{\"userRole\":\"OWNER\"}}",
+        "type": "text"
+      }
+    ],
+    "structuredContent": {
+      "createTime": "2026-09-10T02:19:44.987531Z",
+      "designTheme": {
+        "bodyFont": "INTER",
+        "bodyFontFamily": "Inter",
+        "colorMode": "LIGHT",
+        "colorVariant": "FIDELITY",
+        "customColor": "#0f172a",
+        "designMd": "---\nname: SkyOps Mobile Utility\ncolors:\n  surface: '#f8f9ff'\n  surface-dim: '#cbdbf5'\n  surface-bright: '#f8f9ff'\n  surface-container-lowest: '#ffffff'\n  surface-container-low: '#eff4ff'\n  surface-container: '#e5eeff'\n  surface-container-high: '#dce9ff'\n  surface-container-highest: '#d3e4fe'\n  on-surface: '#0b1c30'\n  on-surface-variant: '#45464d'\n  inverse-surface: '#213145'\n  inverse-on-surface: '#eaf1ff'\n  outline: '#76777d'\n  outline-variant: '#c6c6cd'\n  surface-tint: '#565e74'\n  primary: '#000000'\n  on-primary: '#ffffff'\n  primary-container: '#131b2e'\n  on-primary-container: '#7c839b'\n  inverse-primary: '#bec6e0'\n  secondary: '#006591'\n  on-secondary: '#ffffff'\n  secondary-container: '#39b8fd'\n  on-secondary-container: '#004666'\n  tertiary: '#000000'\n  on-tertiary: '#ffffff'\n  tertiary-container: '#002113'\n  on-tertiary-container: '#009668'\n  error: '#ba1a1a'\n  on-error: '#ffffff'\n  error-container: '#ffdad6'\n  on-error-container: '#93000a'\n  primary-fixed: '#dae2fd'\n  primary-fixed-dim: '#bec6e0'\n  on-primary-fixed: '#131b2e'\n  on-primary-fixed-variant: '#3f465c'\n  secondary-fixed: '#c9e6ff'\n  secondary-fixed-dim: '#89ceff'\n  on-secondary-fixed: '#001e2f'\n  on-secondary-fixed-variant: '#004c6e'\n  tertiary-fixed: '#6ffbbe'\n  tertiary-fixed-dim: '#4edea3'\n  on-tertiary-fixed: '#002113'\n  on-tertiary-fixed-variant: '#005236'\n  background: '#f8f9ff'\n  on-background: '#0b1c30'\n  surface-variant: '#d3e4fe'\ntypography:\n  display-lg:\n    fontFamily: Inter\n    fontSize: 30px\n    fontWeight: '700'\n    lineHeight: 36px\n    letterSpacing: -0.02em\n  headline-lg:\n    fontFamily: Inter\n    fontSize: 22px\n    fontWeight: '600'\n    lineHeight: 28px\n    letterSpacing: -0.015em\n  headline-md:\n    fontFamily: Inter\n    fontSize: 18px\n    fontWeight: '600'\n    lineHeight: 24px\n    letterSpacing: -0.01em\n  headline-sm:\n    fontFamily: Inter\n    fontSize: 16px\n    fontWeight: '600'\n    lineHeight: 22px\n    letterSpacing: -0.005em\n  body-lg:\n    fontFamily: Inter\n    fontSize: 15px\n    fontWeight: '400'\n    lineHeight: 22px\n    letterSpacing: 0em\n  body-md:\n    fontFamily: Inter\n    fontSize: 13px\n    fontWeight: '400'\n    lineHeight: 18px\n    letterSpacing: 0em\n  body-sm:\n    fontFamily: Inter\n    fontSize: 11px\n    fontWeight: '400'\n    lineHeight: 16px\n    letterSpacing: 0.01em\n  data-mono-lg:\n    fontFamily: Inter\n    fontSize: 18px\n    fontWeight: '700'\n    lineHeight: 24px\n    letterSpacing: -0.02em\n  data-mono-md:\n    fontFamily: Inter\n    fontSize: 13px\n    fontWeight: '600'\n    lineHeight: 18px\n    letterSpacing: -0.01em\n  label-md:\n    fontFamily: Inter\n    fontSize: 12px\n    fontWeight: '600'\n    lineHeight: 16px\n    letterSpacing: 0.02em\n  label-sm:\n    fontFamily: Inter\n    fontSize: 10px\n    fontWeight: '700'\n    lineHeight: 14px\n    letterSpacing: 0.04em\nrounded:\n  sm: 0.25rem\n  DEFAULT: 0.5rem\n  md: 0.75rem\n  lg: 1rem\n  xl: 1.5rem\n  full: 9999px\nspacing:\n  space-xxs: 0.125rem\n  space-xs: 0.25rem\n  space-sm: 0.5rem\n  space-md: 0.75rem\n  space-base: 1rem\n  space-lg: 1.25rem\n  space-xl: 1.5rem\n  space-2xl: 2rem\n  screen-edge: 1rem\n  dock-safe-bottom: 2.25rem\n---\n\n## Brand & Style\n\nThis design system establishes a high-velocity, precision-oriented internal operational tool designed for retail counter staff, field technicians, and store supervisors managing high-value hardware rentals. \n\n### Aesthetic Philosophy\nThe system prioritizes functional transparency, extreme speed, and tactile accuracy. Built upon an ultra-clean modern utility aesthetic that harmonizes iOS human interface standards with the performance requirements of warehouse and point-of-sale inventory tools, it eschews purely decorative chrome. Data density is achieved without cognitive friction through deliberate grouping, tonal separation, and typographic contrast.\n\n### Key Tenets\n- **Operational Trust:** Every interaction reinforces audit readiness. Status changes require unequivocal, high-contrast feedback.\n- **Glanceable Legibility:** Core data points—IMEI numbers, rental durations, battery health percentages, currency totals—are scannable under harsh retail lighting or on moving handoffs.\n- **Finger-First Precision:** Active touch targets remain strictly at 44pt or higher, while visual presentation remains compact, using generous hit-slop allowances around compact badges.\n\n## Colors\n\nThe color palette is engineered for rapid visual routing and high-contrast indoor visibility. The foundation relies on cool, slate-tinted neutrals that minimize eye fatigue during full-shift usage, accented by deliberate semantic signals.\n\n### Palette Architecture\n- **Primary Surface & Ink (`#0F172A`):** Deep Navy/Slate used for primary actions, structural framing, high-emphasis text, and bar-navigation surfaces.\n- **Brand Accent (`#0EA5E9`):** Vibrant Sky Blue indicating active selection, interactive states, digital receipts, and device-sync indicators.\n- **Operational Accent (`#2563EB`):** Electric Indigo reserved for critical CTA pathways (e.g., \"Complete Handover\", \"Print Invoice\").\n- **Success & Availability (`#10B981`):** Crisp Emerald for units marked as \"Tersedia\" (Ready), completed inspections, and collected cash payments.\n- **Cautionary Operational Alert (`#F59E0B`):** Amber for \"Pending Return\", return grace periods (H-1), and battery health warnings (<80%).\n- **Critical Failure / Damage (`#EF4444`):** Rose Crimson for physical inspection dents/scratches, overdue status (\"Terlambat\"), and unpaid security deposits.\n\n### Surface System\n- **Base Canvas:** `#F8FAFC` (Slate 50) for contrast against white cards.\n- **Card / Sheet Surface:** `#FFFFFF` (Pure White) with 1px hairline border overlays.\n- **Muted Canvas / Nested Wells:** `#F1F5F9` (Slate 100) for inset scan areas, IMEI chips, and thermal print simulator backgrounds.\n\n## Typography\n\nTypography relies on a single workhorse neo-grotesque family configured with open typographic features (`tnum` for tabular lining numerals, `cv05`, `cv11`).\n\n### Number Formatting Rules\n- **Monetary Figures (IDR):** All financial values must use tabular numerals (`font-feature-settings: 'tnum' on`) to ensure clean decimal and comma alignment across tabular scan lists. Format: `Rp 1.450.000`.\n- **IMEI & Serial Numbers:** Always displayed in medium weight tabular numbers with `0.05em` letter spacing for fast character identification. Format: `3568 2911 4082 109`.\n\n### Hierarchy Rules\n- High-level screens use `headline-lg` strictly for primary view titles (e.g., \"Serah Terima Unit\", \"Inspeksi Masuk\").\n- `data-mono-lg` is prioritized for top-level operational counters (e.g., \"14 Unit\", \"Rp 24.850.000\").\n- Micro-labels (`label-sm`) require uppercase transformation with wide tracking (`0.04em`) when designating system badges and device condition tags.\n\n## Layout & Spacing\n\nThe layout utilizes a dynamic fluid mobile grid anchored to a standard 4pt baseline rhythm.\n\n### Grid & Boundaries\n- **Mobile Container (360px - 428px):** Single-column layout with 16px (`screen-edge`) screen margins. Inner nested card grids adapt to 2-column or 4-column subgrids for hardware spec pills and inspection matrices.\n- **Card Spacing:** 8px (`space-sm`) gap between related list rows; 12px (`space-md`) gap between discrete functional modules.\n- **Viewport Safe Zones:** Bottom elements must accommodate the persistent quick-action dock: minimum bottom scroll padding is set to 88px to avoid obstruction.\n\n### Breakpoints & Adaptive Rules\n- **Compact Mobile (< 380px):** Metric pairs reflow from horizontal pairs to vertical stacked values; device preview imagery collapses to thumbnail avatar (40x40px).\n- **Standard Mobile (380px - 440px):** Standard operational density with dual metric layouts.\n- **Tablet / Counter Stand (>= 600px):** Split-view master-detail interface: 340px pinned sidebar (order & unit queue) and fluid primary pane (inspection checklist and receipt layout).\n\n## Elevation & Depth\n\nTo preserve an ultra-clean aesthetic without visual clutter, depth is communicated through subtle ambient shadows combined with 1px neutral hairline borders.\n\n### Elevation Hierarchy\n- **Level 0 (Flat / Canvas):** Used for background canvas (`#F8FAFC`). No shadow.\n- **Level 1 (Operational Card):** White container (`#FFFFFF`), 1px solid border (`#E2E8F0`), ambient shadow `0 1px 2px 0 rgba(15, 23, 42, 0.04)`. Used for device line-items, checklist containers, and client metadata.\n- **Level 2 (Interactive Floating Elements / Sticky Controls):** White container, 1px solid border (`#CBD5E1`), shadow `0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04)`. Used for the Quick Action Dock and floating barcode scanner toggles.\n- **Level 3 (Modals & Bottom Drawers):** White surface, shadow `0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08)`. Accompanied by a 32% black backdrop tint (`rgba(15, 23, 42, 0.32)`). Used for the Thermal Receipt Preview and critical handover confirmation modals.\n\n### Outline Rule\nBorders are never pure black; they strictly use `#E2E8F0` (light neutral) in default states, shifting to `#0EA5E9` (brand blue) or `#EF4444` (damage/alert) during active selection or exception highlighting.\n\n## Shapes\n\nThe design system maintains a balanced roundedness model (Base: 8px / 0.5rem), instilling a crisp, modern consumer-tech feel while preserving structural grid efficiency.\n\n### Shape Geometry Tokens\n- **Standard Controls & Text Inputs:** 8px (`rounded-base`) for optimal touch footprint.\n- **Cards, Modules, Inset Wells:** 12px (`rounded-lg`) to create distinct structural isolation between order groups.\n- **Action Dock, Modals, Top/Bottom Drawers:** 20px - 24px (`rounded-xl` to `rounded-2xl`) on upper corners for ergonomic transitions.\n- **Status Badges, Metric Indicators, Pills:** Fully rounded (`rounded-full`, 9999px) to visually distinguish immutable status metadata from interactive rectangular cards.\n\n## Components\n\n### 1. Buttons & Triggers\n- **Primary Operational Button:** Solid Navy (`#0F172A`) or Royal Indigo (`#2563EB`) fill, text in Pure White (`#FFFFFF`), height 48px, radius 8px, font `headline-sm`. Press state scales to 0.98 with an inset overlay of `rgba(255, 255, 255, 0.1)`.\n- **Secondary / Action Outlined:** Background transparent, 1.5px border `#E2E8F0`, text `#0F172A`.\n- **Destructive Action:** Soft Rose fill (`#FEF2F2`), border `#FECACA`, text `#DC2626`.\n\n### 2. Status Badges & Metric Pills\n- **Available (\"Tersedia\"):** Fill `#ECFDF5`, text `#047857`, 1px border `#A7F3D0`.\n- **Rented (\"Disewa\"):** Fill `#EFF6FF`, text `#1D4ED8`, 1px border `#BFDBFE`.\n- **Overdue (\"Terlambat\"):** Fill `#FEF2F2`, text `#B91C1C`, 1px border `#FECACA`. Pulsing dot indicator (`#EF4444`).\n- **Booked (\"Dipesan\"):** Fill `#FFFBEB`, text `#B45309`, 1px border `#FDE68A`.\n- Height: 24px fixed; internal padding: 4px 8px; typography: `label-sm`.\n\n### 3. Inspection Checklist Toggles\n- Row height: 48px; border-bottom: 1px solid `#F1F5F9`.\n- Dual-state tactile segment control (Pass / Fail):\n  - Pass (`OK`): Solid Emerald fill (`#10B981`), white icon.\n  - Fail (`Issue`): Solid Rose fill (`#EF4444`), white icon; immediately reveals a nested defect photo capture and severity tag selector below the item.\n\n### 4. Input Fields\n- Height 44px, background `#FFFFFF`, border 1px `#CBD5E1`, text `body-md` (`#0F172A`).\n- Focus state: Border transitions to `#0EA5E9` with a 2px outer aura ring of `#E0F2FE`.\n- Leading icon slot reserved for quick scan trigger (integrated barcode/QR icon button).\n\n### 5. Quick Action Dock\n- Fixed bottom container anchored above native gesture bars (`dock-safe-bottom`).\n- Frosted micro-glass foundation: `#FFFFFF` at 92% opacity with `backdrop-filter: blur(12px)`.\n- Contains dynamic contextual workflows: Primary unit handover validation, scan quick-trigger, and total deposit calculator.\n\n### 6. Thermal Receipt Print Simulation Modal\n- Viewport: Centered modal card or bottom sheet with off-white simulated 58mm/80mm roll presentation (`#FFFFFF` with `#E2E8F0` jagged zig-zag border rendering at bottom).\n- Typography within receipt: Monospaced numerical values, all-caps centered header, itemized breakdown with explicit deposit, rental duration, and operational cashier initials.\n- Actions: Immediate primary trigger \"Cetak Struk (Bluetooth)\" accompanied by \"Kirim Salinan WhatsApp\" as a secondary link.",
+        "font": "INTER",
+        "headlineFont": "INTER",
+        "headlineFontFamily": "Inter",
+        "labelFont": "INTER",
+        "labelFontFamily": "Inter",
+        "namedColors": {
+          "background": "#f8f9ff",
+          "error": "#ba1a1a",
+          "error_container": "#ffdad6",
+          "inverse_on_surface": "#eaf1ff",
+          "inverse_primary": "#bec6e0",
+          "inverse_surface": "#213145",
+          "on_background": "#0b1c30",
+          "on_error": "#ffffff",
+          "on_error_container": "#93000a",
+          "on_primary": "#ffffff",
+          "on_primary_container": "#7c839b",
+          "on_primary_fixed": "#131b2e",
+          "on_primary_fixed_variant": "#3f465c",
+          "on_secondary": "#ffffff",
+          "on_secondary_container": "#004666",
+          "on_secondary_fixed": "#001e2f",
+          "on_secondary_fixed_variant": "#004c6e",
+          "on_surface": "#0b1c30",
+          "on_surface_variant": "#45464d",
+          "on_tertiary": "#ffffff",
+          "on_tertiary_container": "#009668",
+          "on_tertiary_fixed": "#002113",
+          "on_tertiary_fixed_variant": "#005236",
+          "outline": "#76777d",
+          "outline_variant": "#c6c6cd",
+          "primary": "#000000",
+          "primary_container": "#131b2e",
+          "primary_fixed": "#dae2fd",
+          "primary_fixed_dim": "#bec6e0",
+          "secondary": "#006591",
+          "secondary_container": "#39b8fd",
+          "secondary_fixed": "#c9e6ff",
+          "secondary_fixed_dim": "#89ceff",
+          "surface": "#f8f9ff",
+          "surface_bright": "#f8f9ff",
+          "surface_container": "#e5eeff",
+          "surface_container_high": "#dce9ff",
+          "surface_container_highest": "#d3e4fe",
+          "surface_container_low": "#eff4ff",
+          "surface_container_lowest": "#ffffff",
+          "surface_dim": "#cbdbf5",
+          "surface_tint": "#565e74",
+          "surface_variant": "#d3e4fe",
+          "tertiary": "#000000",
+          "tertiary_container": "#002113",
+          "tertiary_fixed": "#6ffbbe",
+          "tertiary_fixed_dim": "#4edea3"
+        },
+        "overrideNeutralColor": "#64748b",
+        "overridePrimaryColor": "#0f172a",
+        "overrideSecondaryColor": "#0ea5e9",
+        "overrideTertiaryColor": "#10b981",
+        "roundness": "ROUND_EIGHT",
+        "spacing": {
+          "dock-safe-bottom": "2.25rem",
+          "screen-edge": "1rem",
+          "space-2xl": "2rem",
+          "space-base": "1rem",
+          "space-lg": "1.25rem",
+          "space-md": "0.75rem",
+          "space-sm": "0.5rem",
+          "space-xl": "1.5rem",
+          "space-xs": "0.25rem",
+          "space-xxs": "0.125rem"
+        },
+        "spacingScale": 2,
+        "typography": {
+          "body-lg": {
+            "fontFamily": "Inter",
+            "fontSize": "15px",
+            "fontWeight": "400",
+            "letterSpacing": "0em",
+            "lineHeight": "22px"
+          },
+          "body-md": {
+            "fontFamily": "Inter",
+            "fontSize": "13px",
+            "fontWeight": "400",
+            "letterSpacing": "0em",
+            "lineHeight": "18px"
+          },
+          "body-sm": {
+            "fontFamily": "Inter",
+            "fontSize": "11px",
+            "fontWeight": "400",
+            "letterSpacing": "0.01em",
+            "lineHeight": "16px"
+          },
+          "data-mono-lg": {
+            "fontFamily": "Inter",
+            "fontSize": "18px",
+            "fontWeight": "700",
+            "letterSpacing": "-0.02em",
+            "lineHeight": "24px"
+          },
+          "data-mono-md": {
+            "fontFamily": "Inter",
+            "fontSize": "13px",
+            "fontWeight": "600",
+            "letterSpacing": "-0.01em",
+            "lineHeight": "18px"
+          },
+          "display-lg": {
+            "fontFamily": "Inter",
+            "fontSize": "30px",
+            "fontWeight": "700",
+            "letterSpacing": "-0.02em",
+            "lineHeight": "36px"
+          },
+          "headline-lg": {
+            "fontFamily": "Inter",
+            "fontSize": "22px",
+            "fontWeight": "600",
+            "letterSpacing": "-0.015em",
+            "lineHeight": "28px"
+          },
+          "headline-md": {
+            "fontFamily": "Inter",
+            "fontSize": "18px",
+            "fontWeight": "600",
+            "letterSpacing": "-0.01em",
+            "lineHeight": "24px"
+          },
+          "headline-sm": {
+            "fontFamily": "Inter",
+            "fontSize": "16px",
+            "fontWeight": "600",
+            "letterSpacing": "-0.005em",
+            "lineHeight": "22px"
+          },
+          "label-md": {
+            "fontFamily": "Inter",
+            "fontSize": "12px",
+            "fontWeight": "600",
+            "letterSpacing": "0.02em",
+            "lineHeight": "16px"
+          },
+          "label-sm": {
+            "fontFamily": "Inter",
+            "fontSize": "10px",
+            "fontWeight": "700",
+            "letterSpacing": "0.04em",
+            "lineHeight": "14px"
+          }
+        }
+      },
+      "deviceType": "MOBILE",
+      "metadata": {
+        "userRole": "OWNER"
+      },
+      "name": "projects/981872862694368119",
+      "origin": "STITCH",
+      "projectType": "TEXT_TO_UI_PRO",
+      "screenInstances": [
+        {
+          "height": 1300,
+          "id": "0032793547d142ce80c836892b2ab79b",
+          "sourceScreen": "projects/981872862694368119/screens/0032793547d142ce80c836892b2ab79b",
+          "width": 390,
+          "x": 2902
+        },
+        {
+          "height": 600,
+          "hidden": true,
+          "id": "386908e6e5f34f7b8663ef6ed8a4a966",
+          "sourceScreen": "projects/981872862694368119/screens/386908e6e5f34f7b8663ef6ed8a4a966",
+          "width": 600,
+          "y": 2285
+        },
+        {
+          "height": 1351,
+          "hidden": true,
+          "id": "395a1d459a7f4933b258c8c128b96fe7",
+          "sourceScreen": "projects/981872862694368119/screens/395a1d459a7f4933b258c8c128b96fe7",
+          "width": 390,
+          "x": 3356
+        },
+        {
+          "height": 512,
+          "hidden": true,
+          "id": "60bc513ffce44c1ea916f2db176ab59b",
+          "sourceScreen": "projects/981872862694368119/screens/60bc513ffce44c1ea916f2db176ab59b",
+          "width": 512,
+          "x": 1688
+        },
+        {
+          "height": 2029,
+          "id": "7e9a3a81ca764af18850e2f48806f54c",
+          "sourceScreen": "projects/981872862694368119/screens/7e9a3a81ca764af18850e2f48806f54c",
+          "width": 390,
+          "x": 3441
+        },
+        {
+          "height": 600,
+          "id": "aaeeb538008a43eabe70d38214849989",
+          "sourceScreen": "projects/981872862694368119/screens/aaeeb538008a43eabe70d38214849989",
+          "width": 600
+        },
+        {
+          "height": 540,
+          "id": "assets_79cdd906b6be47eba9b89d3931adc514",
+          "sourceAsset": "assets/79cdd906b6be47eba9b89d3931adc514",
+          "type": "DESIGN_SYSTEM_INSTANCE",
+          "width": 960,
+          "x": 1432,
+          "y": 66
+        },
+        {
+          "height": 986,
+          "id": "b2e99b9f8dcf457b9e5a9a201e22eb2e",
+          "sourceScreen": "projects/981872862694368119/screens/b2e99b9f8dcf457b9e5a9a201e22eb2e",
+          "width": 390,
+          "x": 4006,
+          "y": -15
+        },
+        {
+          "height": 128,
+          "id": "b3f47f01de3c4e00a531d91c6bee8c96",
+          "sourceScreen": "projects/981872862694368119/screens/b3f47f01de3c4e00a531d91c6bee8c96",
+          "width": 120,
+          "x": 2264
+        },
+        {
+          "height": 1129,
+          "id": "cadb900a38124fa592f1a5fb465550cc",
+          "sourceScreen": "projects/981872862694368119/screens/cadb900a38124fa592f1a5fb465550cc",
+          "width": 390,
+          "x": 2448
+        },
+        {
+          "height": 1313,
+          "hidden": true,
+          "id": "ceec92e82f0c42ed8df65b8d095a0e16",
+          "sourceScreen": "projects/981872862694368119/screens/ceec92e82f0c42ed8df65b8d095a0e16",
+          "width": 390,
+          "x": 3810
+        }
+      ],
+      "thumbnailScreenshot": {
+        "downloadUrl": "https://lh3.googleusercontent.com/aida/AEtjO1UCuE9IVXKGx24Hr9cC7X3e5ajDx4Pgye7oUkJbnGqmYyn2orKi4fxRRRSuB6_Vzfskgpl-qWrQLj7qHQkT3hkOSALtT_xVNPf0f1jbg6dtClyNHDQVCOLDt0cMDsXQPQ4l-N8fZkmS0QaR23kZQhQ3sI_wDYJwHudU37DNKLY4CZDRXB6hVrSfq8LNx6LIZM7PejU-4HKyaH_DtzpfrQBkYb3I6qBtGzYjK_EpprSWfa5tTzK8vZKmFA",
+        "name": "projects/981872862694368119/screens/de57f88c0c47e3402c842d1a961547fb2fb96a280f04ceee6817beabdd7d09f7/fileEntries/screenshot"
+      },
+      "title": "SKYRental Admin Mobile UI",
+      "updateTime": "2026-09-10T02:55:20.405644Z",
+      "visibility": "PRIVATE"
+    }
+  }
+}

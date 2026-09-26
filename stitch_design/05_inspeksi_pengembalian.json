@@ -1,0 +1,28 @@
+{
+  "id": 1789009621356,
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "text": "{\"name\":\"projects/981872862694368119/screens/0032793547d142ce80c836892b2ab79b\",\"title\":\"Inspeksi & Pengembalian Unit\",\"screenshot\":{\"name\":\"projects/981872862694368119/screens/0032793547d142ce80c836892b2ab79b/fileEntries/screenshot\",\"downloadUrl\":\"https://lh3.googleusercontent.com/aida/AEtjO1VQR0kU8CtlOZIiFCFvksMqfYNxFNLctnxTMwEIGNQmzlmmuUQDPUqtx_0mgCSEXG4tz0GraQwGehutN0Y6fkUnaetDOC0v-o4Yy7uSiF7_BkZvoVUYnWb5JQB0n619o62OFjF3zFH6pqCAQdToWxKGyilAWpQivXd_31oVGS7wRJxElGAqYjG6F6vyYfFD7r28x8eixUl1w17rGcFCFIiBAxraazIa0AbeRs-yrmxXz16Gva-acUQH\"},\"htmlCode\":{\"name\":\"projects/981872862694368119/screens/0032793547d142ce80c836892b2ab79b/fileEntries/html\",\"downloadUrl\":\"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzAwMDY1YjE3OWVmMmZlYTIwN2M0ZDI5ZmQyMWZkN2I4EgsSBxCfx6ehyw0YAZIBIgoKcHJvamVjdF9pZBIUQhI5ODE4NzI4NjI2OTQzNjgxMTk&filename=&opi=89354086\",\"mimeType\":\"text/html\"},\"width\":\"780\",\"height\":\"2636\",\"deviceType\":\"MOBILE\"}",
+        "type": "text"
+      }
+    ],
+    "structuredContent": {
+      "deviceType": "MOBILE",
+      "height": "2636",
+      "htmlCode": {
+        "downloadUrl": "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzAwMDY1YjE3OWVmMmZlYTIwN2M0ZDI5ZmQyMWZkN2I4EgsSBxCfx6ehyw0YAZIBIgoKcHJvamVjdF9pZBIUQhI5ODE4NzI4NjI2OTQzNjgxMTk&filename=&opi=89354086",
+        "mimeType": "text/html",
+        "name": "projects/981872862694368119/screens/0032793547d142ce80c836892b2ab79b/fileEntries/html"
+      },
+      "name": "projects/981872862694368119/screens/0032793547d142ce80c836892b2ab79b",
+      "screenshot": {
+        "downloadUrl": "https://lh3.googleusercontent.com/aida/AEtjO1VQR0kU8CtlOZIiFCFvksMqfYNxFNLctnxTMwEIGNQmzlmmuUQDPUqtx_0mgCSEXG4tz0GraQwGehutN0Y6fkUnaetDOC0v-o4Yy7uSiF7_BkZvoVUYnWb5JQB0n619o62OFjF3zFH6pqCAQdToWxKGyilAWpQivXd_31oVGS7wRJxElGAqYjG6F6vyYfFD7r28x8eixUl1w17rGcFCFIiBAxraazIa0AbeRs-yrmxXz16Gva-acUQH",
+        "name": "projects/981872862694368119/screens/0032793547d142ce80c836892b2ab79b/fileEntries/screenshot"
+      },
+      "title": "Inspeksi & Pengembalian Unit",
+      "width": "780"
+    }
+  }
+}

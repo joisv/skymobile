@@ -1,0 +1,28 @@
+{
+  "id": 1789009619184,
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "text": "{\"name\":\"projects/981872862694368119/screens/cadb900a38124fa592f1a5fb465550cc\",\"title\":\"Dashboard Operasional\",\"screenshot\":{\"name\":\"projects/981872862694368119/files/9773506410074143441\",\"downloadUrl\":\"https://lh3.googleusercontent.com/aida/AEtjO1U03gLmpmwpsX0uMmAZx6HM-6qLDmmUxWLiGgdbA3HV-54NjnMHK2YVgOQANqd7mPJ3R_vpOPNet8bBP0o_RSEwFGwMgg6Lq-2xkJA-RNd3myPId2uoufWvS5kkJw1_8s6o00LO7Iz6UpBA7KXzpq0p2uYlnlcPo1uTU_9fh0XSBw5PneLaoNUL8ib1Son4JdKYc22FOLEEEDjeK9LwTwLbz8Nc-KOLlWMeJgQIe3lZsyP-8iQI_us3DA\"},\"htmlCode\":{\"name\":\"projects/981872862694368119/files/11862012842684266051\",\"downloadUrl\":\"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzAwMDY1YjE3ZGVkNTdmMjYwMWI0ZGUzN2ExMDQyOWNlEgsSBxCfx6ehyw0YAZIBIgoKcHJvamVjdF9pZBIUQhI5ODE4NzI4NjI2OTQzNjgxMTk&filename=&opi=89354086\",\"mimeType\":\"text/html\"},\"width\":\"780\",\"height\":\"2792\",\"deviceType\":\"MOBILE\"}",
+        "type": "text"
+      }
+    ],
+    "structuredContent": {
+      "deviceType": "MOBILE",
+      "height": "2792",
+      "htmlCode": {
+        "downloadUrl": "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzAwMDY1YjE3ZGVkNTdmMjYwMWI0ZGUzN2ExMDQyOWNlEgsSBxCfx6ehyw0YAZIBIgoKcHJvamVjdF9pZBIUQhI5ODE4NzI4NjI2OTQzNjgxMTk&filename=&opi=89354086",
+        "mimeType": "text/html",
+        "name": "projects/981872862694368119/files/11862012842684266051"
+      },
+      "name": "projects/981872862694368119/screens/cadb900a38124fa592f1a5fb465550cc",
+      "screenshot": {
+        "downloadUrl": "https://lh3.googleusercontent.com/aida/AEtjO1U03gLmpmwpsX0uMmAZx6HM-6qLDmmUxWLiGgdbA3HV-54NjnMHK2YVgOQANqd7mPJ3R_vpOPNet8bBP0o_RSEwFGwMgg6Lq-2xkJA-RNd3myPId2uoufWvS5kkJw1_8s6o00LO7Iz6UpBA7KXzpq0p2uYlnlcPo1uTU_9fh0XSBw5PneLaoNUL8ib1Son4JdKYc22FOLEEEDjeK9LwTwLbz8Nc-KOLlWMeJgQIe3lZsyP-8iQI_us3DA",
+        "name": "projects/981872862694368119/files/9773506410074143441"
+      },
+      "title": "Dashboard Operasional",
+      "width": "780"
+    }
+  }
+}

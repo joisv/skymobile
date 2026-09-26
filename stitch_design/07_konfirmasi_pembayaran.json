@@ -1,0 +1,28 @@
+{
+  "id": 1789009626235,
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "text": "{\"name\":\"projects/981872862694368119/screens/b2e99b9f8dcf457b9e5a9a201e22eb2e\",\"title\":\"Konfirmasi Pembayaran Booking\",\"screenshot\":{\"name\":\"projects/981872862694368119/files/15420030707308283475\",\"downloadUrl\":\"https://lh3.googleusercontent.com/aida/AEtjO1X56A2z0lMfNbulfv58pmTZw1_6CFyIuAXuvvLJgmb4UH_89ExcCmXZhmxPY-RKn3KH_np5z8HpzVTDiPoobmDRQerQEpv5kjoN2-kQuexSLMklvCLUNMGanoZptcQDEcyKcoqIJJW5Vb3JmZ_9KScLjjUZmIFOjB5xrumvroGfdQ_9RDNGMEHLT5i_Ii-77qW0Cf6JasUIxNSSdzgTR_FXZ_0t9Dwt80sku315w8ZG4yAIUcH-09Um\"},\"htmlCode\":{\"name\":\"projects/981872862694368119/files/3273296387399252236\",\"downloadUrl\":\"https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzAwMDY1YjE4MDc1Y2E5MTMwMzM4NjBlMjAwMGFhOTExEgsSBxCfx6ehyw0YAZIBIgoKcHJvamVjdF9pZBIUQhI5ODE4NzI4NjI2OTQzNjgxMTk&filename=&opi=89354086\",\"mimeType\":\"text/html\"},\"width\":\"780\",\"height\":\"3162\",\"deviceType\":\"MOBILE\"}",
+        "type": "text"
+      }
+    ],
+    "structuredContent": {
+      "deviceType": "MOBILE",
+      "height": "3162",
+      "htmlCode": {
+        "downloadUrl": "https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ6Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpZCiVodG1sXzAwMDY1YjE4MDc1Y2E5MTMwMzM4NjBlMjAwMGFhOTExEgsSBxCfx6ehyw0YAZIBIgoKcHJvamVjdF9pZBIUQhI5ODE4NzI4NjI2OTQzNjgxMTk&filename=&opi=89354086",
+        "mimeType": "text/html",
+        "name": "projects/981872862694368119/files/3273296387399252236"
+      },
+      "name": "projects/981872862694368119/screens/b2e99b9f8dcf457b9e5a9a201e22eb2e",
+      "screenshot": {
+        "downloadUrl": "https://lh3.googleusercontent.com/aida/AEtjO1X56A2z0lMfNbulfv58pmTZw1_6CFyIuAXuvvLJgmb4UH_89ExcCmXZhmxPY-RKn3KH_np5z8HpzVTDiPoobmDRQerQEpv5kjoN2-kQuexSLMklvCLUNMGanoZptcQDEcyKcoqIJJW5Vb3JmZ_9KScLjjUZmIFOjB5xrumvroGfdQ_9RDNGMEHLT5i_Ii-77qW0Cf6JasUIxNSSdzgTR_FXZ_0t9Dwt80sku315w8ZG4yAIUcH-09Um",
+        "name": "projects/981872862694368119/files/15420030707308283475"
+      },
+      "title": "Konfirmasi Pembayaran Booking",
+      "width": "780"
+    }
+  }
+}
