@@ -1271,6 +1271,8 @@ class BookingRepository {
     String? query,
     String? statusFilter,
     String? modelFilter,
+    String? branchFilter,
+    String? sortBy,
   }) async {
     try {
       final res = await ApiService().getAllIphonesApi(
@@ -1306,7 +1308,7 @@ class BookingRepository {
       }
       return unit;
     }).toList();
-    return source.where((unit) {
+    final filtered = source.where((unit) {
       if (statusFilter != null && statusFilter.isNotEmpty && statusFilter.toLowerCase() != 'semua') {
         final normStatus = unit.status.toLowerCase();
         final normFilter = statusFilter.toLowerCase();
@@ -1336,6 +1338,16 @@ class BookingRepository {
         }
       }
 
+      if (branchFilter != null &&
+          branchFilter.isNotEmpty &&
+          !branchFilter.toLowerCase().contains('semua')) {
+        final normBranch = branchFilter.toLowerCase().replaceAll('•', '').trim();
+        final unitBranch = (unit.branchName ?? '').toLowerCase();
+        if (!unitBranch.contains(normBranch)) {
+          return false;
+        }
+      }
+
       if (query != null && query.trim().isNotEmpty) {
         final q = query.trim().toLowerCase();
         final matchName = unit.name.toLowerCase().contains(q);
@@ -1343,13 +1355,50 @@ class BookingRepository {
         final matchSerial = unit.serialNumber.toLowerCase().contains(q);
         final matchColor = unit.color.toLowerCase().contains(q);
         final matchStorage = unit.storage.toLowerCase().contains(q);
-        if (!matchName && !matchAsset && !matchSerial && !matchColor && !matchStorage) {
+        final matchBranch = (unit.branchName ?? '').toLowerCase().contains(q);
+        if (!matchName && !matchAsset && !matchSerial && !matchColor && !matchStorage && !matchBranch) {
           return false;
         }
       }
 
       return true;
     }).toList();
+
+    if (sortBy != null && sortBy.isNotEmpty) {
+      if (sortBy == 'bh_desc') {
+        filtered.sort((a, b) => b.batteryHealth.compareTo(a.batteryHealth));
+      } else if (sortBy == 'bh_asc') {
+        filtered.sort((a, b) => a.batteryHealth.compareTo(b.batteryHealth));
+      } else if (sortBy == 'name_asc') {
+        filtered.sort((a, b) => a.name.compareTo(b.name));
+      } else if (sortBy == 'asset_asc') {
+        filtered.sort((a, b) => a.assetCode.compareTo(b.assetCode));
+      }
+    }
+
+    return filtered;
+  }
+
+  /// Reset inventaris kembali ke data awal
+  void resetInventory() {
+    MockBookingData.resetInventory();
+    _inventory.clear();
+    _inventory.addAll(MockBookingData.inventory);
+    _unitSummaryCache = null;
+  }
+
+  /// Tambah unit baru ke inventaris
+  Future<void> addInventoryUnit(IphoneModel unit) async {
+    _inventory.insert(0, unit);
+    MockBookingData.inventory.insert(0, unit);
+    _unitSummaryCache = null;
+  }
+
+  /// Hapus unit dari inventaris
+  Future<void> deleteInventoryUnit(String assetCode) async {
+    _inventory.removeWhere((u) => u.assetCode.toLowerCase() == assetCode.toLowerCase());
+    MockBookingData.inventory.removeWhere((u) => u.assetCode.toLowerCase() == assetCode.toLowerCase());
+    _unitSummaryCache = null;
   }
 
   /// Ringkasan status unit iPhone
@@ -1467,6 +1516,8 @@ class BookingRepository {
           iphone: updated,
         );
       }
+
+      _unitSummaryCache = null;
 
       return updated;
     }

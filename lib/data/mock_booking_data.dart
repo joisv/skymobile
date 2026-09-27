@@ -270,8 +270,125 @@ class MockBookingData {
     ),
   ];
 
-  static final List<IphoneModel> inventory = [
-    const IphoneModel(
+  static const List<IphoneModel> _defaultInventory = [
+    // 6 Primary Units shown in Mockup
+    IphoneModel(
+      id: 1048,
+      name: 'iPhone 15 Pro Max',
+      storage: '256GB',
+      color: 'Blue Titanium',
+      serialNumber: 'P9ZX44MN67',
+      assetCode: 'IPHSKY1048',
+      status: 'tersedia',
+      batteryHealth: 100,
+      branchName: 'Purwoharjo',
+    ),
+    IphoneModel(
+      id: 1032,
+      name: 'iPhone 13 Aja',
+      storage: '128GB',
+      color: 'Titanium / Standar',
+      serialNumber: 'F2LY32SJLKJH',
+      assetCode: 'IPHSKY1032',
+      status: 'tersedia',
+      batteryHealth: 100,
+      branchName: 'Genteng',
+    ),
+    IphoneModel(
+      id: 1002,
+      name: 'iPhone 13 Pink',
+      storage: '128GB',
+      color: 'Titanium / Standar',
+      serialNumber: 'DX3GGKS9SAA',
+      assetCode: 'IPHSKY1002',
+      status: 'tersedia',
+      batteryHealth: 100,
+      branchName: 'Siliragung',
+    ),
+    IphoneModel(
+      id: 1015,
+      name: 'iPhone 15 Pro',
+      storage: '256GB',
+      color: 'Natural Titanium',
+      serialNumber: 'H8JK29LM01',
+      assetCode: 'IPHSKY1015',
+      status: 'disewa',
+      batteryHealth: 98,
+      branchName: 'Purwoharjo',
+      customerName: 'Dimas Pratama',
+      bookingCode: '#SKY - 8421',
+      returnScheduleText: 'Kembali: 11 Sep 2026 • 14:00 WIB',
+    ),
+    IphoneModel(
+      id: 1009,
+      name: 'iPhone 14 Pro',
+      storage: '128GB',
+      color: 'Deep Purple',
+      serialNumber: 'T6NM88QW23',
+      assetCode: 'IPHSKY1009',
+      status: 'disewa',
+      batteryHealth: 94,
+      branchName: 'Genteng',
+      customerName: 'Siti Rahmawati',
+      bookingCode: '#SKY - 8420',
+      returnScheduleText: 'Kembali Hari Ini: 18:00 WIB (KTM Mahasiswa)',
+    ),
+    IphoneModel(
+      id: 1020,
+      name: 'iPhone 15 Reguler',
+      storage: '128GB',
+      color: 'Black Midnight',
+      serialNumber: 'K2LP55XZ09',
+      assetCode: 'IPHSKY1020',
+      status: 'perawatan',
+      batteryHealth: 89,
+      branchName: 'Siliragung',
+      maintenanceNote: 'Ganti tempered glass & deep cleaning port audio/charging.',
+    ),
+
+    // Additional Rented Units (Total Disewa = 5)
+    IphoneModel(
+      id: 5,
+      name: 'iPhone 15 Pro Max',
+      storage: '256GB',
+      color: 'Blue Titanium',
+      serialNumber: 'X9M456KL8N',
+      assetCode: 'AST-IP15PM-002',
+      status: 'disewa',
+      batteryHealth: 100,
+      customerName: 'Kevin Wijaya',
+      bookingCode: '#SKY-8418',
+      returnScheduleText: 'Kembali: 10 Sep 2026 • 10:00 WIB',
+    ),
+    IphoneModel(
+      id: 7,
+      name: 'iPhone 13 Pro',
+      storage: '128GB',
+      color: 'Sierra Blue',
+      serialNumber: 'Z3X456CV7B',
+      assetCode: 'AST-IP13P-001',
+      status: 'disewa',
+      batteryHealth: 92,
+      customerName: 'Rizky Ramadhan',
+      bookingCode: '#SKY-8417',
+      returnScheduleText: 'Kembali: 09 Sep 2026 • 18:00 WIB',
+    ),
+    IphoneModel(
+      id: 8,
+      name: 'iPhone 14 Pro',
+      storage: '256GB',
+      color: 'Space Black',
+      serialNumber: 'K7T890PL2M',
+      assetCode: 'AST-IP14P-003',
+      status: 'disewa',
+      batteryHealth: 94,
+      customerName: 'Hendra Setiawan',
+      bookingCode: '#SKY-8416',
+      returnScheduleText: 'Kembali Hari Ini: 15:00 WIB',
+    ),
+
+    // Additional Ready Units (Total Tersedia = 18, Total Units = 24)
+    IphoneModel(
       id: 1,
       name: 'iPhone 15 Pro',
       storage: '128GB',
@@ -281,7 +398,7 @@ class MockBookingData {
       status: 'tersedia',
       batteryHealth: 98,
     ),
-    const IphoneModel(
+    IphoneModel(
       id: 2,
       name: 'iPhone 15 Pro',
       storage: '128GB',
@@ -291,7 +408,7 @@ class MockBookingData {
       status: 'tersedia',
       batteryHealth: 100,
     ),
-    const IphoneModel(
+    IphoneModel(
       id: 3,
       name: 'iPhone 15 Pro',
       storage: '256GB',
@@ -301,7 +418,7 @@ class MockBookingData {
       status: 'tersedia',
       batteryHealth: 97,
     ),
-    const IphoneModel(
+    IphoneModel(
       id: 4,
       name: 'iPhone 15 Pro Max',
       storage: '256GB',
@@ -311,17 +428,7 @@ class MockBookingData {
       status: 'tersedia',
       batteryHealth: 99,
     ),
-    const IphoneModel(
-      id: 5,
-      name: 'iPhone 15 Pro Max',
-      storage: '256GB',
-      color: 'Blue Titanium',
-      serialNumber: 'X9M456KL8N',
-      assetCode: 'AST-IP15PM-002',
-      status: 'disewa',
-      batteryHealth: 100,
-    ),
-    const IphoneModel(
+    IphoneModel(
       id: 6,
       name: 'iPhone 15',
       storage: '128GB',
@@ -331,8 +438,8 @@ class MockBookingData {
       status: 'tersedia',
       batteryHealth: 100,
     ),
-    const IphoneModel(
-      id: 7,
+    IphoneModel(
+      id: 9,
       name: 'iPhone 15',
       storage: '128GB',
       color: 'Black',
@@ -341,8 +448,8 @@ class MockBookingData {
       status: 'tersedia',
       batteryHealth: 99,
     ),
-    const IphoneModel(
-      id: 8,
+    IphoneModel(
+      id: 10,
       name: 'iPhone 14 Pro',
       storage: '128GB',
       color: 'Space Black',
@@ -351,18 +458,8 @@ class MockBookingData {
       status: 'tersedia',
       batteryHealth: 92,
     ),
-    const IphoneModel(
-      id: 9,
-      name: 'iPhone 14 Pro',
-      storage: '256GB',
-      color: 'Deep Purple',
-      serialNumber: 'K7T890PL2M',
-      assetCode: 'AST-IP14P-003',
-      status: 'tersedia',
-      batteryHealth: 94,
-    ),
-    const IphoneModel(
-      id: 10,
+    IphoneModel(
+      id: 11,
       name: 'iPhone 14',
       storage: '128GB',
       color: 'Starlight',
@@ -371,8 +468,18 @@ class MockBookingData {
       status: 'tersedia',
       batteryHealth: 96,
     ),
-    const IphoneModel(
-      id: 11,
+    IphoneModel(
+      id: 12,
+      name: 'iPhone 14',
+      storage: '256GB',
+      color: 'Midnight',
+      serialNumber: 'M4N567OP9B',
+      assetCode: 'AST-IP14-003',
+      status: 'tersedia',
+      batteryHealth: 95,
+    ),
+    IphoneModel(
+      id: 13,
       name: 'iPhone 13',
       storage: '128GB',
       color: 'Midnight',
@@ -381,17 +488,63 @@ class MockBookingData {
       status: 'tersedia',
       batteryHealth: 89,
     ),
-    const IphoneModel(
-      id: 12,
+    IphoneModel(
+      id: 14,
       name: 'iPhone 13',
       storage: '128GB',
       color: 'Starlight',
       serialNumber: 'L8K234NJ1B',
       assetCode: 'AST-IP13-002',
-      status: 'maintenance',
+      status: 'tersedia',
+      batteryHealth: 91,
+    ),
+    IphoneModel(
+      id: 15,
+      name: 'iPhone 13',
+      storage: '256GB',
+      color: 'Blue',
+      serialNumber: 'L8K234NJ1C',
+      assetCode: 'AST-IP13-003',
+      status: 'tersedia',
+      batteryHealth: 93,
+    ),
+    IphoneModel(
+      id: 16,
+      name: 'iPhone 12 Pro',
+      storage: '128GB',
+      color: 'Pacific Blue',
+      serialNumber: 'H7J890KL1P',
+      assetCode: 'AST-IP12P-001',
+      status: 'tersedia',
       batteryHealth: 88,
     ),
+    IphoneModel(
+      id: 17,
+      name: 'iPhone 12',
+      storage: '128GB',
+      color: 'Black',
+      serialNumber: 'H7J890KL1M',
+      assetCode: 'AST-IP12-001',
+      status: 'tersedia',
+      batteryHealth: 86,
+    ),
+    IphoneModel(
+      id: 18,
+      name: 'iPhone 11',
+      storage: '128GB',
+      color: 'White',
+      serialNumber: 'G6H789JK1Q',
+      assetCode: 'AST-IP11-001',
+      status: 'tersedia',
+      batteryHealth: 85,
+    ),
   ];
+
+  static List<IphoneModel> inventory = List.of(_defaultInventory);
+
+  static void resetInventory() {
+    inventory = List.of(_defaultInventory);
+  }
 
   static final List<PaymentTransactionModel> paymentTransactions = [
     PaymentTransactionModel(

@@ -1082,6 +1082,9 @@ void main() {
     expect(updated.status.toLowerCase(),
         anyOf(equals('maintenance'), equals('perawatan')));
     expect(updated.batteryHealth, equals(95));
+
+    // Restore unit status to maintain test suite isolation
+    await repository.updateUnitStatus(target.assetCode, target.status, batteryHealth: target.batteryHealth);
   });
 
   test('BookingRepository createBooking rejects rented unit with Exception',
@@ -2337,5 +2340,83 @@ void main() {
     await tester.tap(find.text('Tutup'));
     await tester.pumpAndSettle();
   });
+
+  testWidgets(
+      'UnitStatusListScreen renders responsive tablet landscape layout matching design mockup',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    AuthService().setCurrentUserForTest(
+      AdminUserModel.defaultAdmin().copyWith(
+        name: 'Budi Santoso',
+        role: 'Kasir',
+      ),
+    );
+
+    final repository = BookingRepository();
+    repository.resetInventory();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: UnitStatusListScreen(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 1. Verify Header Elements
+    expect(find.text('SKYRental'), findsWidgets);
+    expect(find.text('Budi Santoso'), findsOneWidget);
+    expect(find.text('Kasir • Shift Pagi'), findsOneWidget);
+
+    // 2. Verify Sub-header Bar
+    expect(find.text('Status Unit & Inventaris iPhone'), findsOneWidget);
+    expect(find.text('+ Tambah iPhone Baru'), findsOneWidget);
+
+    // 3. Verify 4 Summary KPI Cards
+    expect(find.text('TOTAL UNIT'), findsOneWidget);
+    expect(find.text('24'), findsWidgets);
+    expect(find.text('Terdaftar di Gerai Gandaria'), findsOneWidget);
+
+    expect(find.text('TERSEDIA'), findsOneWidget);
+    expect(find.text('18'), findsWidgets);
+    expect(find.text('Siap Sewa / Ready Stock'), findsOneWidget);
+
+    expect(find.text('DISEWA'), findsOneWidget);
+    expect(find.text('5'), findsWidgets);
+    expect(find.text('Sedang Digunakan Customer'), findsOneWidget);
+
+    expect(find.text('PERAWATAN'), findsOneWidget);
+    expect(find.text('1'), findsWidgets);
+    expect(find.text('Inspeksi & Maintenance'), findsOneWidget);
+
+    // 4. Verify Affiliate Chips
+    expect(find.text('AFFILIATE:'), findsOneWidget);
+    expect(find.text('Semua Cabang'), findsOneWidget);
+    expect(find.text('Genteng'), findsWidgets);
+    expect(find.text('Siliragung'), findsWidgets);
+    expect(find.text('Purwoharjo'), findsWidgets);
+
+    // 5. Verify Unit Cards rendered on screen
+    expect(find.text('IPHSKY1048'), findsOneWidget);
+    expect(find.text('IPHSKY1032'), findsOneWidget);
+    expect(find.text('IPHSKY1002'), findsOneWidget);
+    expect(find.text('IPHSKY1015'), findsOneWidget);
+    expect(find.text('IPHSKY1009'), findsOneWidget);
+    expect(find.text('IPHSKY1020'), findsOneWidget);
+
+    // 6. Verify Action Buttons for respective states
+    expect(find.text('Booking Kasir'), findsWidgets);
+    expect(find.text('Pengembalian'), findsWidgets);
+    expect(find.text('Selesai Servis'), findsWidgets);
+
+    // 7. Verify Context Box Content
+    expect(find.text('Customer: Dimas Pratama'), findsOneWidget);
+    expect(find.text('Customer: Siti Rahmawati'), findsOneWidget);
+    expect(find.text('Inspeksi Servis:'), findsOneWidget);
+  });
 }
+
 

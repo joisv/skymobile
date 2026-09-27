@@ -15,6 +15,7 @@ class UnitStatusListSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SkeletonShimmer(
       child: ListView.separated(
+        shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         itemCount: itemCount,

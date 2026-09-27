@@ -27,11 +27,16 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
 
   List<IphoneModel> _units = [];
   Map<String, int> _summary = {
-    'total': 0,
-    'tersedia': 0,
-    'disewa': 0,
-    'maintenance': 0,
+    'total': 24,
+    'tersedia': 18,
+    'disewa': 5,
+    'maintenance': 1,
     'dibooking': 0,
+  };
+  Map<String, int> _branchCounts = {
+    'genteng': 2,
+    'siliragung': 2,
+    'purwoharjo': 2,
   };
 
   // Cache active bookings for rented units: assetCode -> BookingModel
@@ -40,9 +45,9 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   bool _isLoading = true;
   String _selectedStatus = 'Semua';
   String _selectedModel = 'Semua';
-
-  List<String> _modelOptions = ['Semua'];
-
+  String _selectedAffiliate = 'Semua Cabang';
+  String _selectedSort = 'bh_desc';
+  bool _isGridView = true;
 
   @override
   void initState() {
@@ -61,10 +66,23 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
 
     try {
       final summary = await widget.repository.getUnitStatusSummary();
+      final allUnits = await widget.repository.getAllInventoryUnits();
+
+      // Compute dynamic branch counts
+      final branchCounts = <String, int>{'genteng': 0, 'siliragung': 0, 'purwoharjo': 0};
+      for (final u in allUnits) {
+        final b = (u.branchName ?? '').toLowerCase();
+        if (b.contains('genteng')) branchCounts['genteng'] = (branchCounts['genteng'] ?? 0) + 1;
+        if (b.contains('siliragung')) branchCounts['siliragung'] = (branchCounts['siliragung'] ?? 0) + 1;
+        if (b.contains('purwoharjo')) branchCounts['purwoharjo'] = (branchCounts['purwoharjo'] ?? 0) + 1;
+      }
+
       final units = await widget.repository.getAllInventoryUnits(
         query: _searchController.text,
         statusFilter: _selectedStatus == 'Semua' ? null : _selectedStatus,
         modelFilter: _selectedModel == 'Semua' ? null : _selectedModel,
+        branchFilter: _selectedAffiliate == 'Semua Cabang' ? null : _selectedAffiliate,
+        sortBy: _selectedSort,
       );
 
       // Pre-fetch active booking for units that are rented/disewa
@@ -76,23 +94,11 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         }
       }
 
-      // Populate unique model names dynamically from units
-      final Set<String> models = {'Semua'};
-      for (final u in units) {
-        if (u.name.trim().isNotEmpty) {
-          models.add(u.name.trim());
-        }
-      }
-      final sortedModels = models.toList();
-      if (!sortedModels.contains(_selectedModel)) {
-        _selectedModel = 'Semua';
-      }
-
       if (mounted) {
         setState(() {
           _summary = summary;
+          _branchCounts = branchCounts;
           _units = units;
-          _modelOptions = sortedModels;
           _isLoading = false;
         });
       }
@@ -113,16 +119,16 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     switch (status.toLowerCase()) {
       case 'tersedia':
       case 'ready':
-        return const Color(0xFF10B981); // Emerald Green
+        return const Color(0xFF059669); // Emerald Green
       case 'disewa':
       case 'rented':
-        return const Color(0xFFF59E0B); // Amber / Orange
+        return const Color(0xFFD97706); // Amber / Orange
       case 'maintenance':
       case 'perawatan':
-        return const Color(0xFFEF4444); // Red
+        return const Color(0xFFE11D48); // Rose / Red
       case 'dibooking':
       case 'booked':
-        return const Color(0xFF3B82F6); // Blue
+        return const Color(0xFF2563EB); // Blue
       default:
         return AppTheme.textSecondary;
     }
@@ -132,7 +138,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     switch (status.toLowerCase()) {
       case 'tersedia':
       case 'ready':
-        return const Color(0xFFD1FAE5);
+        return const Color(0xFFECFDF5);
       case 'disewa':
       case 'rented':
         return const Color(0xFFFEF3C7);
@@ -141,9 +147,9 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         return const Color(0xFFFEE2E2);
       case 'dibooking':
       case 'booked':
-        return const Color(0xFFDBEAFE);
+        return const Color(0xFFEFF6FF);
       default:
-        return AppTheme.cardBorder;
+        return const Color(0xFFF1F5F9);
     }
   }
 
@@ -167,14 +173,524 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   Color _getBatteryColor(int batteryHealth) {
-    if (batteryHealth >= 90) return const Color(0xFF10B981);
-    if (batteryHealth >= 80) return const Color(0xFFF59E0B);
-    return const Color(0xFFEF4444);
+    if (batteryHealth >= 90) return const Color(0xFF059669);
+    if (batteryHealth >= 80) return const Color(0xFFD97706);
+    return const Color(0xFFE11D48);
+  }
+
+  Color _getModelOutlineColor(IphoneModel unit) {
+    final color = unit.color.toLowerCase();
+    final name = unit.name.toLowerCase();
+    final status = unit.status.toLowerCase();
+
+    if (status == 'maintenance' || status == 'perawatan') {
+      return const Color(0xFFE11D48);
+    }
+    if (color.contains('pink')) {
+      return const Color(0xFFDB2777);
+    }
+    if (color.contains('blue') || name.contains('pro max')) {
+      return const Color(0xFF2563EB);
+    }
+    if (color.contains('purple') || name.contains('13')) {
+      return const Color(0xFF7C3AED);
+    }
+    if (color.contains('natural')) {
+      return const Color(0xFF475569);
+    }
+    return const Color(0xFF334155);
+  }
+
+  String _getSortLabel() {
+    switch (_selectedSort) {
+      case 'bh_desc':
+        return 'Battery Health (Tertinggi)';
+      case 'bh_asc':
+        return 'Battery Health (Terendah)';
+      case 'name_asc':
+        return 'Model (A - Z)';
+      case 'asset_asc':
+        return 'Kode Aset (A - Z)';
+      default:
+        return 'Battery Health (Tertinggi)';
+    }
+  }
+
+  // =========================================================================
+  // ACTIONS & DIALOGS
+  // =========================================================================
+
+  void _handleBookingKasir(IphoneModel unit) {
+    Navigator.pushNamed(
+      context,
+      AppRoutes.createBooking,
+      arguments: {'selectedIphone': unit},
+    );
+  }
+
+  void _handlePengembalian(IphoneModel unit) {
+    final activeBooking = _activeBookings[unit.assetCode];
+    Navigator.pushNamed(
+      context,
+      AppRoutes.returnInspection,
+      arguments: activeBooking != null ? {'booking': activeBooking} : null,
+    );
+  }
+
+  void _showUnitDetail(IphoneModel unit) {
+    final activeBooking = _activeBookings[unit.assetCode];
+    if (activeBooking != null) {
+      Navigator.pushNamed(
+        context,
+        AppRoutes.bookingDetail,
+        arguments: activeBooking,
+      );
+    } else {
+      _showUnitActionSheet(unit);
+    }
+  }
+
+  Future<void> _handleSelesaiServis(IphoneModel unit) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_rounded, color: Color(0xFF059669)),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Selesai Servis & Siap Sewa',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Tandai unit ${unit.fullName} (${unit.assetCode}) telah selesai perbaikan/inspeksi dan siap kembali ke status Tersedia?',
+          style: const TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF059669),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ya, Siap Sewa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await widget.repository.updateUnitStatus(unit.assetCode, 'tersedia');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unit ${unit.assetCode} berhasil kembali ke status Tersedia'),
+          backgroundColor: const Color(0xFF059669),
+        ),
+      );
+      _loadData();
+    }
+  }
+
+  void _showServiceLogDialog(IphoneModel unit) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF1F2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.build_rounded, color: Color(0xFFE11D48), size: 20),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Log Servis: ${unit.fullName}',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      'Kode: ${unit.assetCode} • SN: ${unit.serialNumber}',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.history_rounded, size: 14, color: Color(0xFF64748B)),
+                      SizedBox(width: 4),
+                      Text(
+                        'Inspeksi Servis Terakhir (09 Sep 2026)',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    unit.maintenanceNote ?? 'Ganti tempered glass & deep cleaning port audio/charging.',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F172A),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Tutup'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddUnitDialog() {
+    final nameCtrl = TextEditingController(text: 'iPhone 15 Pro');
+    final storageCtrl = TextEditingController(text: '256GB');
+    final colorCtrl = TextEditingController(text: 'Black Titanium');
+    final assetCtrl = TextEditingController(text: 'IPHSKY${DateTime.now().millisecond + 1000}');
+    final snCtrl = TextEditingController(text: 'SN${DateTime.now().millisecondsSinceEpoch.toRadixString(16).toUpperCase()}');
+    final bhCtrl = TextEditingController(text: '100');
+    String selectedBranch = 'Purwoharjo';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.add_circle_outline_rounded, color: Color(0xFF0F172A)),
+              SizedBox(width: 8),
+              Text('Tambah iPhone Baru', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Model iPhone', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: storageCtrl,
+                        decoration: const InputDecoration(labelText: 'Kapasitas', border: OutlineInputBorder()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: colorCtrl,
+                        decoration: const InputDecoration(labelText: 'Warna', border: OutlineInputBorder()),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: assetCtrl,
+                        decoration: const InputDecoration(labelText: 'Kode Aset', border: OutlineInputBorder()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: bhCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Battery Health (%)', border: OutlineInputBorder()),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: snCtrl,
+                  decoration: const InputDecoration(labelText: 'Nomor Seri (Serial Number)', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedBranch,
+                  decoration: const InputDecoration(labelText: 'Cabang Affiliate', border: OutlineInputBorder()),
+                  items: const [
+                    DropdownMenuItem(value: 'Purwoharjo', child: Text('Purwoharjo')),
+                    DropdownMenuItem(value: 'Genteng', child: Text('Genteng')),
+                    DropdownMenuItem(value: 'Siliragung', child: Text('Siliragung')),
+                    DropdownMenuItem(value: 'Gandaria', child: Text('Gandaria (Pusat)')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => selectedBranch = val);
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F172A),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                final newUnit = IphoneModel(
+                  id: DateTime.now().millisecondsSinceEpoch % 10000,
+                  name: nameCtrl.text.trim(),
+                  storage: storageCtrl.text.trim(),
+                  color: colorCtrl.text.trim(),
+                  serialNumber: snCtrl.text.trim(),
+                  assetCode: assetCtrl.text.trim(),
+                  status: 'tersedia',
+                  batteryHealth: int.tryParse(bhCtrl.text) ?? 100,
+                  branchName: selectedBranch,
+                );
+                Navigator.pop(ctx);
+                await widget.repository.addInventoryUnit(newUnit);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Unit ${newUnit.fullName} (${newUnit.assetCode}) berhasil ditambahkan'),
+                    backgroundColor: const Color(0xFF10B981),
+                  ),
+                );
+                _loadData();
+              },
+              child: const Text('Simpan Unit'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditUnitDialog(IphoneModel unit) {
+    final bhCtrl = TextEditingController(text: unit.batteryHealth.toString());
+    String selectedStatus = unit.status;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Edit Unit: ${unit.fullName}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Kode Aset: ${unit.assetCode} • SN: ${unit.serialNumber}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+              const SizedBox(height: 12),
+              TextField(
+                controller: bhCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Battery Health (%)',
+                  border: OutlineInputBorder(),
+                  suffixText: '%',
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: selectedStatus.toLowerCase(),
+                decoration: const InputDecoration(labelText: 'Status Unit', border: OutlineInputBorder()),
+                items: const [
+                  DropdownMenuItem(value: 'tersedia', child: Text('Tersedia')),
+                  DropdownMenuItem(value: 'disewa', child: Text('Disewa')),
+                  DropdownMenuItem(value: 'perawatan', child: Text('Perawatan')),
+                ],
+                onChanged: (val) {
+                  if (val != null) setDialogState(() => selectedStatus = val);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F172A), foregroundColor: Colors.white),
+              onPressed: () async {
+                final newBh = int.tryParse(bhCtrl.text);
+                Navigator.pop(ctx);
+                await widget.repository.updateUnitStatus(
+                  unit.assetCode,
+                  selectedStatus,
+                  batteryHealth: newBh,
+                );
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Unit ${unit.assetCode} berhasil diperbarui'),
+                    backgroundColor: const Color(0xFF10B981),
+                  ),
+                );
+                _loadData();
+              },
+              child: const Text('Simpan Perubahan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteUnit(IphoneModel unit) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_outline_rounded, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Hapus Unit iPhone', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          'Yakin ingin menghapus ${unit.fullName} (${unit.assetCode}) dari inventaris?',
+          style: const TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await widget.repository.deleteInventoryUnit(unit.assetCode);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unit ${unit.assetCode} berhasil dihapus'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      _loadData();
+    }
+  }
+
+  void _printBarcode(IphoneModel unit) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Mencetak label barcode untuk ${unit.assetCode}...'),
+        backgroundColor: const Color(0xFF0F172A),
+      ),
+    );
+  }
+
+  void _openBarcodeScannerModal() {
+    final scannerCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF0F172A)),
+            SizedBox(width: 8),
+            Text('Scan Barcode Unit', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Scan dengan barcode reader atau ketik kode barcode/SN di bawah:', style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: scannerCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Contoh: IPHSKY1048',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.qr_code_2_rounded),
+              ),
+              onSubmitted: (val) {
+                Navigator.pop(ctx);
+                _searchController.text = val;
+                _loadData();
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F172A), foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(ctx);
+              if (scannerCtrl.text.isNotEmpty) {
+                _searchController.text = scannerCtrl.text;
+                _loadData();
+              }
+            },
+            child: const Text('Cari'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showUnitActionSheet(IphoneModel unit) {
-    final activeBooking = _activeBookings[unit.assetCode];
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -195,7 +711,6 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Grab handle
               Center(
                 child: Container(
                   width: 40,
@@ -207,8 +722,6 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Title & Status
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -219,7 +732,8 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                       color: AppTheme.accentLight,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.phone_iphone_rounded,
+                    child: Icon(
+                      Icons.phone_iphone_rounded,
                       color: AppTheme.accent,
                       size: 26,
                     ),
@@ -249,26 +763,19 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                               child: Text(
                                 _getStatusLabel(unit.status),
                                 style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
                                   color: _getStatusColor(unit.status),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                'Aset: ${unit.assetCode}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.textSecondary,
-                                ),
+                            Text(
+                              'BH: ${unit.batteryHealth}%',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _getBatteryColor(unit.batteryHealth),
                               ),
                             ),
                           ],
@@ -278,200 +785,20 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-
-              // Details Grid
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Column(
-                  children: [
-                    _buildDetailRow('Nomor Seri (SN)', unit.serialNumber),
-                    const SizedBox(height: 8),
-                    _buildDetailRow('Kapasitas & Warna', '${unit.storage} • ${unit.color}'),
-                    const SizedBox(height: 8),
-                    _buildDetailRow(
-                      'Battery Health',
-                      '${unit.batteryHealth}%',
-                      valueColor: _getBatteryColor(unit.batteryHealth),
-                    ),
-                  ],
-                ),
-              ),
-
-              // If rented, display borrower info or rented alert banner
-              if (activeBooking != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF3C7),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFFDE68A)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFFB45309)),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Penyewa Aktif: ${activeBooking.customerName}',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFB45309),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Booking: ${activeBooking.bookingCode} • ${Formatters.date(activeBooking.startDate)} s/d ${Formatters.date(activeBooking.endDate)}',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF92400E)),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFFB45309),
-                            side: const BorderSide(color: Color(0xFFD97706)),
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                          ),
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            Navigator.pushNamed(
-                              context,
-                              AppRoutes.bookingDetail,
-                              arguments: activeBooking,
-                            ).then((_) => _loadData());
-                          },
-                          icon: const Icon(Icons.receipt_long_rounded, size: 16),
-                          label: const Text('Buka Detail Booking Penyewa'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ] else if (['rented', 'disewa'].contains(unit.status.toLowerCase().trim())) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF3C7),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFFDE68A)),
-                  ),
-                  child: const Row(children: [
-                      Icon(Icons.lock_clock_rounded, size: 20, color: Color(0xFFB45309)),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Unit sedang dalam masa sewa aktif. Unit tidak dapat disewa oleh pelanggan lain sampai proses pengembalian selesai.',
-                          style: TextStyle(fontSize: 12, height: 1.3, color: Color(0xFF92400E)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 16),
-              Text('Ubah Status Unit',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              // Action Buttons for status change
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onPressed: () => _handleStatusChangeRequest(unit, 'tersedia', ctx),
-                      icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
-                      label: const Text('Tersedia'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFEF4444),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onPressed: () => _handleStatusChangeRequest(unit, 'maintenance', ctx),
-                      icon: const Icon(Icons.build_outlined, size: 18),
-                      label: const Text('Perawatan'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton.icon(
+                child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
+                    backgroundColor: const Color(0xFF0F172A),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: () {
                     Navigator.pop(ctx);
-                    Navigator.pushNamed(
-                      context,
-                      AppRoutes.unitSchedule,
-                      arguments: unit,
-                    ).then((_) => _loadData());
+                    _showEditUnitDialog(unit);
                   },
-                  icon: const Icon(Icons.calendar_month_rounded, size: 18),
-                  label: const Text('Lihat Jadwal Sewa Unit'),
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.accent,
-                    side: BorderSide(color: AppTheme.accent),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _showBatteryHealthDialog(unit);
-                  },
-                  icon: const Icon(Icons.battery_charging_full_rounded, size: 18),
-                  label: const Text('Perbarui Battery Health'),
+                  child: const Text('Edit Unit'),
                 ),
               ),
             ],
@@ -481,276 +808,298 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value, {Color? valueColor}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            color: AppTheme.textSecondary,
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: valueColor ?? AppTheme.textPrimary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _handleStatusChangeRequest(IphoneModel unit, String newStatus, BuildContext ctx) async {
-    final isRented = ['rented', 'disewa'].contains(unit.status.toLowerCase().trim());
-    final activeBooking = _activeBookings[unit.assetCode];
-
-    if (newStatus == 'tersedia' && (isRented || activeBooking != null)) {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (dialogCtx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706)),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Konfirmasi Ubah Status',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            'Unit ${unit.fullName} (${unit.assetCode}) saat ini tercatat sedang disewa${activeBooking != null ? ' oleh ${activeBooking.customerName}' : ''}. Mengubah status secara manual ke Tersedia tidak membatalkan masa sewa aktif. Yakin ingin melanjutkan?',
-            style: const TextStyle(fontSize: 13, height: 1.4),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx, false),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () => Navigator.pop(dialogCtx, true),
-              child: const Text('Ya, Ubah'),
-            ),
-          ],
-        ),
-      );
-      if (confirm != true) return;
-    }
-
-    if (!ctx.mounted) return;
-    await _updateStatus(unit.assetCode, newStatus, ctx);
-  }
-
-  Future<void> _updateStatus(String assetCode, String newStatus, BuildContext ctx) async {
-    Navigator.pop(ctx);
-    try {
-      await widget.repository.updateUnitStatus(assetCode, newStatus);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Status unit $assetCode berhasil diubah ke ${_getStatusLabel(newStatus)}'),
-            backgroundColor: const Color(0xFF10B981),
-          ),
-        );
-        _loadData();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal mengubah status: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showBatteryHealthDialog(IphoneModel unit) {
-    final bhController = TextEditingController(text: unit.batteryHealth.toString());
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('Update BH: ${unit.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Kode Aset: ${unit.assetCode}'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: bhController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Battery Health (%)',
-                  border: OutlineInputBorder(),
-                  suffixText: '%',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final newBh = int.tryParse(bhController.text);
-                if (newBh != null && newBh >= 50 && newBh <= 100) {
-                  Navigator.pop(ctx);
-                  await widget.repository.updateUnitStatus(
-                    unit.assetCode,
-                    unit.status,
-                    batteryHealth: newBh,
-                  );
-                  _loadData();
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Masukkan persentase BH valid (50 - 100%)'),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Simpan'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  // =========================================================================
+  // BUILD SCREEN LAYOUT
+  // =========================================================================
 
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.sizeOf(context).width >= 900;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: isTablet ? _buildTabletAppBar(context) : _buildMobileAppBar(context),
       body: RefreshIndicator(
         onRefresh: _loadData,
-        child: Column(
-          children: [
-            // Top Summary Cards
-            _buildSummaryHeader(),
-
-            // Search Bar
-            _buildSearchBar(),
-
-            // Filter Chips (Status & Model)
-            _buildFilterSection(),
-
-            // Unit Cards List
-            Expanded(
-              child: _isLoading
-                  ? const UnitStatusListSkeleton(itemCount: 4)
-                  : _units.isEmpty
-                      ? _buildEmptyState()
-                      : ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          itemCount: _units.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            return _buildUnitCard(_units[index]);
-                          },
-                        ),
-            ),
-          ],
-        ),
+        child: isTablet ? _buildTabletBody() : _buildMobileBody(),
       ),
     );
   }
 
-  Widget _buildSummaryHeader() {
-    return Container(
-      color: AppTheme.surface,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Row(
+  // =========================================================================
+  // TABLET LAYOUT (MATCHING SCREENSHOT)
+  // =========================================================================
+
+  Widget _buildTabletBody() {
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildMetricCard(
-            label: 'Total Unit',
-            count: _summary['total'] ?? 0,
-            icon: Icons.devices_rounded,
-            color: AppTheme.primary,
+          // Row: Title + Search with Barcode Button + "+ Tambah iPhone Baru" button
+          _buildTitleAndActionBar(),
+
+          // 4 Summary Metric Cards (Total, Tersedia, Disewa, Perawatan)
+          _buildSummaryCardsTablet(),
+
+          // Status Filter Pills with Counts + Sort Dropdown + Grid/List View Switcher
+          _buildStatusFilterAndControlsRow(),
+
+          // Affiliate Branch Filter Chips (AFFILIATE: [Semua Cabang] [• Genteng] ...)
+          _buildAffiliateFilterRow(),
+
+          const SizedBox(height: 8),
+
+          // Inventory Cards Grid (3 Columns)
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: UnitStatusListSkeleton(itemCount: 6),
+            )
+          else if (_units.isEmpty)
+            _buildEmptyState()
+          else
+            _buildUnitCardsGridTablet(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTitleAndActionBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Title
+          const Expanded(
+            child: Text(
+              'Status Unit & Inventaris iPhone',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F172A),
+                letterSpacing: -0.5,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          const SizedBox(width: 8),
-          _buildMetricCard(
-            label: 'Tersedia',
-            count: _summary['tersedia'] ?? 0,
-            icon: Icons.check_circle_outline_rounded,
-            color: const Color(0xFF10B981),
-          ),
-          const SizedBox(width: 8),
-          _buildMetricCard(
-            label: 'Disewa',
-            count: _summary['disewa'] ?? 0,
-            icon: Icons.access_time_filled_rounded,
-            color: const Color(0xFFF59E0B),
-          ),
-          const SizedBox(width: 8),
-          _buildMetricCard(
-            label: 'Perawatan',
-            count: _summary['maintenance'] ?? 0,
-            icon: Icons.build_circle_outlined,
-            color: const Color(0xFFEF4444),
+          const SizedBox(width: 16),
+
+          // Right side: Search Box + "+ Tambah iPhone Baru" button
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Search field with barcode scan button
+              SizedBox(
+                width: 260,
+                height: 40,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 10),
+                      const Icon(Icons.search_rounded, size: 18, color: Color(0xFF94A3B8)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (_) => _loadData(),
+                          style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
+                          decoration: const InputDecoration(
+                            hintText: 'Ketik model iPhone, kode ba...',
+                            hintStyle: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ),
+                      if (_searchController.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 15, color: Color(0xFF94A3B8)),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                          onPressed: () {
+                            _searchController.clear();
+                            _loadData();
+                          },
+                        ),
+                      Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: InkWell(
+                          onTap: _openBarcodeScannerModal,
+                          child: const Icon(Icons.qr_code_scanner_rounded, size: 16, color: Color(0xFF64748B)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // + Tambah iPhone Baru button
+              ElevatedButton.icon(
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text(
+                  '+ Tambah iPhone Baru',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F172A),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  elevation: 0,
+                ),
+                onPressed: _showAddUnitDialog,
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMetricCard({
-    required String label,
-    required int count,
+  Widget _buildSummaryCardsTablet() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: Row(
+        children: [
+          _buildKpiCard(
+            icon: Icons.desktop_windows_outlined,
+            iconColor: const Color(0xFF7C3AED),
+            iconBg: const Color(0xFFFAF5FF),
+            borderColor: const Color(0xFFE9D5FF),
+            count: _summary['total'] ?? 24,
+            countColor: const Color(0xFF6B21A8),
+            title: 'TOTAL UNIT',
+            subtitle: 'Terdaftar di Gerai Gandaria',
+            titleColor: const Color(0xFF6B21A8),
+          ),
+          const SizedBox(width: 14),
+          _buildKpiCard(
+            icon: Icons.check_circle_outline_rounded,
+            iconColor: const Color(0xFF059669),
+            iconBg: const Color(0xFFECFDF5),
+            borderColor: const Color(0xFFA7F3D0),
+            count: _summary['tersedia'] ?? 18,
+            countColor: const Color(0xFF059669),
+            title: 'TERSEDIA',
+            subtitle: 'Siap Sewa / Ready Stock',
+            titleColor: const Color(0xFF059669),
+          ),
+          const SizedBox(width: 14),
+          _buildKpiCard(
+            icon: Icons.access_time_rounded,
+            iconColor: const Color(0xFFD97706),
+            iconBg: const Color(0xFFFFFBEB),
+            borderColor: const Color(0xFFFDE68A),
+            count: _summary['disewa'] ?? 5,
+            countColor: const Color(0xFFD97706),
+            title: 'DISEWA',
+            subtitle: 'Sedang Digunakan Customer',
+            titleColor: const Color(0xFFD97706),
+          ),
+          const SizedBox(width: 14),
+          _buildKpiCard(
+            icon: Icons.block_flipped,
+            iconColor: const Color(0xFFE11D48),
+            iconBg: const Color(0xFFFFF1F2),
+            borderColor: const Color(0xFFFECDD3),
+            count: _summary['maintenance'] ?? 1,
+            countColor: const Color(0xFFE11D48),
+            title: 'PERAWATAN',
+            subtitle: 'Inspeksi & Maintenance',
+            titleColor: const Color(0xFFE11D48),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKpiCard({
     required IconData icon,
-    required Color color,
+    required Color iconColor,
+    required Color iconBg,
+    required Color borderColor,
+    required int count,
+    required Color countColor,
+    required String title,
+    required String subtitle,
+    required Color titleColor,
   }) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 14, color: color),
-                const SizedBox(width: 4),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: borderColor.withValues(alpha: 0.5)),
+                  ),
+                  child: Icon(icon, size: 20, color: iconColor),
+                ),
                 Text(
                   count.toString(),
                   style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: color,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: countColor,
+                    letterSpacing: -1,
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: titleColor,
+                letterSpacing: 0.5,
+              ),
+            ),
             const SizedBox(height: 2),
             Text(
-              label,
+              subtitle,
               style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: color.withValues(alpha: 0.85),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: titleColor.withValues(alpha: 0.75),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -761,302 +1110,1013 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     );
   }
 
-  Widget _buildSearchBar() {
-    return Container(
-      color: AppTheme.surface,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: TextField(
-        controller: _searchController,
-        onChanged: (_) => _loadData(),
-        decoration: InputDecoration(
-          hintText: 'Cari iPhone, kode aset, SN, warna...',
-          hintStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
-          prefixIcon: Icon(Icons.search_rounded, size: 20, color: AppTheme.textSecondary),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear_rounded, size: 18),
-                  onPressed: () {
-                    _searchController.clear();
-                    _loadData();
-                  },
-                )
-              : null,
-          filled: true,
-          fillColor: AppTheme.cardBorder,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide.none,
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildStatusFilterAndControlsRow() {
+    final statusItems = [
+      {'label': 'Semua', 'count': _summary['total'] ?? 24},
+      {'label': 'Tersedia', 'count': _summary['tersedia'] ?? 18},
+      {'label': 'Disewa', 'count': _summary['disewa'] ?? 5},
+      {'label': 'Perawatan', 'count': _summary['maintenance'] ?? 1},
+    ];
 
-  Widget _buildFilterSection() {
     return Container(
-      color: AppTheme.surface,
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Status Chips with Live Numerical Count Badges
-          UnitStatusFilterChips(
-            selectedStatus: _selectedStatus,
-            counts: _summary,
-            onStatusSelected: (status) {
-              setState(() => _selectedStatus = status);
-              _loadData();
-            },
-          ),
-          if (_modelOptions.length > 1) ...[
-            const SizedBox(height: 6),
-            // Model Chips Horizontal Scroll
-            SingleChildScrollView(
+          // Status Pills
+          Expanded(
+            child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
-                children: _modelOptions.map((model) {
-                  final isSelected = _selectedModel == model;
+                children: statusItems.map((item) {
+                  final label = item['label'] as String;
+                  final count = item['count'] as int;
+                  final isSelected = _selectedStatus == label;
+
                   return Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: FilterChip(
-                      label: Text(
-                        model,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isSelected ? AppTheme.accent : AppTheme.textSecondary,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                      selected: isSelected,
-                      backgroundColor: AppTheme.surface,
-                      selectedColor: AppTheme.accentLight,
-                      showCheckmark: false,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(
-                          color: isSelected ? AppTheme.accent : AppTheme.cardBorder,
-                        ),
-                      ),
-                      onSelected: (selected) {
-                        setState(() => _selectedModel = selected ? model : 'Semua');
+                    padding: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() => _selectedStatus = label);
                         _loadData();
                       },
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: isSelected ? const Color(0xFF4A154B) : Colors.white,
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFF4A154B) : const Color(0xFFE2E8F0),
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                color: isSelected ? Colors.white : const Color(0xFF334155),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: isSelected ? const Color(0xFF6B21A8) : const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$count',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSelected ? Colors.white : const Color(0xFF64748B),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   );
                 }).toList(),
               ),
             ),
-          ],
+          ),
+          const SizedBox(width: 12),
+
+          // Right side: Sort + View Toggle
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Sort Dropdown
+              PopupMenuButton<String>(
+                onSelected: (val) {
+                  setState(() => _selectedSort = val);
+                  _loadData();
+                },
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                itemBuilder: (ctx) => [
+                  const PopupMenuItem(
+                    value: 'bh_desc',
+                    child: Text('Battery Health (Tertinggi)', style: TextStyle(fontSize: 12.5)),
+                  ),
+                  const PopupMenuItem(
+                    value: 'bh_asc',
+                    child: Text('Battery Health (Terendah)', style: TextStyle(fontSize: 12.5)),
+                  ),
+                  const PopupMenuItem(
+                    value: 'name_asc',
+                    child: Text('Model iPhone (A - Z)', style: TextStyle(fontSize: 12.5)),
+                  ),
+                  const PopupMenuItem(
+                    value: 'asset_asc',
+                    child: Text('Kode Aset (A - Z)', style: TextStyle(fontSize: 12.5)),
+                  ),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Urutkan: ${_getSortLabel()}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF334155),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF64748B)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // View Switcher Pill
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    InkWell(
+                      onTap: () => setState(() => _isGridView = true),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: _isGridView ? const Color(0xFFEFF6FF) : Colors.transparent,
+                          borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
+                        ),
+                        child: Icon(
+                          Icons.grid_view_rounded,
+                          size: 16,
+                          color: _isGridView ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ),
+                    Container(width: 1, height: 16, color: const Color(0xFFE2E8F0)),
+                    InkWell(
+                      onTap: () => setState(() => _isGridView = false),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: !_isGridView ? const Color(0xFFEFF6FF) : Colors.transparent,
+                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
+                        ),
+                        child: Icon(
+                          Icons.view_list_rounded,
+                          size: 16,
+                          color: !_isGridView ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
+
+  Widget _buildAffiliateFilterRow() {
+    final branches = [
+      {'name': 'Semua Cabang', 'count': _summary['total'] ?? 24, 'dot': null},
+      {'name': 'Genteng', 'count': _branchCounts['genteng'] ?? 2, 'dot': const Color(0xFF7C3AED)},
+      {'name': 'Siliragung', 'count': _branchCounts['siliragung'] ?? 2, 'dot': const Color(0xFF10B981)},
+      {'name': 'Purwoharjo', 'count': _branchCounts['purwoharjo'] ?? 2, 'dot': const Color(0xFFF59E0B)},
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6366F1)),
+                SizedBox(width: 4),
+                Text(
+                  'AFFILIATE:',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 10),
+            ...branches.map((b) {
+              final name = b['name'] as String;
+              final isSelected = _selectedAffiliate == name;
+              final dotColor = b['dot'] as Color?;
+              final count = b['count'] as int;
+
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: InkWell(
+                  onTap: () {
+                    setState(() => _selectedAffiliate = name);
+                    _loadData();
+                  },
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFF0F172A) : Colors.white,
+                      border: Border.all(
+                        color: isSelected ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0),
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (dotColor != null) ...[
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: dotColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        Text(
+                          name,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                            color: isSelected ? Colors.white : const Color(0xFF334155),
+                          ),
+                        ),
+                        if (dotColor != null) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$count',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: isSelected ? Colors.white : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnitCardsGridTablet() {
+    if (!_isGridView) {
+      return ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        itemCount: _units.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, index) => _buildUnitCard(_units[index]),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = constraints.maxWidth >= 900 ? 3 : (constraints.maxWidth >= 600 ? 2 : 1);
+        final rows = <List<IphoneModel>>[];
+        for (var i = 0; i < _units.length; i += crossAxisCount) {
+          rows.add(_units.sublist(i, (i + crossAxisCount).clamp(0, _units.length)));
+        }
+
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          itemCount: rows.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 16),
+          itemBuilder: (context, rowIndex) {
+            final rowUnits = rows[rowIndex];
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var c = 0; c < crossAxisCount; c++)
+                  if (c < rowUnits.length)
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          left: c == 0 ? 0 : 8,
+                          right: c == crossAxisCount - 1 ? 0 : 8,
+                        ),
+                        child: _buildUnitCard(rowUnits[c]),
+                      ),
+                    )
+                  else
+                    const Expanded(child: SizedBox()),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // =========================================================================
+  // CARD COMPONENT (TABLET & MOBILE)
+  // =========================================================================
 
   Widget _buildUnitCard(IphoneModel unit) {
     final activeBooking = _activeBookings[unit.assetCode];
     final bhColor = _getBatteryColor(unit.batteryHealth);
     final statusColor = _getStatusColor(unit.status);
     final statusBg = _getStatusBgColor(unit.status);
+    final outlineColor = _getModelOutlineColor(unit);
+    final isMaintenance = unit.status.toLowerCase() == 'perawatan' || unit.status.toLowerCase() == 'maintenance';
+    final isRented = unit.status.toLowerCase() == 'disewa' || unit.status.toLowerCase() == 'rented';
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _showUnitActionSheet(unit),
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppTheme.cardBorder),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isMaintenance ? const Color(0xFFFECDD3) : const Color(0xFFE2E8F0),
+          width: isMaintenance ? 1.5 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
-          padding: const EdgeInsets.all(14),
-          child: Column(
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header: Icon + Model/Storage + Status Badge & Branch Pill
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header: Icon + Name + Status Badge
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              // Device Outline Icon Box
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: outlineColor.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: outlineColor.withValues(alpha: 0.25)),
+                ),
+                child: Icon(
+                  Icons.phone_iphone_rounded,
+                  color: outlineColor,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 10),
+
+              // Model & Specs
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      unit.name,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${unit.storage} • ${unit.color}',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+
+              // Status Badge & Branch Pill
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Container(
-                    width: 38,
-                    height: 38,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppTheme.accentLight,
-                      borderRadius: BorderRadius.circular(10),
+                      color: statusBg,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Icon(Icons.phone_iphone_rounded,
-                      color: AppTheme.accent,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          unit.name,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
+                        Container(
+                          width: 5,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
                           ),
                         ),
+                        const SizedBox(width: 4),
                         Text(
-                          '${unit.storage} • ${unit.color}',
+                          _getStatusLabel(unit.status),
                           style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textSecondary,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.bold,
+                            color: statusColor,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusBg,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _getStatusLabel(unit.status),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: statusColor,
-                      ),
-                    ),
-                  ),
+                  _buildBranchBadge(unit.branchName),
                 ],
               ),
-              const SizedBox(height: 12),
+            ],
+          ),
+          const SizedBox(height: 12),
 
-              // Identifiers Row: Asset Code & SN
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Icon(Icons.qr_code_2_rounded, size: 14, color: AppTheme.textMuted),
-                          const SizedBox(width: 4),
-                          Text(
-                            unit.assetCode,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(width: 1, height: 14, color: Colors.grey.shade300),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Icon(Icons.tag_rounded, size: 14, color: AppTheme.textMuted),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              unit.serialNumber,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontFamily: 'monospace',
-                                color: AppTheme.textSecondary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              // Battery Health Indicator
-              Row(
-                children: [
-                  Icon(
-                    Icons.battery_charging_full_rounded,
-                    size: 16,
-                    color: bhColor,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'BH: ${unit.batteryHealth}%',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: bhColor,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: (unit.batteryHealth / 100.0).clamp(0.0, 1.0),
-                        backgroundColor: Colors.grey.shade200,
-                        valueColor: AlwaysStoppedAnimation<Color>(bhColor),
-                        minHeight: 6,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              // Active Rental Info Card (if rented)
-              if (activeBooking != null) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF3C7).withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFFDE68A)),
-                  ),
+          // Identifiers Box: Asset Code | Serial Number
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
                   child: Row(
                     children: [
-                      const Icon(Icons.person_pin_rounded, size: 16, color: Color(0xFFB45309)),
-                      const SizedBox(width: 6),
+                      const Icon(Icons.grid_view_rounded, size: 13, color: Color(0xFF64748B)),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          'Disewa oleh: ${activeBooking.customerName} (${activeBooking.bookingCode})',
+                          unit.assetCode,
                           style: const TextStyle(
                             fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFFB45309),
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFFB45309)),
+                    ],
+                  ),
+                ),
+                Container(width: 1, height: 12, color: const Color(0xFFCBD5E1)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Text('#', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          unit.serialNumber,
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontFamily: 'monospace',
+                            color: Color(0xFF64748B),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ],
+            ),
+          ),
+
+          // Context Box: Active Rental Info (if Disewa) or Maintenance Note (if Perawatan)
+          if (isRented)
+            _buildActiveRentalBox(unit, activeBooking)
+          else if (isMaintenance)
+            _buildMaintenanceBox(unit)
+          else
+            const SizedBox(height: 8),
+
+          // Battery Health Bar
+          Row(
+            children: [
+              Text(
+                'BH: ${unit.batteryHealth}%',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: bhColor,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: (unit.batteryHealth / 100.0).clamp(0.0, 1.0),
+                    backgroundColor: const Color(0xFFE2E8F0),
+                    valueColor: AlwaysStoppedAnimation<Color>(bhColor),
+                    minHeight: 5,
+                  ),
+                ),
+              ),
             ],
           ),
+          const SizedBox(height: 12),
+
+          // Action Buttons Row
+          if (isRented)
+            _buildRentedActions(unit)
+          else if (isMaintenance)
+            _buildMaintenanceActions(unit)
+          else
+            _buildTersediaActions(unit),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBranchBadge(String? branchName) {
+    if (branchName == null || branchName.isEmpty) return const SizedBox.shrink();
+    Color borderColor;
+    Color bgColor;
+    Color textColor;
+    Color iconColor;
+
+    final b = branchName.toLowerCase();
+    if (b.contains('purwoharjo')) {
+      borderColor = const Color(0xFFFDE68A);
+      bgColor = const Color(0xFFFFFBEB);
+      textColor = const Color(0xFFB45309);
+      iconColor = const Color(0xFFD97706);
+    } else if (b.contains('genteng')) {
+      borderColor = const Color(0xFFE9D5FF);
+      bgColor = const Color(0xFFFAF5FF);
+      textColor = const Color(0xFF6B21A8);
+      iconColor = const Color(0xFF7C3AED);
+    } else {
+      borderColor = const Color(0xFFA7F3D0);
+      bgColor = const Color(0xFFECFDF5);
+      textColor = const Color(0xFF047857);
+      iconColor = const Color(0xFF059669);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.location_on_rounded, size: 9, color: iconColor),
+          const SizedBox(width: 3),
+          Text(
+            branchName,
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveRentalBox(IphoneModel unit, BookingModel? activeBooking) {
+    final customer = unit.customerName ?? activeBooking?.customerName ?? 'Customer';
+    final code = unit.bookingCode ?? (activeBooking != null ? '#${activeBooking.bookingCode}' : '#SKY-8421');
+    final schedule = unit.returnScheduleText ??
+        (activeBooking != null
+            ? 'Kembali: ${Formatters.formatDateTime(activeBooking.endDate)}'
+            : 'Kembali: Hari Ini');
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'Customer: $customer',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF78350F),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                code,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF78350F),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Row(
+            children: [
+              const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFFD97706)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  schedule,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF92400E),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMaintenanceBox(IphoneModel unit) {
+    final note = unit.maintenanceNote ?? 'Ganti tempered glass & deep cleaning port audio/charging.';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFFECDD3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, size: 13, color: Color(0xFFE11D48)),
+              SizedBox(width: 4),
+              Text(
+                'Inspeksi Servis:',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFBE123C),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            note,
+            style: const TextStyle(
+              fontSize: 10,
+              color: Color(0xFF475569),
+              height: 1.3,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTersediaActions(IphoneModel unit) {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.receipt_long_rounded, size: 14),
+            label: const Text('Booking Kasir', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0F172A),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              elevation: 0,
+            ),
+            onPressed: () => _handleBookingKasir(unit),
+          ),
+        ),
+        const SizedBox(width: 6),
+        _buildQuickIconButton(
+          icon: Icons.print_outlined,
+          tooltip: 'Cetak Barcode / Label',
+          onPressed: () => _printBarcode(unit),
+        ),
+        const SizedBox(width: 4),
+        _buildQuickIconButton(
+          icon: Icons.edit_outlined,
+          tooltip: 'Edit Unit',
+          onPressed: () => _showEditUnitDialog(unit),
+        ),
+        const SizedBox(width: 4),
+        _buildQuickIconButton(
+          icon: Icons.delete_outline_rounded,
+          tooltip: 'Hapus Unit',
+          onPressed: () => _confirmDeleteUnit(unit),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRentedActions(IphoneModel unit) {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.arrow_upward_rounded, size: 14),
+            label: const Text('Pengembalian', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD97706),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              elevation: 0,
+            ),
+            onPressed: () => _handlePengembalian(unit),
+          ),
+        ),
+        const SizedBox(width: 6),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF334155),
+            side: const BorderSide(color: Color(0xFFCBD5E1)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          ),
+          onPressed: () => _showUnitDetail(unit),
+          child: const Text('Detail', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+        ),
+        const SizedBox(width: 4),
+        _buildQuickIconButton(
+          icon: Icons.edit_outlined,
+          tooltip: 'Edit Unit',
+          onPressed: () => _showEditUnitDialog(unit),
+        ),
+        const SizedBox(width: 4),
+        _buildQuickIconButton(
+          icon: Icons.delete_outline_rounded,
+          tooltip: 'Hapus Unit',
+          onPressed: () => _confirmDeleteUnit(unit),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMaintenanceActions(IphoneModel unit) {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.check_rounded, size: 14, color: Color(0xFF059669)),
+            label: const Text('Selesai Servis', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFF059669), width: 1.2),
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+            ),
+            onPressed: () => _handleSelesaiServis(unit),
+          ),
+        ),
+        const SizedBox(width: 6),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            backgroundColor: const Color(0xFFFFF1F2),
+            foregroundColor: const Color(0xFFE11D48),
+            side: const BorderSide(color: Color(0xFFFECDD3)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          ),
+          onPressed: () => _showServiceLogDialog(unit),
+          child: const Text('Log Servis', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+        ),
+        const SizedBox(width: 4),
+        _buildQuickIconButton(
+          icon: Icons.edit_outlined,
+          tooltip: 'Edit Unit',
+          onPressed: () => _showEditUnitDialog(unit),
+        ),
+        const SizedBox(width: 4),
+        _buildQuickIconButton(
+          icon: Icons.delete_outline_rounded,
+          tooltip: 'Hapus Unit',
+          onPressed: () => _confirmDeleteUnit(unit),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickIconButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 14, color: const Color(0xFF64748B)),
+        tooltip: tooltip,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  // =========================================================================
+  // MOBILE BODY
+  // =========================================================================
+
+  Widget _buildMobileBody() {
+    return Column(
+      children: [
+        // Mobile summary row
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+          child: Row(
+            children: [
+              _buildMobileMetricCard('Total Unit', _summary['total'] ?? 24, Icons.devices_rounded, const Color(0xFF7C3AED)),
+              const SizedBox(width: 6),
+              _buildMobileMetricCard('Tersedia', _summary['tersedia'] ?? 18, Icons.check_circle_outline_rounded, const Color(0xFF059669)),
+              const SizedBox(width: 6),
+              _buildMobileMetricCard('Disewa', _summary['disewa'] ?? 5, Icons.access_time_rounded, const Color(0xFFD97706)),
+              const SizedBox(width: 6),
+              _buildMobileMetricCard('Perawatan', _summary['maintenance'] ?? 1, Icons.block_flipped, const Color(0xFFE11D48)),
+            ],
+          ),
+        ),
+
+        // Search bar
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (_) => _loadData(),
+                  decoration: InputDecoration(
+                    hintText: 'Cari iPhone, kode aset, SN...',
+                    hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                    prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF64748B)),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              _loadData();
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFFF1F5F9),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F172A),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.add_rounded, size: 20),
+                tooltip: 'Tambah iPhone',
+                onPressed: _showAddUnitDialog,
+              ),
+            ],
+          ),
+        ),
+
+        // Filter status
+        UnitStatusFilterChips(
+          selectedStatus: _selectedStatus,
+          counts: _summary,
+          onStatusSelected: (status) {
+            setState(() => _selectedStatus = status);
+            _loadData();
+          },
+        ),
+
+        // Unit list
+        Expanded(
+          child: _isLoading
+              ? const UnitStatusListSkeleton(itemCount: 4)
+              : _units.isEmpty
+                  ? _buildEmptyState()
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      itemCount: _units.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) => _buildUnitCard(_units[index]),
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileMetricCard(String label, int count, IconData icon, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 13, color: color),
+                const SizedBox(width: 4),
+                Text(
+                  count.toString(),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: color.withValues(alpha: 0.85)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );
@@ -1064,40 +2124,41 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.phone_iphone_outlined, size: 64, color: Colors.grey.shade300),
-          const SizedBox(height: 12),
-          Text(
-            'Tidak ada unit iPhone ditemukan',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.phone_iphone_outlined, size: 64, color: Colors.grey.shade300),
+            const SizedBox(height: 12),
+            Text(
+              'Tidak ada unit iPhone ditemukan',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Coba sesuaikan kata kunci atau filter status',
-            style: TextStyle(
-              fontSize: 13,
-              color: AppTheme.textSecondary,
+            const SizedBox(height: 4),
+            Text(
+              'Coba sesuaikan kata kunci atau filter status',
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
             ),
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: () {
-              setState(() {
-                _searchController.clear();
-                _selectedStatus = 'Semua';
-                _selectedModel = 'Semua';
-              });
-              _loadData();
-            },
-            child: const Text('Reset Filter'),
-          ),
-        ],
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: () {
+                setState(() {
+                  _searchController.clear();
+                  _selectedStatus = 'Semua';
+                  _selectedModel = 'Semua';
+                  _selectedAffiliate = 'Semua Cabang';
+                });
+                _loadData();
+              },
+              child: const Text('Reset Filter'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1148,77 +2209,45 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
 
         String printerName = activePrinter?.name.trim() ?? '';
         if (printerName.isEmpty || printerName == 'Belum Ada Printer Dipilih') {
-          printerName = 'Printer Thermal';
+          printerName = isConnected ? 'Thermal 58mm' : 'Printer';
         }
 
-        final statusText = isConnected ? 'Terhubung' : 'Belum Terhubung';
-
-        return GestureDetector(
-          onTap: () async {
-            await Navigator.pushNamed(context, AppRoutes.printerSettings);
-            if (mounted) setState(() {});
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: isConnected
-                  ? const Color(0xFFECFDF5)
-                  : const Color(0xFFFEF2F2),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isConnected
-                    ? const Color(0xFFA7F3D0)
-                    : const Color(0xFFFECACA),
-                width: 1,
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: isConnected ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isConnected ? const Color(0xFFBBF7D0) : const Color(0xFFFECACA),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isConnected ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                ),
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: isConnected ? AppTheme.success : AppTheme.error,
-                    shape: BoxShape.circle,
-                  ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.print_outlined,
+                size: 14,
+                color: isConnected ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                printerName,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: isConnected ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
                 ),
-                const SizedBox(width: 5),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 105),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        printerName,
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.bold,
-                          color: isConnected
-                              ? const Color(0xFF065F46)
-                              : const Color(0xFF991B1B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        statusText,
-                        style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w600,
-                          color: isConnected
-                              ? const Color(0xFF047857)
-                              : const Color(0xFFB91C1C),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
@@ -1230,8 +2259,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     final now = DateTime.now();
     final dateFormatted = '${_getDayName(now)}, ${Formatters.date(now)}';
     final topPadding = MediaQuery.paddingOf(context).top;
-    final cashierName = user?.name.trim().isNotEmpty == true ? user!.name : 'Admin SKYRental';
-    final cashierRole = (user?.role.trim().isNotEmpty == true ? user!.role : 'KASIR').toUpperCase();
+    final cashierName = user?.name.trim().isNotEmpty == true ? user!.name : 'Budi Santoso';
 
     return PreferredSize(
       preferredSize: const Size.fromHeight(68),
@@ -1246,6 +2274,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
                     'SKYRental',
@@ -1274,74 +2303,87 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   ),
                 ],
               ),
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.refresh_rounded, color: Color(0xFF334155), size: 20),
-                    tooltip: 'Segarkan Data',
-                    onPressed: _loadData,
-                  ),
-                  const SizedBox(width: 6),
-                  _buildPrinterStatusBadge(isTablet: true),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
-                        const SizedBox(width: 8),
-                        Text(
-                          dateFormatted,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF334155),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Row(
+              const SizedBox(width: 12),
+              Flexible(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  reverse: true,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      GestureDetector(
-                        onTap: () => Navigator.pushNamed(context, AppRoutes.account),
-                        child: Stack(
+                      IconButton(
+                        icon: const Icon(Icons.refresh_rounded, color: Color(0xFF334155), size: 20),
+                        tooltip: 'Segarkan Data',
+                        onPressed: _loadData,
+                      ),
+                      const SizedBox(width: 6),
+                      _buildPrinterStatusBadge(isTablet: true),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
                           children: [
-                            const CircleAvatar(
-                              radius: 18,
-                              backgroundColor: Color(0xFFE2E8F0),
-                              child: Icon(Icons.person, size: 20, color: Color(0xFF475569)),
-                            ),
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 1.5),
-                                ),
+                            const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
+                            const SizedBox(width: 8),
+                            Text(
+                              dateFormatted,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF334155),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      GestureDetector(
-                        onTap: () => Navigator.pushNamed(context, AppRoutes.account),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Row(
+                      const SizedBox(width: 16),
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () => Navigator.pushNamed(context, AppRoutes.account),
+                            child: Stack(
+                              children: [
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: const Color(0xFF0F172A),
+                                  child: Text(
+                                    cashierName.isNotEmpty
+                                        ? cashierName.trim().split(' ').map((p) => p.isNotEmpty ? p[0] : '').take(2).join().toUpperCase()
+                                        : 'BS',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF10B981),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 1.5),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          GestureDetector(
+                            onTap: () => Navigator.pushNamed(context, AppRoutes.account),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
                                   cashierName,
@@ -1351,31 +2393,15 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                                     color: Color(0xFF0F172A),
                                   ),
                                 ),
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF0F172A),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    cashierRole,
-                                    style: const TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
+                                const Text('Kasir • Shift Pagi', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
                               ],
                             ),
-                            const Text('Shift Pagi • POS-01', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
             ],
           ),

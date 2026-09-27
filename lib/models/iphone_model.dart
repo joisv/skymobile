@@ -60,6 +60,11 @@ class IphoneModel {
   final List<IphoneDurationOption> durations;
   final int? affiliateId;
   final String? photoUrl;
+  final String? branchName;
+  final String? maintenanceNote;
+  final String? customerName;
+  final String? bookingCode;
+  final String? returnScheduleText;
 
   const IphoneModel({
     required this.id,
@@ -73,6 +78,11 @@ class IphoneModel {
     this.durations = const [],
     this.affiliateId,
     this.photoUrl,
+    this.branchName,
+    this.maintenanceNote,
+    this.customerName,
+    this.bookingCode,
+    this.returnScheduleText,
   });
 
   String get fullName => '$name $storage';
@@ -164,6 +174,11 @@ class IphoneModel {
     List<IphoneDurationOption>? durations,
     int? affiliateId,
     String? photoUrl,
+    String? branchName,
+    String? maintenanceNote,
+    String? customerName,
+    String? bookingCode,
+    String? returnScheduleText,
   }) {
     return IphoneModel(
       id: id ?? this.id,
@@ -177,6 +192,11 @@ class IphoneModel {
       durations: durations ?? this.durations,
       affiliateId: affiliateId ?? this.affiliateId,
       photoUrl: photoUrl ?? this.photoUrl,
+      branchName: branchName ?? this.branchName,
+      maintenanceNote: maintenanceNote ?? this.maintenanceNote,
+      customerName: customerName ?? this.customerName,
+      bookingCode: bookingCode ?? this.bookingCode,
+      returnScheduleText: returnScheduleText ?? this.returnScheduleText,
     );
   }
 
@@ -198,6 +218,10 @@ class IphoneModel {
             : null) ??
         json['image']?.toString();
 
+    final rawBranch = json['branch_name']?.toString() ??
+        json['branch']?.toString() ??
+        (json['affiliate'] is Map ? (json['affiliate'] as Map)['name']?.toString() : null);
+
     return IphoneModel(
       id: json['id'] is int
           ? json['id'] as int
@@ -214,6 +238,11 @@ class IphoneModel {
       durations: parsedDurations,
       affiliateId: rawAffId,
       photoUrl: rawPhoto,
+      branchName: rawBranch,
+      maintenanceNote: json['maintenance_note']?.toString(),
+      customerName: json['customer_name']?.toString(),
+      bookingCode: json['booking_code']?.toString(),
+      returnScheduleText: json['return_schedule_text']?.toString(),
     );
   }
 
@@ -230,6 +259,11 @@ class IphoneModel {
       'durations': durations.map((d) => d.toJson()).toList(),
       'affiliate_id': affiliateId,
       'photo_url': photoUrl,
+      'branch_name': branchName,
+      'maintenance_note': maintenanceNote,
+      'customer_name': customerName,
+      'booking_code': bookingCode,
+      'return_schedule_text': returnScheduleText,
     };
   }
 }
