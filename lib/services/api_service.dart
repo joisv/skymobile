@@ -685,6 +685,58 @@ class ApiService {
     return null;
   }
 
+  /// Menambahkan unit iPhone baru ke backend
+  /// POST /api/v1/iphones
+  Future<Map<String, dynamic>?> createIphoneApi(Map<String, dynamic> data) async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/iphones');
+        final response = await http.post(
+          uri,
+          headers: _buildHeaders(isJson: true),
+          body: jsonEncode(data),
+        ).timeout(const Duration(seconds: 8));
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic> && decoded['status'] == 'success') {
+            return decoded;
+          }
+        } else if (response.statusCode >= 400) {
+          final decoded = jsonDecode(response.body);
+          final msg = decoded['message'] ?? 'Gagal menambahkan unit iPhone.';
+          throw Exception(msg.toString());
+        }
+      } catch (e) {
+        if (e is Exception && !e.toString().contains('FormatException')) {
+          rethrow;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Mengambil daftar poster gallery dari backend
+  /// GET /api/v1/galleries
+  Future<List<Map<String, dynamic>>?> getGalleriesApi() async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/galleries');
+        final response = await http.get(uri, headers: _buildHeaders()).timeout(const Duration(seconds: 4));
+
+        if (response.statusCode == 200) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic> && decoded['status'] == 'success' && decoded['data'] is List) {
+            return (decoded['data'] as List).cast<Map<String, dynamic>>();
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
   /// Memperbarui status unit iPhone di backend
   /// POST /api/v1/iphones/{idOrAssetCode}/status
   Future<bool> updateUnitStatusApi(

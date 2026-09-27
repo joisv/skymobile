@@ -1388,10 +1388,19 @@ class BookingRepository {
   }
 
   /// Tambah unit baru ke inventaris
-  Future<void> addInventoryUnit(IphoneModel unit) async {
-    _inventory.insert(0, unit);
-    MockBookingData.inventory.insert(0, unit);
+  Future<IphoneModel> addInventoryUnit(IphoneModel unit) async {
+    IphoneModel savedUnit = unit;
+    try {
+      final res = await ApiService().createIphoneApi(unit.toJson());
+      if (res != null && res['data'] is Map<String, dynamic>) {
+        savedUnit = IphoneModel.fromJson(res['data'] as Map<String, dynamic>);
+      }
+    } catch (_) {}
+
+    _inventory.insert(0, savedUnit);
+    MockBookingData.inventory.insert(0, savedUnit);
     _unitSummaryCache = null;
+    return savedUnit;
   }
 
   /// Hapus unit dari inventaris

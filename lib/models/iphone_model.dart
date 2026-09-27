@@ -65,6 +65,10 @@ class IphoneModel {
   final String? customerName;
   final String? bookingCode;
   final String? returnScheduleText;
+  final String? slug;
+  final String? description;
+  final int? galleryId;
+  final DateTime? createdDate;
 
   const IphoneModel({
     required this.id,
@@ -83,6 +87,10 @@ class IphoneModel {
     this.customerName,
     this.bookingCode,
     this.returnScheduleText,
+    this.slug,
+    this.description,
+    this.galleryId,
+    this.createdDate,
   });
 
   String get fullName => '$name $storage';
@@ -179,6 +187,10 @@ class IphoneModel {
     String? customerName,
     String? bookingCode,
     String? returnScheduleText,
+    String? slug,
+    String? description,
+    int? galleryId,
+    DateTime? createdDate,
   }) {
     return IphoneModel(
       id: id ?? this.id,
@@ -197,6 +209,10 @@ class IphoneModel {
       customerName: customerName ?? this.customerName,
       bookingCode: bookingCode ?? this.bookingCode,
       returnScheduleText: returnScheduleText ?? this.returnScheduleText,
+      slug: slug ?? this.slug,
+      description: description ?? this.description,
+      galleryId: galleryId ?? this.galleryId,
+      createdDate: createdDate ?? this.createdDate,
     );
   }
 
@@ -222,6 +238,17 @@ class IphoneModel {
         json['branch']?.toString() ??
         (json['affiliate'] is Map ? (json['affiliate'] as Map)['name']?.toString() : null);
 
+    final rawGalleryId = json['gallery_id'] is int
+        ? json['gallery_id'] as int
+        : int.tryParse(json['gallery_id']?.toString() ?? '');
+
+    DateTime? parsedDate;
+    if (json['created'] != null || json['created_at'] != null) {
+      try {
+        parsedDate = DateTime.tryParse(json['created']?.toString() ?? json['created_at']?.toString() ?? '');
+      } catch (_) {}
+    }
+
     return IphoneModel(
       id: json['id'] is int
           ? json['id'] as int
@@ -243,6 +270,10 @@ class IphoneModel {
       customerName: json['customer_name']?.toString(),
       bookingCode: json['booking_code']?.toString(),
       returnScheduleText: json['return_schedule_text']?.toString(),
+      slug: json['slug']?.toString(),
+      description: json['description']?.toString(),
+      galleryId: rawGalleryId,
+      createdDate: parsedDate,
     );
   }
 
@@ -264,6 +295,10 @@ class IphoneModel {
       'customer_name': customerName,
       'booking_code': bookingCode,
       'return_schedule_text': returnScheduleText,
+      if (slug != null) 'slug': slug,
+      if (description != null) 'description': description,
+      if (galleryId != null) 'gallery_id': galleryId,
+      if (createdDate != null) 'created': createdDate!.toIso8601String(),
     };
   }
 }

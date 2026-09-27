@@ -7,6 +7,7 @@ import '../../services/auth_service.dart';
 import '../../services/thermal_print_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import 'widgets/create_iphone_dialog.dart';
 import 'widgets/unit_status_filter_chips.dart';
 import 'widgets/unit_status_skeleton.dart';
 
@@ -389,130 +390,14 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   void _showAddUnitDialog() {
-    final nameCtrl = TextEditingController(text: 'iPhone 15 Pro');
-    final storageCtrl = TextEditingController(text: '256GB');
-    final colorCtrl = TextEditingController(text: 'Black Titanium');
-    final assetCtrl = TextEditingController(text: 'IPHSKY${DateTime.now().millisecond + 1000}');
-    final snCtrl = TextEditingController(text: 'SN${DateTime.now().millisecondsSinceEpoch.toRadixString(16).toUpperCase()}');
-    final bhCtrl = TextEditingController(text: '100');
-    String selectedBranch = 'Purwoharjo';
-
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (dialogCtx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.add_circle_outline_rounded, color: Color(0xFF0F172A)),
-              SizedBox(width: 8),
-              Text('Tambah iPhone Baru', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Model iPhone', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: storageCtrl,
-                        decoration: const InputDecoration(labelText: 'Kapasitas', border: OutlineInputBorder()),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: colorCtrl,
-                        decoration: const InputDecoration(labelText: 'Warna', border: OutlineInputBorder()),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: assetCtrl,
-                        decoration: const InputDecoration(labelText: 'Kode Aset', border: OutlineInputBorder()),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: bhCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Battery Health (%)', border: OutlineInputBorder()),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: snCtrl,
-                  decoration: const InputDecoration(labelText: 'Nomor Seri (Serial Number)', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedBranch,
-                  decoration: const InputDecoration(labelText: 'Cabang Affiliate', border: OutlineInputBorder()),
-                  items: const [
-                    DropdownMenuItem(value: 'Purwoharjo', child: Text('Purwoharjo')),
-                    DropdownMenuItem(value: 'Genteng', child: Text('Genteng')),
-                    DropdownMenuItem(value: 'Siliragung', child: Text('Siliragung')),
-                    DropdownMenuItem(value: 'Gandaria', child: Text('Gandaria (Pusat)')),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => selectedBranch = val);
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0F172A),
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () async {
-                final newUnit = IphoneModel(
-                  id: DateTime.now().millisecondsSinceEpoch % 10000,
-                  name: nameCtrl.text.trim(),
-                  storage: storageCtrl.text.trim(),
-                  color: colorCtrl.text.trim(),
-                  serialNumber: snCtrl.text.trim(),
-                  assetCode: assetCtrl.text.trim(),
-                  status: 'tersedia',
-                  batteryHealth: int.tryParse(bhCtrl.text) ?? 100,
-                  branchName: selectedBranch,
-                );
-                Navigator.pop(ctx);
-                await widget.repository.addInventoryUnit(newUnit);
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Unit ${newUnit.fullName} (${newUnit.assetCode}) berhasil ditambahkan'),
-                    backgroundColor: const Color(0xFF10B981),
-                  ),
-                );
-                _loadData();
-              },
-              child: const Text('Simpan Unit'),
-            ),
-          ],
-        ),
+      barrierDismissible: false,
+      builder: (ctx) => CreateIphoneDialog(
+        repository: widget.repository,
+        onCreated: (newUnit) {
+          _loadData();
+        },
       ),
     );
   }

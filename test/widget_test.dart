@@ -39,6 +39,7 @@ import 'package:skyrental_admin/screens/affiliate/affiliate_revenue_screen.dart'
 import 'package:skyrental_admin/screens/account/account_screen.dart';
 import 'package:skyrental_admin/screens/account/theme_settings_screen.dart';
 import 'package:skyrental_admin/screens/dashboard/sales_report_screen.dart';
+import 'package:skyrental_admin/screens/unit_status/widgets/create_iphone_dialog.dart';
 import 'package:skyrental_admin/services/theme_service.dart';
 
 void main() {
@@ -2416,6 +2417,99 @@ void main() {
     expect(find.text('Customer: Dimas Pratama'), findsOneWidget);
     expect(find.text('Customer: Siti Rahmawati'), findsOneWidget);
     expect(find.text('Inspeksi Servis:'), findsOneWidget);
+  });
+
+  testWidgets('CreateIphoneDialog renders fields matching Livewire Create.php and adds unit', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    final repository = BookingRepository();
+    IphoneModel? createdUnit;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (_) => CreateIphoneDialog(
+                    repository: repository,
+                    onCreated: (unit) {
+                      createdUnit = unit;
+                    },
+                  ),
+                );
+              },
+              child: const Text('Open Dialog'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Open dialog
+    await tester.tap(find.text('Open Dialog'));
+    await tester.pumpAndSettle();
+
+    // Verify Title & Subtitle
+    expect(find.text('Tambah iPhone Baru'), findsOneWidget);
+    expect(find.text('Sistem Katalog & Sinkronisasi Web SKYRental'), findsOneWidget);
+
+    // Verify Model Name Input and Placeholder
+    expect(find.text('MODEL UNIT IPHONE *'), findsOneWidget);
+
+    // Verify Deskripsi Section
+    expect(find.text('DESKRIPSI & CATATAN UNIT'), findsOneWidget);
+
+    // Verify Physical Specs
+    expect(find.text('SPESIFIKASI FISIK & OPERASIONAL'), findsOneWidget);
+    expect(find.text('128GB'), findsOneWidget);
+    expect(find.text('256GB'), findsOneWidget);
+    expect(find.text('512GB'), findsOneWidget);
+    expect(find.text('1TB'), findsOneWidget);
+
+    // Verify Setelan Series & Registrasi (matching Livewire/Iphones/Create.php)
+    expect(find.text('Setelan Series & Registrasi'), findsOneWidget);
+    expect(find.text('Poster / Foto Unit'), findsOneWidget);
+    expect(find.text('Tanggal Registrasi'), findsOneWidget);
+    expect(find.text('Permalink (Slug)'), findsOneWidget);
+    expect(find.text('Serial & Asset Code *'), findsOneWidget);
+    expect(find.text('Paket Durasi & Tarif'), findsOneWidget);
+
+    // Verify Dynamic Duration Repeater components
+    expect(find.text('Tambah Baris'), findsOneWidget);
+    expect(find.text('24'), findsWidgets);
+    expect(find.text('100000'), findsWidgets);
+
+    // Test entering model name and check auto-slug update
+    final nameField = find.widgetWithText(TextFormField, 'iPhone 16 pro MAX');
+    expect(nameField, findsOneWidget);
+    await tester.enterText(nameField, 'iPhone 16 Pro Max');
+    await tester.pump();
+
+    expect(find.text('iphone-16-pro-max'), findsWidgets);
+
+    // Test adding a duration row
+    await tester.tap(find.text('Tambah Baris'));
+    await tester.pump();
+
+    // Now there should be multiple duration rows
+    expect(find.text('Jam'), findsWidgets);
+
+    // Submit form
+    final saveButton = find.text('Simpan Unit iPhone');
+    expect(saveButton, findsOneWidget);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    // Verify unit was saved into repository
+    expect(createdUnit, isNotNull);
+    expect(createdUnit!.name, 'iPhone 16 Pro Max');
+    expect(createdUnit!.slug, 'iphone-16-pro-max');
+    expect(createdUnit!.durations.isNotEmpty, isTrue);
   });
 }
 
