@@ -2511,6 +2511,25 @@ void main() {
     expect(createdUnit!.slug, 'iphone-16-pro-max');
     expect(createdUnit!.durations.isNotEmpty, isTrue);
   });
+
+  testWidgets('CreateIphoneDialog handles dynamic affiliate options safely without assertion error', (WidgetTester tester) async {
+    final repository = BookingRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CreateIphoneDialog(
+            repository: repository,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(CreateIphoneDialog), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 

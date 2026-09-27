@@ -180,6 +180,15 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
         if (list.isNotEmpty) {
           setState(() {
             _affiliateOptions = list;
+            final names = list.map((a) => a['name']?.toString().trim() ?? '').where((s) => s.isNotEmpty).toList();
+            if (!names.contains(_selectedBranch)) {
+              if (names.isNotEmpty) {
+                _selectedBranch = names.first;
+                _selectedAffiliateId = list.first['id'] is int
+                    ? list.first['id'] as int
+                    : int.tryParse(list.first['id']?.toString() ?? '');
+              }
+            }
           });
         }
       }
@@ -1032,72 +1041,91 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
           const SizedBox(height: 10),
 
           // Cabang Affiliate & Status Unit
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Cabang Affiliate:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedBranch,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      items: _affiliateOptions.map((aff) {
-                        final name = aff['name']?.toString() ?? 'Pusat';
-                        return DropdownMenuItem<String>(
-                          value: name,
-                          child: Text(name, style: const TextStyle(fontSize: 12)),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() {
-                            _selectedBranch = val;
-                            final match = _affiliateOptions.firstWhere(
-                              (a) => a['name']?.toString().toLowerCase() == val.toLowerCase(),
-                              orElse: () => {'id': 1},
+          Builder(
+            builder: (context) {
+              final branchItems = _affiliateOptions
+                  .map((aff) => aff['name']?.toString().trim() ?? '')
+                  .where((name) => name.isNotEmpty)
+                  .toSet()
+                  .toList();
+
+              if (branchItems.isEmpty) {
+                branchItems.add('Pusat');
+              }
+
+              final effectiveBranch = branchItems.contains(_selectedBranch) ? _selectedBranch : branchItems.first;
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Cabang Affiliate:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 6),
+                        DropdownButtonFormField<String>(
+                          key: ValueKey('branch_$effectiveBranch'),
+                          initialValue: effectiveBranch,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          items: branchItems.map((name) {
+                            return DropdownMenuItem<String>(
+                              value: name,
+                              child: Text(name, style: const TextStyle(fontSize: 12)),
                             );
-                            _selectedAffiliateId = match['id'] is int ? match['id'] as int : 1;
-                          });
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Status Awal:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedStatus,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'ready', child: Text('Tersedia (Ready)', style: TextStyle(fontSize: 12))),
-                        DropdownMenuItem(value: 'maintenance', child: Text('Perawatan', style: TextStyle(fontSize: 12))),
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                _selectedBranch = val;
+                                final match = _affiliateOptions.firstWhere(
+                                  (a) => (a['name']?.toString().trim().toLowerCase() ?? '') == val.toLowerCase(),
+                                  orElse: () => {'id': 1},
+                                );
+                                _selectedAffiliateId = match['id'] is int ? match['id'] as int : int.tryParse(match['id']?.toString() ?? '');
+                              });
+                            }
+                          },
+                        ),
                       ],
-                      onChanged: (val) {
-                        if (val != null) setState(() => _selectedStatus = val);
-                      },
                     ),
-                  ],
-                ),
-              ),
-            ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Status Awal:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 6),
+                        DropdownButtonFormField<String>(
+                          key: ValueKey('status_$_selectedStatus'),
+                          initialValue: ['ready', 'maintenance'].contains(_selectedStatus.toLowerCase())
+                              ? _selectedStatus.toLowerCase()
+                              : 'ready',
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'ready', child: Text('Tersedia (Ready)', style: TextStyle(fontSize: 12))),
+                            DropdownMenuItem(value: 'maintenance', child: Text('Perawatan', style: TextStyle(fontSize: 12))),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) setState(() => _selectedStatus = val);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
