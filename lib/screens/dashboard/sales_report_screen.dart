@@ -13,9 +13,12 @@ import 'widgets/report_date_range_picker.dart';
 class SalesReportScreen extends StatefulWidget {
   final BookingRepository repository;
 
+  final String? initialPeriod;
+
   const SalesReportScreen({
     super.key,
     required this.repository,
+    this.initialPeriod,
   });
 
   @override
@@ -24,7 +27,7 @@ class SalesReportScreen extends StatefulWidget {
 
 class _SalesReportScreenState extends State<SalesReportScreen> {
   bool _isLoading = true;
-  String _selectedPeriod = 'Hari Ini';
+  late String _selectedPeriod;
   DateTimeRange? _customDateRange;
   bool _simulateEmpty = false;
 
@@ -40,6 +43,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedPeriod = widget.initialPeriod ?? 'Hari Ini';
     _loadReport();
   }
 
@@ -271,8 +275,8 @@ Status Kasir: Telah Ditutup & Sesuai.
       context: context,
       builder: (ctx) {
         String codeDisplay = tx.bookingCode.startsWith('#')
-            ? tx.bookingCode.split(' ').first
-            : (tx.id > 0 ? '#SKY-${tx.id}' : '#${tx.bookingCode}');
+            ? tx.bookingCode
+            : (tx.bookingCode.isNotEmpty && tx.bookingCode != '-' ? '#${tx.bookingCode}' : '#SKY-${tx.id}');
 
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -280,9 +284,12 @@ Status Kasir: Telah Ditutup & Sesuai.
             children: [
               Icon(Icons.receipt_long_rounded, color: AppTheme.accent),
               const SizedBox(width: 8),
-              Text(
-                'Struk $codeDisplay',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Expanded(
+                child: Text(
+                  'Struk $codeDisplay',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
@@ -290,11 +297,16 @@ Status Kasir: Telah Ditutup & Sesuai.
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildReceiptDetailRow('No. Booking', codeDisplay),
               _buildReceiptDetailRow('Pelanggan', tx.customerName),
+              if (tx.customerPhone.isNotEmpty && tx.customerPhone != '-')
+                _buildReceiptDetailRow('No. Telepon', tx.customerPhone),
               _buildReceiptDetailRow('Unit iPhone', tx.iphoneName),
               _buildReceiptDetailRow('Metode', tx.paymentMethod),
               _buildReceiptDetailRow('Nominal', Formatters.currency(tx.paidAmount)),
               _buildReceiptDetailRow('Tanggal', '${Formatters.date(tx.transactionDate)} ${tx.transactionDate.hour.toString().padLeft(2, '0')}:${tx.transactionDate.minute.toString().padLeft(2, '0')} WIB'),
+              if (tx.notes != null && tx.notes!.isNotEmpty)
+                _buildReceiptDetailRow('Keterangan', tx.notes!.replaceAll('|', ' • ')),
             ],
           ),
           actions: [
@@ -323,6 +335,23 @@ Status Kasir: Telah Ditutup & Sesuai.
         );
       },
     );
+  }
+
+  String _getDateRangeLabel() {
+    if (_customDateRange != null) {
+      return '${Formatters.date(_customDateRange!.start)} - ${Formatters.date(_customDateRange!.end)}';
+    }
+    if (_reportData['start_date'] != null && _reportData['end_date'] != null) {
+      final start = DateTime.tryParse(_reportData['start_date'].toString());
+      final end = DateTime.tryParse(_reportData['end_date'].toString());
+      if (start != null && end != null) {
+        if (start.year == end.year && start.month == end.month && start.day == end.day) {
+          return Formatters.date(start);
+        }
+        return '${Formatters.date(start)} - ${Formatters.date(end)}';
+      }
+    }
+    return Formatters.date(DateTime.now());
   }
 
   Widget _buildReceiptDetailRow(String label, String value) {
@@ -355,13 +384,51 @@ Status Kasir: Telah Ditutup & Sesuai.
     final modelCount = modelCountRaw.map((key, value) => MapEntry(key.toString(), (value as num).toInt()));
     final transactions = (_reportData['transactions'] as List<PaymentTransactionModel>?) ?? [];
 
-    final double totalRev = (summary['totalRevenue'] as num?)?.toDouble() ?? 2450000.0;
-    final int txCount = summary['transactionCount'] ?? transactions.length;
-    final double aov = (summary['averageTransactionValue'] as num?)?.toDouble() ?? (txCount > 0 ? totalRev / txCount : 350000.0);
-    final double heldDep = (summary['totalDepositsHeld'] as num?)?.toDouble() ?? 1000000.0;
-    final double cashIncome = (summary['cashAmount'] as num?)?.toDouble() ?? 650000.0;
-    final double transferIncome = (summary['transferAmount'] as num?)?.toDouble() ?? 900000.0;
-    final double qrisIncome = (summary['qrisAmount'] as num?)?.toDouble() ?? 900000.0;
+    final double totalRev = (summary['totalRevenue'] as num?)?.toDouble() ??
+        (summary['total_revenue'] as num?)?.toDouble() ??
+        transactions.fold(0.0, (sum, tx) => sum + tx.paidAmount);
+    final int txCount = (summary['transactionCount'] as num?)?.toInt() ??
+        (summary['transaction_count'] as num?)?.toInt() ??
+        transactions.length;
+    final double aov = (summary['averageTransactionValue'] as num?)?.toDouble() ??
+        (summary['average_transaction_value'] as num?)?.toDouble() ??
+        (txCount > 0 ? totalRev / txCount : 0.0);
+    final double heldDep = (summary['totalDepositsHeld'] as num?)?.toDouble() ??
+        (summary['total_deposits_held'] as num?)?.toDouble() ??
+        transactions.fold(0.0, (sum, tx) => sum + tx.depositAmount);
+    final double cashIncome = (summary['cashAmount'] as num?)?.toDouble() ??
+        (summary['cash_amount'] as num?)?.toDouble() ??
+        transactions
+            .where((tx) =>
+                tx.paymentMethod.toLowerCase().contains('tunai') ||
+                tx.paymentMethod.toLowerCase().contains('cash'))
+            .fold(0.0, (sum, tx) => sum + tx.paidAmount);
+    final double transferIncome = (summary['transferAmount'] as num?)?.toDouble() ??
+        (summary['transfer_amount'] as num?)?.toDouble() ??
+        transactions
+            .where((tx) =>
+                tx.paymentMethod.toLowerCase().contains('transfer') ||
+                tx.paymentMethod.toLowerCase().contains('bank') ||
+                tx.paymentMethod.toLowerCase().contains('va'))
+            .fold(0.0, (sum, tx) => sum + tx.paidAmount);
+    final double qrisIncome = (summary['qrisAmount'] as num?)?.toDouble() ??
+        (summary['qris_amount'] as num?)?.toDouble() ??
+        transactions
+            .where((tx) => tx.paymentMethod.toLowerCase().contains('qris'))
+            .fold(0.0, (sum, tx) => sum + tx.paidAmount);
+
+    final int cashCount = transactions.where((tx) {
+      final m = tx.paymentMethod.toLowerCase();
+      return m.contains('tunai') || m.contains('cash');
+    }).length;
+    final int transferCount = transactions.where((tx) {
+      final m = tx.paymentMethod.toLowerCase();
+      return m.contains('transfer') || m.contains('bank') || m.contains('va');
+    }).length;
+    final int qrisCount = transactions.where((tx) {
+      final m = tx.paymentMethod.toLowerCase();
+      return m.contains('qris');
+    }).length;
 
     final mediaWidth = MediaQuery.sizeOf(context).width;
     final isTablet = mediaWidth >= 900;
@@ -415,6 +482,9 @@ Status Kasir: Telah Ditutup & Sesuai.
                               transferIncome: transferIncome,
                               qrisIncome: qrisIncome,
                               totalRev: totalRev,
+                              cashCount: cashCount,
+                              transferCount: transferCount,
+                              qrisCount: qrisCount,
                               modelRevenue: modelRevenue,
                               modelCount: modelCount,
                               transactions: transactions,
@@ -432,6 +502,9 @@ Status Kasir: Telah Ditutup & Sesuai.
                         cashIncome: cashIncome,
                         transferIncome: transferIncome,
                         qrisIncome: qrisIncome,
+                        cashCount: cashCount,
+                        transferCount: transferCount,
+                        qrisCount: qrisCount,
                         paymentBreakdown: paymentBreakdown,
                         typeBreakdown: typeBreakdown,
                         modelRevenue: modelRevenue,
@@ -456,9 +529,7 @@ Status Kasir: Telah Ditutup & Sesuai.
   // =========================================================================
 
   Widget _buildTabletSubHeaderAndFilters() {
-    final dateLabel = _customDateRange != null
-        ? '${Formatters.date(_customDateRange!.start)} - ${Formatters.date(_customDateRange!.end)}'
-        : '09 Sep 2026';
+    final dateLabel = _getDateRangeLabel();
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -644,9 +715,7 @@ Status Kasir: Telah Ditutup & Sesuai.
   // =========================================================================
 
   Widget _buildMobileFilterSection() {
-    final dateLabel = _customDateRange != null
-        ? '${Formatters.date(_customDateRange!.start)} - ${Formatters.date(_customDateRange!.end)}'
-        : '09 Sep 2026';
+    final dateLabel = _getDateRangeLabel();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -854,6 +923,9 @@ Status Kasir: Telah Ditutup & Sesuai.
     required double transferIncome,
     required double qrisIncome,
     required double totalRev,
+    required int cashCount,
+    required int transferCount,
+    required int qrisCount,
     required Map<String, double> modelRevenue,
     required Map<String, int> modelCount,
     required List<PaymentTransactionModel> transactions,
@@ -867,6 +939,10 @@ Status Kasir: Telah Ditutup & Sesuai.
           transfer: transferIncome,
           qris: qrisIncome,
           total: totalRev,
+          cashCount: cashCount,
+          transferCount: transferCount,
+          qrisCount: qrisCount,
+          txCount: txCount,
         ),
         const SizedBox(height: 16),
         _buildTopModelsCard(modelRevenue, modelCount),
@@ -888,6 +964,9 @@ Status Kasir: Telah Ditutup & Sesuai.
     required double cashIncome,
     required double transferIncome,
     required double qrisIncome,
+    required int cashCount,
+    required int transferCount,
+    required int qrisCount,
     required Map<String, double> paymentBreakdown,
     required Map<String, double> typeBreakdown,
     required Map<String, double> modelRevenue,
@@ -908,7 +987,7 @@ Status Kasir: Telah Ditutup & Sesuai.
                   child: _buildMiniStatCard(
                     title: 'Kas Tunai',
                     amount: cashIncome,
-                    subtitle: '2 Transaksi',
+                    subtitle: '$cashCount Transaksi Tunai',
                     icon: Icons.payments_outlined,
                     iconColor: const Color(0xFF10B981),
                     iconBg: const Color(0xFFECFDF5),
@@ -919,7 +998,7 @@ Status Kasir: Telah Ditutup & Sesuai.
                   child: _buildMiniStatCard(
                     title: 'Transfer Bank',
                     amount: transferIncome,
-                    subtitle: 'BCA & Mandiri',
+                    subtitle: '$transferCount Transaksi Transfer/VA',
                     icon: Icons.account_balance_outlined,
                     iconColor: const Color(0xFF2563EB),
                     iconBg: const Color(0xFFEFF6FF),
@@ -934,7 +1013,7 @@ Status Kasir: Telah Ditutup & Sesuai.
                   child: _buildMiniStatCard(
                     title: 'QRIS',
                     amount: qrisIncome,
-                    subtitle: '3 Settlement',
+                    subtitle: '$qrisCount Settlement QRIS',
                     icon: Icons.qr_code_2_rounded,
                     iconColor: const Color(0xFF9333EA),
                     iconBg: const Color(0xFFFAF5FF),
@@ -945,7 +1024,7 @@ Status Kasir: Telah Ditutup & Sesuai.
                   child: _buildMiniStatCard(
                     title: 'Total Masuk',
                     amount: totalRev,
-                    subtitle: 'Koreksi: Rp 0',
+                    subtitle: '$txCount Transaksi Selesai',
                     icon: Icons.account_balance_wallet_outlined,
                     iconColor: const Color(0xFFEA580C),
                     iconBg: const Color(0xFFFFF7ED),
@@ -1073,12 +1152,19 @@ Status Kasir: Telah Ditutup & Sesuai.
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
-                    '+18.5% vs kem.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF10B981),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '$txCount Transaksi Selesai',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF38BDF8),
+                      ),
                     ),
                   ),
                 ],
@@ -1176,10 +1262,10 @@ Status Kasir: Telah Ditutup & Sesuai.
                         total: totalRev,
                       ),
                     ),
-                    const Column(
+                    Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
+                        const Text(
                           'TRANSAKSI',
                           style: TextStyle(
                             fontSize: 9.5,
@@ -1189,8 +1275,8 @@ Status Kasir: Telah Ditutup & Sesuai.
                           ),
                         ),
                         Text(
-                          '100%',
-                          style: TextStyle(
+                          totalRev > 0 ? '100%' : '0%',
+                          style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w900,
                             color: Color(0xFF0F172A),
@@ -1290,17 +1376,17 @@ Status Kasir: Telah Ditutup & Sesuai.
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(child: _buildTypeBox('DP (UANG MUKA)', typeBreakdown['dp'] ?? 450000.0, isPenalty: false)),
+              Expanded(child: _buildTypeBox('DP (UANG MUKA)', typeBreakdown['dp'] ?? 0.0, isPenalty: false)),
               const SizedBox(width: 10),
-              Expanded(child: _buildTypeBox('PELUNASAN', typeBreakdown['payment'] ?? 1650000.0, isPenalty: false)),
+              Expanded(child: _buildTypeBox('PELUNASAN', typeBreakdown['payment'] ?? 0.0, isPenalty: false)),
             ],
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _buildTypeBox('EXTEND SEWA', typeBreakdown['extend'] ?? 250000.0, isPenalty: false)),
+              Expanded(child: _buildTypeBox('EXTEND SEWA', typeBreakdown['extend'] ?? 0.0, isPenalty: false)),
               const SizedBox(width: 10),
-              Expanded(child: _buildTypeBox('PENALTY / DENDA', typeBreakdown['penalty'] ?? 100000.0, isPenalty: true)),
+              Expanded(child: _buildTypeBox('PENALTY / DENDA', typeBreakdown['penalty'] ?? 0.0, isPenalty: true)),
             ],
           ),
         ],
@@ -1351,6 +1437,10 @@ Status Kasir: Telah Ditutup & Sesuai.
     required double transfer,
     required double qris,
     required double total,
+    required int cashCount,
+    required int transferCount,
+    required int qrisCount,
+    required int txCount,
   }) {
     return Row(
       children: [
@@ -1358,7 +1448,7 @@ Status Kasir: Telah Ditutup & Sesuai.
           child: _buildMiniStatCard(
             title: 'Kas Tunai',
             amount: cash,
-            subtitle: '2 Transaksi Tunai',
+            subtitle: '$cashCount Transaksi Tunai',
             icon: Icons.payments_outlined,
             iconColor: const Color(0xFF10B981),
             iconBg: const Color(0xFFECFDF5),
@@ -1369,7 +1459,7 @@ Status Kasir: Telah Ditutup & Sesuai.
           child: _buildMiniStatCard(
             title: 'Transfer Bank',
             amount: transfer,
-            subtitle: 'BCA & Mandiri',
+            subtitle: '$transferCount Transaksi Transfer/VA',
             icon: Icons.account_balance_outlined,
             iconColor: const Color(0xFF2563EB),
             iconBg: const Color(0xFFEFF6FF),
@@ -1380,7 +1470,7 @@ Status Kasir: Telah Ditutup & Sesuai.
           child: _buildMiniStatCard(
             title: 'QRIS',
             amount: qris,
-            subtitle: '3 Settlement Auto',
+            subtitle: '$qrisCount Settlement QRIS',
             icon: Icons.qr_code_2_rounded,
             iconColor: const Color(0xFF9333EA),
             iconBg: const Color(0xFFFAF5FF),
@@ -1391,7 +1481,7 @@ Status Kasir: Telah Ditutup & Sesuai.
           child: _buildMiniStatCard(
             title: 'Total Masuk',
             amount: total,
-            subtitle: 'Koreksi: Rp 0',
+            subtitle: '$txCount Transaksi Selesai',
             icon: Icons.account_balance_wallet_outlined,
             iconColor: const Color(0xFFEA580C),
             iconBg: const Color(0xFFFFF7ED),
@@ -1488,13 +1578,9 @@ Status Kasir: Telah Ditutup & Sesuai.
       const Color(0xFF0F172A), // Dark navy for #1
       const Color(0xFF0284C7), // Teal/cyan for #2
       const Color(0xFF8B5CF6), // Purple for #3
+      const Color(0xFF10B981), // Emerald for #4
+      const Color(0xFFEA580C), // Orange for #5
     ];
-
-    final Map<String, String> modelSubtitles = {
-      'iPhone 15 Pro 256GB': 'Natural Titanium • IMEI #8821',
-      'iPhone 14 Pro 128GB': 'Deep Purple • IMEI #9104',
-      'iPhone 13 128GB': 'Midnight Black • IMEI #3419',
-    };
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1506,10 +1592,10 @@ Status Kasir: Telah Ditutup & Sesuai.
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Flexible(
+              const Flexible(
                 child: Text(
                   'Model iPhone Paling Populer & Omzet',
                   style: TextStyle(
@@ -1521,10 +1607,10 @@ Status Kasir: Telah Ditutup & Sesuai.
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Text(
-                'Top Performa Hari Ini',
-                style: TextStyle(
+                'Periode $_selectedPeriod',
+                style: const TextStyle(
                   fontSize: 11.5,
                   color: Color(0xFF64748B),
                   fontWeight: FontWeight.w500,
@@ -1534,15 +1620,19 @@ Status Kasir: Telah Ditutup & Sesuai.
           ),
           const SizedBox(height: 18),
           if (sortedModels.isEmpty)
-            const Text('Belum ada data unit tersewa.', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)))
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              alignment: Alignment.center,
+              child: const Text('Belum ada data unit tersewa pada periode ini.', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
+            )
           else
-            ...sortedModels.take(3).toList().asMap().entries.map((entry) {
+            ...sortedModels.take(5).toList().asMap().entries.map((entry) {
               final idx = entry.key;
               final model = entry.value;
               final rev = modelRevenue[model] ?? 0.0;
-              final count = modelCount[model] ?? (idx == 0 ? 3 : 2);
-              final pct = totalRev > 0 ? (rev / totalRev) * 100 : (idx == 0 ? 44.8 : (idx == 1 ? 32.6 : 22.4));
-              final subtitle = modelSubtitles[model] ?? '$count Unit Tersewa';
+              final count = modelCount[model] ?? 0;
+              final pct = totalRev > 0 ? (rev / totalRev) * 100 : 0.0;
+              final subtitle = '$count Transaksi Sewa';
               final barColor = progressColors[idx % progressColors.length];
 
               return Padding(
@@ -1728,9 +1818,15 @@ Status Kasir: Telah Ditutup & Sesuai.
         // Table Rows
         ...transactions.map((tx) {
           String codeDisplay = tx.bookingCode.startsWith('#')
-              ? tx.bookingCode.split(' ').first
-              : (tx.id > 0 ? '#SKY-${tx.id}' : '#${tx.bookingCode}');
-          final timeStr = '${tx.transactionDate.hour.toString().padLeft(2, '0')}:${tx.transactionDate.minute.toString().padLeft(2, '0')} WIB';
+              ? tx.bookingCode
+              : (tx.bookingCode.isNotEmpty && tx.bookingCode != '-' ? '#${tx.bookingCode}' : '#SKY-${tx.id}');
+
+          final isSameDay = tx.transactionDate.year == DateTime.now().year &&
+              tx.transactionDate.month == DateTime.now().month &&
+              tx.transactionDate.day == DateTime.now().day;
+          final timeStr = isSameDay
+              ? '${tx.transactionDate.hour.toString().padLeft(2, '0')}:${tx.transactionDate.minute.toString().padLeft(2, '0')} WIB'
+              : '${tx.transactionDate.day.toString().padLeft(2, '0')}/${tx.transactionDate.month.toString().padLeft(2, '0')} ${tx.transactionDate.hour.toString().padLeft(2, '0')}:${tx.transactionDate.minute.toString().padLeft(2, '0')} WIB';
 
           String typeTag = 'Pelunasan';
           String verificationTag = 'KTP Terverifikasi';
@@ -1741,6 +1837,9 @@ Status Kasir: Telah Ditutup & Sesuai.
           } else if (tx.notes != null && tx.notes!.isNotEmpty) {
             typeTag = tx.notes!;
           }
+
+          final phoneText = tx.customerPhone.isNotEmpty && tx.customerPhone != '-' ? tx.customerPhone : '';
+          final customerSub = phoneText.isNotEmpty ? '$phoneText • $verificationTag' : verificationTag;
 
           Color badgeBg = const Color(0xFFEFF6FF);
           Color badgeColor = const Color(0xFF2563EB);
@@ -1767,14 +1866,14 @@ Status Kasir: Telah Ditutup & Sesuai.
             methodIcon = Icons.account_balance_outlined;
             methodColor = const Color(0xFF2563EB);
             methodLabel = 'Mandiri';
-          } else if (pmLower.contains('bca') || pmLower.contains('transfer')) {
+          } else if (pmLower.contains('bca') || pmLower.contains('transfer') || pmLower.contains('va')) {
             methodIcon = Icons.account_balance_outlined;
             methodColor = const Color(0xFF2563EB);
-            methodLabel = pmLower.contains('bca') ? 'BCA' : 'Transfer';
+            methodLabel = pmLower.contains('va') ? 'Transfer / VA' : 'Transfer';
           } else {
             methodIcon = Icons.payments_outlined;
             methodColor = const Color(0xFF16A34A);
-            methodLabel = 'Tunai Laci';
+            methodLabel = 'Tunai';
           }
 
           return Container(
@@ -1824,7 +1923,7 @@ Status Kasir: Telah Ditutup & Sesuai.
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        verificationTag,
+                        customerSub,
                         style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -2092,7 +2191,7 @@ Status Kasir: Telah Ditutup & Sesuai.
     final now = DateTime.now();
     final dateFormatted = '${_getDayName(now)}, ${Formatters.date(now)}';
     final topPadding = MediaQuery.paddingOf(context).top;
-    final cashierName = user?.name.trim().isNotEmpty == true ? user!.name : 'Budi Santoso';
+    final cashierName = user?.name.trim().isNotEmpty == true ? user!.name : 'Kasir SKYRental';
     final initials = cashierName.split(' ').take(2).map((e) => e.isNotEmpty ? e[0].toUpperCase() : '').join();
 
     return PreferredSize(

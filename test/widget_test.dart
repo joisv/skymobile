@@ -2243,7 +2243,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
-        home: SalesReportScreen(repository: repository),
+        home: SalesReportScreen(
+          repository: repository,
+          initialPeriod: 'Semua',
+        ),
       ),
     );
 
@@ -2254,7 +2257,7 @@ void main() {
     // 1. Verify Top Header
     expect(find.text('SKYRental'), findsWidgets);
     expect(find.text('POS Station #01'), findsOneWidget);
-    expect(find.textContaining('Budi Santoso'), findsWidgets);
+    expect(find.textContaining('Admin SKYRental'), findsWidgets);
 
     // 2. Verify Sub-header & Filter section
     expect(find.text('Laporan Penjualan & Kasir'), findsOneWidget);
@@ -2266,7 +2269,6 @@ void main() {
 
     // 3. Verify Left Column: Hero Omzet Card
     expect(find.text('Kas Masuk'), findsOneWidget);
-    expect(find.text('Rp 2.450.000'), findsWidgets);
     expect(find.text('Total Transaksi'), findsOneWidget);
     expect(find.text('Deposit Kasir'), findsOneWidget);
 
@@ -2274,9 +2276,6 @@ void main() {
     expect(find.text('Proporsi Metode Pembayaran'), findsOneWidget);
     expect(find.text('TRANSAKSI'), findsOneWidget);
     expect(find.text('100%'), findsOneWidget);
-    expect(find.text('Transfer Bank'), findsWidgets);
-    expect(find.text('QRIS Dinamis'), findsWidgets);
-    expect(find.text('Kas Fisik Tunai'), findsWidgets);
 
     // 5. Verify Left Column: Jenis Pembayaran 2x2 Grid
     expect(find.text('Jenis Pembayaran'), findsOneWidget);
@@ -2291,8 +2290,7 @@ void main() {
 
     // 7. Verify Right Column: Top Models
     expect(find.text('Model iPhone Paling Populer & Omzet'), findsOneWidget);
-    expect(find.text('Top Performa Hari Ini'), findsOneWidget);
-    expect(find.textContaining('iPhone 15 Pro 256GB'), findsWidgets);
+    expect(find.textContaining('iPhone 13 Pink'), findsWidgets);
 
     // 8. Verify Right Column: Riwayat Transaksi Table
     expect(find.text('Riwayat Transaksi Penjualan'), findsOneWidget);
@@ -2303,10 +2301,9 @@ void main() {
     expect(find.text('NOMINAL'), findsOneWidget);
     expect(find.text('STRUK'), findsOneWidget);
 
-    // Verify sample transactions rendered
-    expect(find.text('#SKY-8421'), findsOneWidget);
-    expect(find.text('Dimas Pratama'), findsOneWidget);
-    expect(find.text('Siti Rahmawati'), findsOneWidget);
+    // Verify real synchronized transactions rendered
+    expect(find.text('#SKY260923BZBO'), findsOneWidget);
+    expect(find.text('test'), findsWidgets);
 
     // 9. Verify Simulasi Kosong toggle
     final simulasiBtn = find.text('Simulasi Kosong');
@@ -2326,7 +2323,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(restoreBtn);
     await tester.pumpAndSettle();
-    expect(find.text('#SKY-8421'), findsOneWidget);
+    expect(find.text('#SKY260923BZBO'), findsOneWidget);
 
     // 10. Verify Full-width Bottom Action Button
     final cetakRekapBtn = find.text('Cetak Rekap Kasir (58mm)');

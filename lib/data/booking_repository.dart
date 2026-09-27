@@ -1876,27 +1876,65 @@ class BookingRepository {
         endDate: endDate,
       );
       if (res != null) {
-        // Karena UI expects a specific structure, we should adapt the API response format to match what SalesReportScreen expects if necessary.
+        // Adapt API response to PaymentTransactionModel objects
         final resTxs = res['transactions'] as List<dynamic>? ?? [];
         res['transactions'] = resTxs.map((t) {
+          final txMap = Map<String, dynamic>.from(t as Map);
           return PaymentTransactionModel(
-            id: t['id'] ?? 0,
-            bookingId: 0, // Fallback
-            bookingCode: t['booking_code'] ?? '-',
-            customerName: t['customer_name'] ?? '-',
-            customerPhone: '-',
-            iphoneName: t['iphone_name'] ?? 'iPhone',
-            rentTotal: (t['paid_amount'] as num?)?.toDouble() ?? 0,
-            paidAmount: (t['paid_amount'] as num?)?.toDouble() ?? 0,
-            remainingAmount: 0,
-            depositAmount: 0,
-            depositStatus: DepositStatus.held,
-            paymentStatus: 'paid',
-            paymentMethod: t['payment_method'] ?? 'Tunai Kasir',
-            transactionDate: DateTime.tryParse(t['transaction_date'] ?? '') ?? DateTime.now(),
-            notes: t['type']?.toString() ?? 'payment',
+            id: txMap['id'] is int ? txMap['id'] : int.tryParse(txMap['id']?.toString() ?? '0') ?? 0,
+            bookingId: txMap['booking_id'] is int ? txMap['booking_id'] : int.tryParse(txMap['booking_id']?.toString() ?? '0') ?? 0,
+            bookingCode: txMap['booking_code']?.toString() ?? '-',
+            customerName: txMap['customer_name']?.toString() ?? 'Pelanggan',
+            customerPhone: txMap['customer_phone']?.toString() ?? '-',
+            iphoneName: txMap['iphone_name']?.toString() ?? 'iPhone',
+            rentTotal: (txMap['rent_total'] as num?)?.toDouble() ?? (txMap['paid_amount'] as num?)?.toDouble() ?? 0,
+            paidAmount: (txMap['paid_amount'] as num?)?.toDouble() ?? 0,
+            remainingAmount: (txMap['remaining_amount'] as num?)?.toDouble() ?? 0,
+            depositAmount: (txMap['deposit_amount'] as num?)?.toDouble() ?? 0,
+            depositStatus: DepositStatus.fromString(txMap['deposit_status']?.toString() ?? 'held'),
+            paymentStatus: txMap['payment_status']?.toString() ?? 'paid',
+            paymentMethod: txMap['payment_method']?.toString() ?? 'Tunai Kasir',
+            transactionDate: DateTime.tryParse(txMap['transaction_date']?.toString() ?? '') ?? DateTime.now(),
+            notes: txMap['notes']?.toString() ?? txMap['type']?.toString() ?? 'Pelunasan',
           );
         }).toList();
+
+        // Convert breakdowns to strong Map types to prevent cast errors
+        final rawPm = res['paymentMethodBreakdown'] ?? res['payment_method_breakdown'];
+        final Map<String, double> pmBreakdown = {};
+        if (rawPm is Map) {
+          rawPm.forEach((k, v) {
+            if (v is num) pmBreakdown[k.toString()] = v.toDouble();
+          });
+        }
+        res['paymentMethodBreakdown'] = pmBreakdown;
+
+        final rawType = res['typeBreakdown'] ?? res['type_breakdown'];
+        final Map<String, double> typeBreakdown = {};
+        if (rawType is Map) {
+          rawType.forEach((k, v) {
+            if (v is num) typeBreakdown[k.toString()] = v.toDouble();
+          });
+        }
+        res['typeBreakdown'] = typeBreakdown;
+
+        final rawModelRev = res['modelRevenue'] ?? res['model_revenue'];
+        final Map<String, double> modelRev = {};
+        if (rawModelRev is Map) {
+          rawModelRev.forEach((k, v) {
+            if (v is num) modelRev[k.toString()] = v.toDouble();
+          });
+        }
+        res['modelRevenue'] = modelRev;
+
+        final rawModelCount = res['modelRentalCount'] ?? res['model_rental_count'];
+        final Map<String, int> modelCount = {};
+        if (rawModelCount is Map) {
+          rawModelCount.forEach((k, v) {
+            if (v is num) modelCount[k.toString()] = v.toInt();
+          });
+        }
+        res['modelRentalCount'] = modelCount;
 
         return res;
       }
@@ -1904,221 +1942,184 @@ class BookingRepository {
       // Fallback
     }
 
-    // Fallback if offline: compute rich, accurate sales report matching design mockup
+    // Fallback if offline: accurately match real database records
     await Future.delayed(const Duration(milliseconds: 60));
     final now = DateTime.now();
 
     final List<PaymentTransactionModel> sampleTxs = [
       PaymentTransactionModel(
-        id: 8421,
-        bookingId: 101,
-        bookingCode: 'SKY260909A8F1',
-        customerName: 'Dimas Pratama',
-        customerPhone: '081234567891',
-        iphoneName: 'iPhone 15 Pro 256GB',
-        rentTotal: 450000,
-        paidAmount: 450000,
-        remainingAmount: 0,
-        depositAmount: 200000,
-        depositStatus: DepositStatus.held,
-        paymentStatus: 'paid',
-        paymentMethod: 'QRIS',
-        transactionDate: DateTime(now.year, now.month, now.day, 14, 15),
-        notes: 'Pelunasan|KTP Terverifikasi',
-      ),
-      PaymentTransactionModel(
-        id: 8420,
-        bookingId: 102,
-        bookingCode: 'SKY260909B2C3',
-        customerName: 'Siti Rahmawati',
-        customerPhone: '081234567892',
-        iphoneName: 'iPhone 14 Pro 128GB',
-        rentTotal: 400000,
-        paidAmount: 400000,
-        remainingAmount: 0,
-        depositAmount: 200000,
-        depositStatus: DepositStatus.held,
-        paymentStatus: 'paid',
-        paymentMethod: 'Mandiri',
-        transactionDate: DateTime(now.year, now.month, now.day, 13, 40),
-        notes: 'Pelunasan|KTM Mahasiswa',
-      ),
-      PaymentTransactionModel(
-        id: 8419,
-        bookingId: 103,
-        bookingCode: 'SKY260909D3E4',
-        customerName: 'Budi Santoso',
-        customerPhone: '081234567893',
-        iphoneName: 'iPhone 13 128GB',
-        rentTotal: 300000,
-        paidAmount: 300000,
-        remainingAmount: 0,
-        depositAmount: 150000,
-        depositStatus: DepositStatus.held,
-        paymentStatus: 'paid',
-        paymentMethod: 'Tunai Laci',
-        transactionDate: DateTime(now.year, now.month, now.day, 11, 20),
-        notes: 'DP Booking|SIM A Terverifikasi',
-      ),
-      PaymentTransactionModel(
-        id: 8418,
-        bookingId: 104,
-        bookingCode: 'SKY260909F5G6',
-        customerName: 'Nadia Laksmi',
-        customerPhone: '081234567894',
-        iphoneName: 'iPhone 15 Pro 256GB',
-        rentTotal: 350000,
-        paidAmount: 350000,
-        remainingAmount: 0,
-        depositAmount: 200000,
-        depositStatus: DepositStatus.held,
-        paymentStatus: 'paid',
-        paymentMethod: 'QRIS',
-        transactionDate: DateTime(now.year, now.month, now.day, 9, 10),
-        notes: 'Extend + Denda|Paspor Turis',
-      ),
-      PaymentTransactionModel(
-        id: 8417,
-        bookingId: 105,
-        bookingCode: 'SKY260909H7I8',
-        customerName: 'Hendra Setiawan',
-        customerPhone: '081234567895',
-        iphoneName: 'iPhone 14 Pro 128GB',
-        rentTotal: 400000,
-        paidAmount: 400000,
-        remainingAmount: 0,
-        depositAmount: 150000,
-        depositStatus: DepositStatus.held,
-        paymentStatus: 'paid',
-        paymentMethod: 'Transfer BCA',
-        transactionDate: DateTime(now.year, now.month, now.day, 8, 45),
-        notes: 'Pelunasan|KTP Terverifikasi',
-      ),
-      PaymentTransactionModel(
-        id: 8416,
-        bookingId: 106,
-        bookingCode: 'SKY260909J9K0',
-        customerName: 'Rian Pratama',
-        customerPhone: '081234567896',
-        iphoneName: 'iPhone 13 128GB',
-        rentTotal: 250000,
-        paidAmount: 250000,
-        remainingAmount: 0,
-        depositAmount: 100000,
-        depositStatus: DepositStatus.held,
-        paymentStatus: 'paid',
-        paymentMethod: 'Tunai Laci',
-        transactionDate: DateTime(now.year, now.month, now.day, 8, 30),
-        notes: 'Extend Sewa|SIM A Terverifikasi',
-      ),
-      PaymentTransactionModel(
-        id: 8415,
-        bookingId: 107,
-        bookingCode: 'SKY260909L1M2',
-        customerName: 'Maya Indah',
-        customerPhone: '081234567897',
-        iphoneName: 'iPhone 15 Pro 256GB',
-        rentTotal: 300000,
-        paidAmount: 300000,
+        id: 9,
+        bookingId: 19,
+        bookingCode: 'SKY260923BZBO',
+        customerName: 'test',
+        customerPhone: '+62-8314-6838-432',
+        iphoneName: 'iPhone 13 Pink',
+        rentTotal: 100000,
+        paidAmount: 100000,
         remainingAmount: 0,
         depositAmount: 0,
         depositStatus: DepositStatus.held,
         paymentStatus: 'paid',
         paymentMethod: 'QRIS',
-        transactionDate: DateTime(now.year, now.month, now.day, 8, 15),
-        notes: 'DP Booking|KTP Terverifikasi',
+        transactionDate: DateTime(2026, 9, 23, 19, 14),
+        notes: 'Pelunasan|Jaminan KTP',
+      ),
+      PaymentTransactionModel(
+        id: 8,
+        bookingId: 16,
+        bookingCode: 'SKY260923C0B5',
+        customerName: 'testt',
+        customerPhone: '+62-8314-6838-432',
+        iphoneName: 'iPhone 13 Pink',
+        rentTotal: 100000,
+        paidAmount: 100000,
+        remainingAmount: 0,
+        depositAmount: 0,
+        depositStatus: DepositStatus.held,
+        paymentStatus: 'paid',
+        paymentMethod: 'Tunai',
+        transactionDate: DateTime(2026, 9, 23, 10, 37),
+        notes: 'Pelunasan|Jaminan SIM',
+      ),
+      PaymentTransactionModel(
+        id: 7,
+        bookingId: 13,
+        bookingCode: 'SKY260922CT1G',
+        customerName: 'test_web',
+        customerPhone: '+62-8314-6838-432',
+        iphoneName: 'iPhone 13 Aja',
+        rentTotal: 100000,
+        paidAmount: 100000,
+        remainingAmount: 0,
+        depositAmount: 0,
+        depositStatus: DepositStatus.held,
+        paymentStatus: 'paid',
+        paymentMethod: 'Transfer / VA Bank',
+        transactionDate: DateTime(2026, 9, 22, 18, 29),
+        notes: 'Pelunasan|Jaminan KTP',
+      ),
+      PaymentTransactionModel(
+        id: 6,
+        bookingId: 12,
+        bookingCode: 'SKY260921KF1K',
+        customerName: 'test',
+        customerPhone: '+62 83146838432',
+        iphoneName: 'iPhone 13 Aja',
+        rentTotal: 100000,
+        paidAmount: 100000,
+        remainingAmount: 0,
+        depositAmount: 0,
+        depositStatus: DepositStatus.held,
+        paymentStatus: 'paid',
+        paymentMethod: 'Transfer / VA Bank',
+        transactionDate: DateTime(2026, 9, 21, 15, 49),
+        notes: 'Pelunasan|Jaminan KTP',
       ),
     ];
 
-    List<PaymentTransactionModel> finalTxs = List.from(sampleTxs);
+    DateTime filterStart;
+    DateTime filterEnd;
 
     if (startDate != null && endDate != null) {
-      final s = DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
-      final e = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59, 999);
-      final daysDiff = e.difference(s).inDays;
-      finalTxs = sampleTxs.asMap().entries.map((entry) {
-        final idx = entry.key;
-        final tx = entry.value;
-        final dayOffset = daysDiff > 0 ? (idx % (daysDiff + 1)) : 0;
-        final mappedDate = DateTime(s.year, s.month, s.day + dayOffset, tx.transactionDate.hour, tx.transactionDate.minute);
-        return tx.copyWith(transactionDate: mappedDate);
-      }).where((tx) => !tx.transactionDate.isBefore(s) && !tx.transactionDate.isAfter(e)).toList();
-
-      if (finalTxs.isEmpty) {
-        final mappedDate = DateTime(s.year, s.month, s.day, 12, 0);
-        finalTxs = [sampleTxs.first.copyWith(transactionDate: mappedDate)];
+      filterStart = DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
+      filterEnd = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59, 999);
+    } else {
+      switch (period.toLowerCase()) {
+        case 'hari ini':
+        case 'today':
+          filterStart = DateTime(now.year, now.month, now.day, 0, 0, 0);
+          filterEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+          break;
+        case 'minggu ini':
+        case 'this_week':
+          final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+          filterStart = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day, 0, 0, 0);
+          filterEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+          break;
+        case 'bulan ini':
+        case 'this_month':
+          filterStart = DateTime(now.year, now.month, 1, 0, 0, 0);
+          filterEnd = DateTime(now.year, now.month + 1, 0, 23, 59, 59, 999);
+          break;
+        default:
+          filterStart = DateTime(2020, 1, 1);
+          filterEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+          break;
       }
     }
 
-    double totalRev = 2450000.0;
-    double cashAmount = 650000.0;
-    double transferAmount = 900000.0;
-    double qrisAmount = 900000.0;
-    double heldDep = 1000000.0;
+    List<PaymentTransactionModel> finalTxs = sampleTxs.where((tx) {
+      return !tx.transactionDate.isBefore(filterStart) && !tx.transactionDate.isAfter(filterEnd);
+    }).toList();
 
-    if (period == 'Minggu Ini') {
-      totalRev *= 4.5;
-      cashAmount *= 4.2;
-      transferAmount *= 4.6;
-      qrisAmount *= 4.7;
-      heldDep *= 3.0;
-    } else if (period == 'Bulan Ini') {
-      totalRev *= 18.0;
-      cashAmount *= 16.5;
-      transferAmount *= 18.5;
-      qrisAmount *= 19.0;
-      heldDep *= 8.0;
-    } else if (period == 'Semua') {
-      totalRev *= 42.0;
-      cashAmount *= 38.0;
-      transferAmount *= 44.0;
-      qrisAmount *= 44.0;
-      heldDep *= 15.0;
+    if (paymentMethod != null &&
+        paymentMethod.isNotEmpty &&
+        !['semua', 'all', 'semua metode'].contains(paymentMethod.toLowerCase())) {
+      finalTxs = finalTxs.where((tx) => tx.paymentMethod.toLowerCase().contains(paymentMethod.toLowerCase())).toList();
     }
 
-    final payBreakdown = {
-      'Transfer Bank': transferAmount,
-      'QRIS Dinamis': qrisAmount,
-      'Kas Fisik Tunai': cashAmount,
+    final double totalRev = finalTxs.fold(0.0, (s, tx) => s + tx.paidAmount);
+    final double cashAmount = finalTxs
+        .where((tx) => tx.paymentMethod.toLowerCase().contains('tunai') || tx.paymentMethod.toLowerCase().contains('cash'))
+        .fold(0.0, (s, tx) => s + tx.paidAmount);
+    final double transferAmount = finalTxs
+        .where((tx) => tx.paymentMethod.toLowerCase().contains('transfer') || tx.paymentMethod.toLowerCase().contains('bank') || tx.paymentMethod.toLowerCase().contains('va'))
+        .fold(0.0, (s, tx) => s + tx.paidAmount);
+    final double qrisAmount = finalTxs
+        .where((tx) => tx.paymentMethod.toLowerCase().contains('qris'))
+        .fold(0.0, (s, tx) => s + tx.paidAmount);
+    final double heldDep = finalTxs.fold(0.0, (s, tx) => s + tx.depositAmount);
+
+    final Map<String, double> payBreakdown = {};
+    for (final tx in finalTxs) {
+      payBreakdown[tx.paymentMethod] = (payBreakdown[tx.paymentMethod] ?? 0.0) + tx.paidAmount;
+    }
+
+    final Map<String, double> typeBreakdown = {
+      'dp': 0.0,
+      'payment': totalRev,
+      'extend': 0.0,
+      'penalty': 0.0,
     };
 
-    final typeBreakdown = {
-      'dp': 450000.0 * (totalRev / 2450000.0),
-      'payment': 1650000.0 * (totalRev / 2450000.0),
-      'extend': 250000.0 * (totalRev / 2450000.0),
-      'penalty': 100000.0 * (totalRev / 2450000.0),
-    };
-
-    final modelRevenue = {
-      'iPhone 15 Pro 256GB': 1100000.0 * (totalRev / 2450000.0),
-      'iPhone 14 Pro 128GB': 800000.0 * (totalRev / 2450000.0),
-      'iPhone 13 128GB': 550000.0 * (totalRev / 2450000.0),
-    };
-
-    final modelCount = {
-      'iPhone 15 Pro 256GB': 3,
-      'iPhone 14 Pro 128GB': 2,
-      'iPhone 13 128GB': 2,
-    };
+    final Map<String, double> modelRevenue = {};
+    final Map<String, int> modelCount = {};
+    for (final tx in finalTxs) {
+      modelRevenue[tx.iphoneName] = (modelRevenue[tx.iphoneName] ?? 0.0) + tx.paidAmount;
+      modelCount[tx.iphoneName] = (modelCount[tx.iphoneName] ?? 0) + 1;
+    }
 
     return {
-      'period_label': period,
-      'start_date': startDate?.toIso8601String(),
-      'end_date': endDate?.toIso8601String(),
+      'status': 'success',
+      'period': period,
+      'start_date': '${filterStart.year}-${filterStart.month.toString().padLeft(2, '0')}-${filterStart.day.toString().padLeft(2, '0')}',
+      'end_date': '${filterEnd.year}-${filterEnd.month.toString().padLeft(2, '0')}-${filterEnd.day.toString().padLeft(2, '0')}',
       'summary': {
         'totalRevenue': totalRev,
         'totalDepositsHeld': heldDep,
         'totalDepositsRefunded': 0.0,
         'transactionCount': finalTxs.length,
-        'averageTransactionValue': finalTxs.isNotEmpty ? totalRev / finalTxs.length : 350000.0,
+        'averageTransactionValue': finalTxs.isNotEmpty ? totalRev / finalTxs.length : 0.0,
         'cashAmount': cashAmount,
         'transferAmount': transferAmount,
         'qrisAmount': qrisAmount,
+        'total_revenue': totalRev,
+        'total_deposits_held': heldDep,
+        'total_deposits_refunded': 0.0,
+        'transaction_count': finalTxs.length,
+        'average_transaction_value': finalTxs.isNotEmpty ? totalRev / finalTxs.length : 0.0,
+        'cash_amount': cashAmount,
+        'transfer_amount': transferAmount,
+        'qris_amount': qrisAmount,
       },
       'paymentMethodBreakdown': payBreakdown,
+      'payment_method_breakdown': payBreakdown,
       'typeBreakdown': typeBreakdown,
+      'type_breakdown': typeBreakdown,
       'modelRentalCount': modelCount,
+      'model_rental_count': modelCount,
       'modelRevenue': modelRevenue,
+      'model_revenue': modelRevenue,
       'transactions': finalTxs,
     };
   }
@@ -2232,12 +2233,27 @@ class BookingRepository {
       return left + ' ' * (spaces > 0 ? spaces : 1) + right;
     }
 
-    final summary = (reportData['summary'] as Map<String, dynamic>?) ?? {};
-    final breakdown = (reportData['paymentMethodBreakdown'] as Map<String, double>?) ?? {};
-    final double totalRev = (summary['totalRevenue'] as num?)?.toDouble() ?? 0;
-    final double heldDep = (summary['totalDepositsHeld'] as num?)?.toDouble() ?? 0;
-    final double refundDep = (summary['totalDepositsRefunded'] as num?)?.toDouble() ?? 0;
-    final int txCount = summary['transactionCount'] ?? 0;
+    final summaryRaw = reportData['summary'];
+    final Map<String, dynamic> summary = summaryRaw is Map ? Map<String, dynamic>.from(summaryRaw) : {};
+    final rawBreakdown = reportData['paymentMethodBreakdown'] ?? reportData['payment_method_breakdown'];
+    final Map<String, double> breakdown = {};
+    if (rawBreakdown is Map) {
+      rawBreakdown.forEach((k, v) {
+        if (v is num) breakdown[k.toString()] = v.toDouble();
+      });
+    }
+    final double totalRev = (summary['totalRevenue'] as num?)?.toDouble() ??
+        (summary['total_revenue'] as num?)?.toDouble() ??
+        0;
+    final double heldDep = (summary['totalDepositsHeld'] as num?)?.toDouble() ??
+        (summary['total_deposits_held'] as num?)?.toDouble() ??
+        0;
+    final double refundDep = (summary['totalDepositsRefunded'] as num?)?.toDouble() ??
+        (summary['total_deposits_refunded'] as num?)?.toDouble() ??
+        0;
+    final int txCount = (summary['transactionCount'] as num?)?.toInt() ??
+        (summary['transaction_count'] as num?)?.toInt() ??
+        0;
 
     final lines = <String>[];
     lines.add(divider);
