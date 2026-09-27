@@ -2461,12 +2461,16 @@ void main() {
     // Verify Deskripsi Section
     expect(find.text('DESKRIPSI & CATATAN UNIT'), findsOneWidget);
 
-    // Verify Physical Specs
-    expect(find.text('SPESIFIKASI FISIK & OPERASIONAL'), findsOneWidget);
-    expect(find.text('128GB'), findsOneWidget);
-    expect(find.text('256GB'), findsOneWidget);
-    expect(find.text('512GB'), findsOneWidget);
-    expect(find.text('1TB'), findsOneWidget);
+    // Verify Physical Specs are removed as requested by user
+    expect(find.text('SPESIFIKASI FISIK & OPERASIONAL'), findsNothing);
+    expect(find.text('128GB'), findsNothing);
+    expect(find.text('Warna Device:'), findsNothing);
+    expect(find.text('Battery Health (%):'), findsNothing);
+    expect(find.text('Cabang Affiliate:'), findsNothing);
+    expect(find.text('Status Awal:'), findsNothing);
+
+    // Verify Upload Foto dari Penyimpanan HP / Memori is present
+    expect(find.text('Upload dari HP'), findsWidgets);
 
     // Verify Setelan Series & Registrasi (matching Livewire/Iphones/Create.php)
     expect(find.text('Setelan Series & Registrasi'), findsOneWidget);
@@ -2509,7 +2513,7 @@ void main() {
     expect(createdUnit!.durations.isNotEmpty, isTrue);
   });
 
-  testWidgets('CreateIphoneDialog handles dynamic affiliate options safely without assertion error', (WidgetTester tester) async {
+  testWidgets('CreateIphoneDialog renders simplified fields and storage image upload button safely', (WidgetTester tester) async {
     final repository = BookingRepository();
 
     await tester.pumpWidget(
@@ -2525,6 +2529,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byType(CreateIphoneDialog), findsOneWidget);
+    expect(find.text('Upload dari HP'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }

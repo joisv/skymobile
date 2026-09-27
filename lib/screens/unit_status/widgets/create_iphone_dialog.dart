@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../data/booking_repository.dart';
 import '../../../models/iphone_model.dart';
 import '../../../services/api_service.dart';
@@ -43,20 +44,16 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _snController = TextEditingController();
   final TextEditingController _assetCodeController = TextEditingController();
-  final TextEditingController _colorController = TextEditingController(text: 'Natural Titanium');
-  final TextEditingController _bhController = TextEditingController(text: '100');
 
   // Form State
-  String _selectedStorage = '128GB';
-  String _selectedBranch = 'Purwoharjo';
-  int? _selectedAffiliateId = 1;
-  String _selectedStatus = 'ready';
-  int _batteryHealth = 100;
   DateTime _registrationDate = DateTime.now();
 
   // Poster & Gallery State
   int? _selectedGalleryId;
   String? _selectedPosterUrl;
+  Uint8List? _localImageBytes;
+  String? _localImageName;
+  bool _isUploadingImage = false;
   List<Map<String, dynamic>> _galleries = [];
   bool _isLoadingGalleries = false;
 
@@ -66,29 +63,9 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
   // Durations dynamic repeater (matching Livewire/Iphones/Create.php:25-31)
   final List<_DurationEntry> _durationEntries = [];
 
-  // Affiliate Branches list
-  List<Map<String, dynamic>> _affiliateOptions = [
-    {'id': 1, 'name': 'Purwoharjo'},
-    {'id': 2, 'name': 'Genteng'},
-    {'id': 3, 'name': 'Siliragung'},
-    {'id': 4, 'name': 'Gandaria (Pusat)'},
-  ];
-
   // UI state
   bool _isSubmitting = false;
   String? _errorMessage;
-
-  final List<String> _storageOptions = ['128GB', '256GB', '512GB', '1TB'];
-  final List<String> _colorSuggestions = [
-    'Natural Titanium',
-    'Blue Titanium',
-    'Deep Purple',
-    'Space Black',
-    'Midnight',
-    'Starlight',
-    'Silver',
-    'Gold',
-  ];
 
   @override
   void initState() {
@@ -103,9 +80,8 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
     // Auto-slug listener on name
     _nameController.addListener(_onNameChanged);
 
-    // Fetch live galleries and affiliates from backend
+    // Fetch live galleries from backend
     _fetchGalleries();
-    _fetchAffiliates();
   }
 
   @override
@@ -116,8 +92,6 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
     _descriptionController.dispose();
     _snController.dispose();
     _assetCodeController.dispose();
-    _colorController.dispose();
-    _bhController.dispose();
     for (final d in _durationEntries) {
       d.dispose();
     }
@@ -172,29 +146,6 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
     }
   }
 
-  Future<void> _fetchAffiliates() async {
-    try {
-      final res = await ApiService().getAffiliatesApi();
-      if (res != null && res['data'] is List && mounted) {
-        final list = (res['data'] as List).cast<Map<String, dynamic>>();
-        if (list.isNotEmpty) {
-          setState(() {
-            _affiliateOptions = list;
-            final names = list.map((a) => a['name']?.toString().trim() ?? '').where((s) => s.isNotEmpty).toList();
-            if (!names.contains(_selectedBranch)) {
-              if (names.isNotEmpty) {
-                _selectedBranch = names.first;
-                _selectedAffiliateId = list.first['id'] is int
-                    ? list.first['id'] as int
-                    : int.tryParse(list.first['id']?.toString() ?? '');
-              }
-            }
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
   void _addDuration({int hours = 12, int price = 65000}) {
     setState(() {
       _durationEntries.add(_DurationEntry(hours: hours, price: price));
@@ -213,7 +164,73 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
     setState(() {
       _selectedPosterUrl = null;
       _selectedGalleryId = null;
+      _localImageBytes = null;
+      _localImageName = null;
     });
+  }
+
+  /// Memilih gambar dari galeri / penyimpanan internal perangkat (HP/Tablet/PC)
+  Future<void> _pickImageFromStorage() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+      if (image == null) return;
+
+      final bytes = await image.readAsBytes();
+      final filename = image.name.isNotEmpty ? image.name : 'iphone_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      setState(() {
+        _localImageBytes = bytes;
+        _localImageName = filename;
+        _selectedPosterUrl = image.path;
+        _isUploadingImage = true;
+      });
+
+      final uploaded = await ApiService().uploadGalleryImageApi(
+        bytes: bytes,
+        filename: filename,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isUploadingImage = false;
+          if (uploaded != null) {
+            _selectedGalleryId = uploaded['id'] is int ? uploaded['id'] as int : int.tryParse(uploaded['id']?.toString() ?? '');
+            final rawUrl = uploaded['url'] ?? uploaded['image'];
+            if (rawUrl != null) {
+              _selectedPosterUrl = rawUrl.toString();
+            }
+          }
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(uploaded != null
+                ? 'Gambar berhasil diupload ke server galeri!'
+                : 'Gambar berhasil dipilih dari memori internal.'),
+            backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memilih gambar: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _selectRegistrationDate() async {
@@ -523,19 +540,33 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
     });
 
     try {
+      if (_localImageBytes != null && _selectedGalleryId == null) {
+        try {
+          final uploaded = await ApiService().uploadGalleryImageApi(
+            bytes: _localImageBytes!,
+            filename: _localImageName ?? 'iphone.jpg',
+          );
+          if (uploaded != null) {
+            _selectedGalleryId = uploaded['id'] is int ? uploaded['id'] as int : int.tryParse(uploaded['id']?.toString() ?? '');
+            final rawUrl = uploaded['url'] ?? uploaded['image'];
+            if (rawUrl != null) _selectedPosterUrl = rawUrl.toString();
+          }
+        } catch (_) {}
+      }
+
       final newUnit = IphoneModel(
         id: DateTime.now().millisecondsSinceEpoch % 100000,
         name: name,
         slug: _slugController.text.trim().isNotEmpty ? _slugController.text.trim() : _slugify(name),
         description: _descriptionController.text.trim().isNotEmpty ? _descriptionController.text.trim() : null,
-        storage: _selectedStorage,
-        color: _colorController.text.trim().isNotEmpty ? _colorController.text.trim() : 'Default',
+        storage: '',
+        color: '',
         serialNumber: serialNumber,
         assetCode: assetCode,
-        status: _selectedStatus,
-        batteryHealth: _batteryHealth,
-        affiliateId: _selectedAffiliateId,
-        branchName: _selectedBranch,
+        status: 'ready',
+        batteryHealth: 100,
+        affiliateId: null,
+        branchName: null,
         photoUrl: _selectedPosterUrl,
         galleryId: _selectedGalleryId ?? 1,
         createdDate: _registrationDate,
@@ -694,9 +725,9 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Left Column (55%): Model Name, Description, Physical Specs
+        // Left Column (50%): Model Name, Description, Poster & Upload Foto
         Expanded(
-          flex: 12,
+          flex: 11,
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -706,7 +737,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                 const SizedBox(height: 16),
                 _buildDescriptionSection(isDark),
                 const SizedBox(height: 16),
-                _buildPhysicalSpecsCard(isDark),
+                _buildPosterSection(isDark),
               ],
             ),
           ),
@@ -719,17 +750,15 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
           color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
         ),
 
-        // Right Column (45%): Setelan Series, Poster, Date, Slug, Serial/Asset, Repeater Durasi
+        // Right Column (50%): Setelan Series, Tanggal & Slug, Serial/Asset, Repeater Durasi
         Expanded(
-          flex: 10,
+          flex: 11,
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildSeriesSettingHeader(isDark),
-                const SizedBox(height: 14),
-                _buildPosterSection(isDark),
                 const SizedBox(height: 14),
                 _buildDateAndSlugSection(isDark),
                 const SizedBox(height: 14),
@@ -754,12 +783,10 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
           const SizedBox(height: 14),
           _buildDescriptionSection(isDark),
           const SizedBox(height: 14),
-          _buildPhysicalSpecsCard(isDark),
+          _buildPosterSection(isDark),
           const SizedBox(height: 16),
           _buildSeriesSettingHeader(isDark),
           const SizedBox(height: 12),
-          _buildPosterSection(isDark),
-          const SizedBox(height: 14),
           _buildDateAndSlugSection(isDark),
           const SizedBox(height: 14),
           _buildSerialAndAssetSection(isDark),
@@ -925,217 +952,12 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
     );
   }
 
-  // 3. Spesifikasi Fisik (Storage, Color, Battery Health, Cabang, Status)
-  Widget _buildPhysicalSpecsCard(bool isDark) {
+  // 3. Poster Section (Upload dari Memori HP / Galeri Server / Link URL)
+  Widget _buildPosterSection(bool isDark) {
+    final bool hasImage = _localImageBytes != null || (_selectedPosterUrl != null && _selectedPosterUrl!.isNotEmpty);
+
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'SPESIFIKASI FISIK & OPERASIONAL',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
-              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Storage Chips
-          const Text('Kapasitas Penyimpanan (Storage):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            children: _storageOptions.map((s) {
-              final isSel = _selectedStorage == s;
-              return ChoiceChip(
-                label: Text(s, style: TextStyle(fontSize: 12, fontWeight: isSel ? FontWeight.bold : FontWeight.normal)),
-                selected: isSel,
-                selectedColor: AppTheme.accent.withAlpha(40),
-                onSelected: (val) {
-                  if (val) setState(() => _selectedStorage = s);
-                },
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 14),
-
-          // Warna Device
-          const Text('Warna Device:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          TextFormField(
-            controller: _colorController,
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: 'Contoh: Natural Titanium',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            ),
-          ),
-          const SizedBox(height: 6),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: _colorSuggestions.map((c) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ActionChip(
-                    label: Text(c, style: const TextStyle(fontSize: 11)),
-                    padding: EdgeInsets.zero,
-                    onPressed: () {
-                      _colorController.text = c;
-                    },
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Battery Health Slider + Input
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Battery Health (%):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _batteryHealth >= 90
-                      ? Colors.green.withAlpha(30)
-                      : (_batteryHealth >= 80 ? Colors.orange.withAlpha(30) : Colors.red.withAlpha(30)),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '$_batteryHealth%',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: _batteryHealth >= 90
-                        ? Colors.green.shade700
-                        : (_batteryHealth >= 80 ? Colors.orange.shade800 : Colors.red.shade700),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          Slider(
-            value: _batteryHealth.toDouble(),
-            min: 50,
-            max: 100,
-            divisions: 50,
-            label: '$_batteryHealth%',
-            activeColor: _batteryHealth >= 90 ? const Color(0xFF10B981) : AppTheme.accent,
-            onChanged: (val) {
-              setState(() {
-                _batteryHealth = val.round();
-                _bhController.text = _batteryHealth.toString();
-              });
-            },
-          ),
-          const SizedBox(height: 10),
-
-          // Cabang Affiliate & Status Unit
-          Builder(
-            builder: (context) {
-              final branchItems = _affiliateOptions
-                  .map((aff) => aff['name']?.toString().trim() ?? '')
-                  .where((name) => name.isNotEmpty)
-                  .toSet()
-                  .toList();
-
-              if (branchItems.isEmpty) {
-                branchItems.add('Pusat');
-              }
-
-              final effectiveBranch = branchItems.contains(_selectedBranch) ? _selectedBranch : branchItems.first;
-
-              return Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Cabang Affiliate:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 6),
-                        DropdownButtonFormField<String>(
-                          key: ValueKey('branch_$effectiveBranch'),
-                          initialValue: effectiveBranch,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          items: branchItems.map((name) {
-                            return DropdownMenuItem<String>(
-                              value: name,
-                              child: Text(name, style: const TextStyle(fontSize: 12)),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() {
-                                _selectedBranch = val;
-                                final match = _affiliateOptions.firstWhere(
-                                  (a) => (a['name']?.toString().trim().toLowerCase() ?? '') == val.toLowerCase(),
-                                  orElse: () => {'id': 1},
-                                );
-                                _selectedAffiliateId = match['id'] is int ? match['id'] as int : int.tryParse(match['id']?.toString() ?? '');
-                              });
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Status Awal:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 6),
-                        DropdownButtonFormField<String>(
-                          key: ValueKey('status_$_selectedStatus'),
-                          initialValue: ['ready', 'maintenance'].contains(_selectedStatus.toLowerCase())
-                              ? _selectedStatus.toLowerCase()
-                              : 'ready',
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          items: const [
-                            DropdownMenuItem(value: 'ready', child: Text('Tersedia (Ready)', style: TextStyle(fontSize: 12))),
-                            DropdownMenuItem(value: 'maintenance', child: Text('Perawatan', style: TextStyle(fontSize: 12))),
-                          ],
-                          onChanged: (val) {
-                            if (val != null) setState(() => _selectedStatus = val);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 4. Poster Section (matches create.blade.php:104-144)
-  Widget _buildPosterSection(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -1150,56 +972,98 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.image_rounded, size: 16, color: AppTheme.accent),
-                  const SizedBox(width: 6),
+                  Icon(Icons.image_rounded, size: 18, color: AppTheme.accent),
+                  const SizedBox(width: 8),
                   const Text('Poster / Foto Unit', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                 ],
               ),
-              if (_selectedPosterUrl != null)
+              if (hasImage)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: Colors.green.withAlpha(30),
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Text('Terpilih', style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _localImageBytes != null ? Icons.phone_android_rounded : Icons.cloud_done_rounded,
+                        size: 13,
+                        color: Colors.green.shade700,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _localImageBytes != null ? 'Memori HP' : 'Galeri Server',
+                        style: TextStyle(fontSize: 10, color: Colors.green.shade700, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
-          // Poster Preview Card (matching create.blade.php thumbnail with 'x')
-          if (_selectedPosterUrl != null) ...[
+          // Poster Preview Card (from local memory bytes or remote URL)
+          if (hasImage) ...[
             Stack(
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  height: 100,
+                  height: 140,
                   width: double.infinity,
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Image.network(
-                      _resolveImageUrl(_selectedPosterUrl!),
-                      fit: BoxFit.contain,
-                      errorBuilder: (ctx, err, stack) => const Center(
-                        child: Icon(Icons.broken_image_outlined, color: Colors.grey),
-                      ),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: _localImageBytes != null
+                              ? Image.memory(
+                                  _localImageBytes!,
+                                  fit: BoxFit.contain,
+                                )
+                              : Image.network(
+                                  _resolveImageUrl(_selectedPosterUrl!),
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (ctx, err, stack) => const Center(
+                                    child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 36),
+                                  ),
+                                ),
+                        ),
+                        if (_isUploadingImage)
+                          Container(
+                            color: Colors.black45,
+                            child: const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Mengunggah ke galeri server...',
+                                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
-                // Remove 'x' button (matching create.blade.php:132-135)
+                // Remove 'x' button
                 Positioned(
                   top: -8,
                   right: -8,
                   child: InkWell(
                     onTap: _removePoster,
                     child: Container(
-                      padding: const EdgeInsets.all(4),
+                      padding: const EdgeInsets.all(5),
                       decoration: const BoxDecoration(
                         color: Color(0xFFEF4444),
                         shape: BoxShape.circle,
@@ -1211,28 +1075,87 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
+          ] else ...[
+            // Empty placeholder dropzone / upload banner
+            InkWell(
+              onTap: _pickImageFromStorage,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF0F172A).withAlpha(120) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppTheme.accent.withAlpha(90),
+                    width: 1.5,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent.withAlpha(25),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.add_photo_alternate_rounded, size: 28, color: AppTheme.accent),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Pilih atau Upload Foto iPhone',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Upload dari penyimpanan internal HP atau pilih galeri server',
+                      style: TextStyle(fontSize: 11, color: isDark ? Colors.white60 : const Color(0xFF64748B)),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
           ],
 
           // Buttons to change/select poster
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _openGalleryPickerModal,
-                  icon: const Icon(Icons.photo_library_outlined, size: 16),
-                  label: Text(_selectedPosterUrl == null ? 'Pilih dari Galeri' : 'Ganti Poster', style: const TextStyle(fontSize: 12)),
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  ),
+              ElevatedButton.icon(
+                onPressed: _pickImageFromStorage,
+                icon: const Icon(Icons.upload_file_rounded, size: 16),
+                label: Text(
+                  hasImage ? 'Ganti dari HP' : 'Upload dari HP',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accent,
+                  foregroundColor: Colors.white,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
               ),
-              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _openGalleryPickerModal,
+                icon: const Icon(Icons.photo_library_outlined, size: 16),
+                label: const Text('Galeri Server', style: TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
               IconButton(
-                tooltip: 'Input URL Gambar Manual',
+                tooltip: 'Input URL Gambar Kustom',
                 icon: const Icon(Icons.link_rounded, size: 18),
                 onPressed: _showCustomUrlDialog,
+                visualDensity: VisualDensity.compact,
               ),
             ],
           ),

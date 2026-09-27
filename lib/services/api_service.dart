@@ -737,6 +737,42 @@ class ApiService {
     return null;
   }
 
+  /// Mengunggah gambar ke backend galeri dari memori internal / file lokal
+  /// POST /api/v1/galleries/upload
+  Future<Map<String, dynamic>?> uploadGalleryImageApi({
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/galleries/upload');
+        final request = http.MultipartRequest('POST', uri);
+        final headers = _buildHeaders();
+        request.headers.addAll(headers);
+
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'image',
+            bytes,
+            filename: filename,
+          ),
+        );
+
+        final streamedResponse = await request.send().timeout(const Duration(seconds: 15));
+        final response = await http.Response.fromStream(streamedResponse);
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic> && decoded['data'] is Map<String, dynamic>) {
+            return decoded['data'] as Map<String, dynamic>;
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
   /// Memperbarui status unit iPhone di backend
   /// POST /api/v1/iphones/{idOrAssetCode}/status
   Future<bool> updateUnitStatusApi(
