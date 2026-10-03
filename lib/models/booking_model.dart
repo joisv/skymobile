@@ -99,6 +99,7 @@ class BookingModel {
   final double? _explicitLateFee;
   final List<dynamic>? returns;
   final String? userName;
+  final String? userId;
 
   const BookingModel({
     required this.id,
@@ -129,6 +130,7 @@ class BookingModel {
     double? estimatedLateFee,
     this.returns,
     this.userName,
+    this.userId,
   }) : _explicitLateFee = estimatedLateFee;
 
   bool get canPickup => status == BookingStatus.confirmed;
@@ -334,6 +336,8 @@ class BookingModel {
       userName: json['user_name']?.toString() ??
           (json['user'] is Map ? (json['user'] as Map)['name']?.toString() : null) ??
           json['created_by']?.toString(),
+      userId: json['user_id']?.toString() ??
+          (json['user'] is Map ? (json['user'] as Map)['id']?.toString() : null),
     );
   }
 
@@ -366,6 +370,7 @@ class BookingModel {
     double? estimatedLateFee,
     List<dynamic>? returns,
     String? userName,
+    String? userId,
   }) {
     return BookingModel(
       id: id ?? this.id,
@@ -396,6 +401,7 @@ class BookingModel {
       estimatedLateFee: estimatedLateFee ?? _explicitLateFee,
       returns: returns ?? this.returns,
       userName: userName ?? this.userName,
+      userId: userId ?? this.userId,
     );
   }
 }

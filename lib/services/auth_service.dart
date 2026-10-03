@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../models/admin_user_model.dart';
 import 'api_service.dart';
 
@@ -9,7 +10,7 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
-class AuthService {
+class AuthService implements Listenable {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
   AuthService._internal();
@@ -25,20 +26,54 @@ class AuthService {
   bool get rememberMe => _rememberMe;
 
   // Role & Permission Checks
-  bool get isSuperAdmin =>
-      _currentUser?.role.toLowerCase().contains('superadmin') ??
-      _currentUser?.role.toLowerCase().contains('manager') ??
-      false;
+  bool get isSuperAdmin {
+    final role = _currentUser?.role.toLowerCase() ?? '';
+    return role.contains('superadmin') ||
+        role.contains('super-admin') ||
+        role.contains('manager') ||
+        role.contains('owner');
+  }
+
+  bool get isAffiliateAdmin {
+    final role = _currentUser?.role.toLowerCase() ?? '';
+    return role.contains('affiliate-admin') ||
+        role.contains('affiliate_admin') ||
+        role.contains('affiliate') ||
+        role.contains('cabang');
+  }
+
+  bool get isAdmin {
+    final role = _currentUser?.role.toLowerCase() ?? '';
+    final name = _currentUser?.name.toLowerCase() ?? '';
+    final email = _currentUser?.email.toLowerCase() ?? '';
+    return isSuperAdmin ||
+        role.contains('admin') ||
+        name.contains('admin') ||
+        email.contains('admin') ||
+        isAffiliateAdmin;
+  }
+
+  bool get isStaff {
+    if (!isAuthenticated) return false;
+    return !isSuperAdmin && !isAdmin;
+  }
+
+  bool get canViewAllBookings => isSuperAdmin || (isAdmin && !isAffiliateAdmin && affiliateId == null);
+  bool get canViewAllRevenue => isSuperAdmin || (isAdmin && !isAffiliateAdmin && affiliateId == null);
+
+  int? get affiliateId => _currentUser?.affiliateId;
 
   bool get canAccessFinancials => _currentUser != null;
   bool get canManageInventory => _currentUser != null;
   bool get canModifyShopSettings => isSuperAdmin || (_currentUser != null);
 
   // Pure Dart Listenable implementation
+  @override
   void addListener(void Function() listener) {
     _listeners.add(listener);
   }
 
+  @override
   void removeListener(void Function() listener) {
     _listeners.remove(listener);
   }
@@ -48,40 +83,6 @@ class AuthService {
       listener();
     }
   }
-
-  // Mock users database
-  final List<Map<String, dynamic>> _credentials = [
-    {
-      'email': 'admin@skyrental.id',
-      'username': 'admin',
-      'password': 'password123',
-      'user': const AdminUserModel(
-        id: 1,
-        name: 'Admin SKYRental',
-        email: 'admin@skyrental.id',
-        phone: '+62 812-3456-7890',
-        role: 'Superadmin / Manager Outlet',
-        outletName: 'Outlet Utama Malioboro',
-        shiftName: 'Shift Pagi (08:00 - 16:00)',
-        isActive: true,
-      ),
-    },
-    {
-      'email': 'kasir@skyrental.id',
-      'username': 'kasir',
-      'password': 'password123',
-      'user': const AdminUserModel(
-        id: 2,
-        name: 'Budi Santoso',
-        email: 'kasir@skyrental.id',
-        phone: '+62 813-9876-5432',
-        role: 'Staff Kasir & Front Office',
-        outletName: 'Outlet Utama Malioboro',
-        shiftName: 'Shift Pagi (08:00 - 16:00)',
-        isActive: true,
-      ),
-    },
-  ];
 
   /// Restore session from API
   Future<void> restoreSession() async {
@@ -113,15 +114,15 @@ class AuthService {
     return isAuthenticated;
   }
 
+  /// Melakukan autentikasi pengguna langsung ke backend database SKYRental
   Future<AdminUserModel> login({
     required String emailOrUsername,
     required String password,
     bool rememberMe = true,
   }) async {
-    // 1. Coba login via REST API backend Skyrent (Sanctum)
     try {
       final apiResult = await ApiService().loginApi(emailOrUsername, password);
-      if (apiResult != null && apiResult['user'] != null) {
+      if (apiResult['user'] != null) {
         final userMap = apiResult['user'] as Map<String, dynamic>;
         final user = AdminUserModel.fromJson(userMap);
         _currentUser = user;
@@ -130,37 +131,13 @@ class AuthService {
         notifyListeners();
         return user;
       }
-    } catch (_) {
-      // Fallback ke kredensial lokal jika offline
+      throw const AuthException('Respon data pengguna tidak lengkap dari server database.');
+    } on ApiException catch (e) {
+      throw AuthException(e.message);
+    } catch (e) {
+      if (e is AuthException) rethrow;
+      throw AuthException('Gagal masuk: $e');
     }
-
-    // 2. Fallback kredensial lokal (untuk mode offline & unit test)
-    await Future.delayed(const Duration(milliseconds: 150));
-
-    final normalizedInput = emailOrUsername.trim().toLowerCase();
-    final normalizedPass = password.trim();
-
-    final match = _credentials.firstWhere(
-      (c) =>
-          ((c['email'] as String).toLowerCase() == normalizedInput ||
-              (c['username'] as String).toLowerCase() == normalizedInput) &&
-          c['password'] == normalizedPass,
-      orElse: () => {},
-    );
-
-    if (match.isEmpty) {
-      throw const AuthException(
-        'Email/username atau kata sandi tidak valid. Periksa kembali data login Anda.',
-      );
-    }
-
-    final user = match['user'] as AdminUserModel;
-    _currentUser = user;
-    _token = 'mock-sanctum-token-${user.id}-${DateTime.now().millisecondsSinceEpoch}';
-    _rememberMe = rememberMe;
-
-    notifyListeners();
-    return user;
   }
 
   Future<void> logout() async {
@@ -178,29 +155,23 @@ class AuthService {
     notifyListeners();
   }
 
+  /// Mengubah kata sandi pengguna langsung pada database backend
   Future<bool> changePassword({
     required String currentPassword,
     required String newPassword,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 250));
     if (_currentUser == null) {
       throw const AuthException('Sesi telah berakhir. Silakan login kembali.');
     }
 
-    final idx = _credentials.indexWhere(
-      (c) => (c['user'] as AdminUserModel).id == _currentUser!.id,
-    );
-
-    if (idx != -1) {
-      if (_credentials[idx]['password'] != currentPassword) {
-        throw const AuthException('Kata sandi saat ini salah.');
-      }
-      _credentials[idx]['password'] = newPassword;
-      notifyListeners();
-      return true;
+    try {
+      return await ApiService().changePasswordApi(currentPassword, newPassword);
+    } on ApiException catch (e) {
+      throw AuthException(e.message);
+    } catch (e) {
+      if (e is AuthException) rethrow;
+      throw AuthException('Gagal mengubah kata sandi: $e');
     }
-
-    return true;
   }
 
   void setCurrentUserForTest(AdminUserModel? user, {String? token}) {

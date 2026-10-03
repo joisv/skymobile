@@ -62,8 +62,7 @@ class _ReportDateRangePickerBottomSheetState
   late DateTime _endDate;
   String _selectedPreset = 'Kustom';
 
-  // Base date for simulated 2026 operational environment
-  final DateTime _today = DateTime(2026, 9, 9);
+  DateTime get _today => DateTime.now();
 
   final List<String> _presets = [
     'Hari Ini',
@@ -83,37 +82,39 @@ class _ReportDateRangePickerBottomSheetState
   }
 
   void _applyPreset(String preset) {
+    final now = _today;
     setState(() {
       _selectedPreset = preset;
       switch (preset) {
         case 'Hari Ini':
-          _startDate = DateTime(_today.year, _today.month, _today.day);
-          _endDate = DateTime(_today.year, _today.month, _today.day, 23, 59, 59);
+          _startDate = DateTime(now.year, now.month, now.day);
+          _endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
           break;
         case 'Kemarin':
-          final y = _today.subtract(const Duration(days: 1));
+          final y = now.subtract(const Duration(days: 1));
           _startDate = DateTime(y.year, y.month, y.day);
           _endDate = DateTime(y.year, y.month, y.day, 23, 59, 59);
           break;
         case '7 Hari Terakhir':
-          final start7 = _today.subtract(const Duration(days: 6));
+          final start7 = now.subtract(const Duration(days: 6));
           _startDate = DateTime(start7.year, start7.month, start7.day);
-          _endDate = DateTime(_today.year, _today.month, _today.day, 23, 59, 59);
+          _endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
           break;
         case '30 Hari Terakhir':
-          final start30 = _today.subtract(const Duration(days: 29));
+          final start30 = now.subtract(const Duration(days: 29));
           _startDate = DateTime(start30.year, start30.month, start30.day);
-          _endDate = DateTime(_today.year, _today.month, _today.day, 23, 59, 59);
+          _endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
           break;
         case 'Bulan Ini':
-          _startDate = DateTime(_today.year, _today.month, 1);
-          _endDate = DateTime(_today.year, _today.month, 30, 23, 59, 59);
+          _startDate = DateTime(now.year, now.month, 1);
+          final lastDay = DateTime(now.year, now.month + 1, 0).day;
+          _endDate = DateTime(now.year, now.month, lastDay, 23, 59, 59);
           break;
         case 'Bulan Lalu':
-          final lastMonth = _today.month == 1 ? 12 : _today.month - 1;
-          final year = _today.month == 1 ? _today.year - 1 : _today.year;
-          _startDate = DateTime(year, lastMonth, 1);
-          _endDate = DateTime(year, lastMonth, 31, 23, 59, 59);
+          final prevMonth = DateTime(now.year, now.month - 1, 1);
+          final lastDayPrev = DateTime(now.year, now.month, 0).day;
+          _startDate = DateTime(prevMonth.year, prevMonth.month, 1);
+          _endDate = DateTime(prevMonth.year, prevMonth.month, lastDayPrev, 23, 59, 59);
           break;
       }
     });

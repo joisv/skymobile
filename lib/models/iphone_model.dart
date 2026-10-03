@@ -1,4 +1,5 @@
 import '../services/api_service.dart';
+import '../utils/formatters.dart';
 
 class IphoneDurationOption {
   final int id;
@@ -96,6 +97,7 @@ class IphoneModel {
   String get fullName => '$name $storage';
   String get fullDisplayName => '$name $storage - $color';
   String get modelName => fullName;
+  String? get affiliateName => branchName;
   List<IphoneDurationOption> get availableDurations {
     if (durations.isNotEmpty) return durations;
     return const [
@@ -130,9 +132,14 @@ class IphoneModel {
       case 'rented':
       case 'disewa':
         return 'Sedang Sewa';
+      case 'terlambat':
+      case 'overdue':
+      case 'late':
+        return 'Terlambat';
       case 'maintenance':
       case 'perbaikan':
-        return 'Perbaikan';
+      case 'perawatan':
+        return 'Perawatan';
       case 'transferred':
       case 'mutasi':
         return 'Dalam Mutasi';
@@ -234,9 +241,12 @@ class IphoneModel {
             : null) ??
         json['image']?.toString();
 
-    final rawBranch = json['branch_name']?.toString() ??
-        json['branch']?.toString() ??
+    final rawAffiliateName = json['affiliate_name']?.toString() ??
         (json['affiliate'] is Map ? (json['affiliate'] as Map)['name']?.toString() : null);
+
+    final rawBranch = json['branch_name']?.toString() ??
+        rawAffiliateName ??
+        json['branch']?.toString();
 
     final rawGalleryId = json['gallery_id'] is int
         ? json['gallery_id'] as int
@@ -249,6 +259,41 @@ class IphoneModel {
       } catch (_) {}
     }
 
+    final rentalData = (json['current_rental'] is Map ? json['current_rental'] as Map : null) ??
+        (json['active_booking'] is Map ? json['active_booking'] as Map : null);
+
+    final rawCustomerName = json['customer_name']?.toString() ?? rentalData?['customer_name']?.toString();
+    final rawBookingCode = json['booking_code']?.toString() ?? rentalData?['booking_code']?.toString();
+
+    String? rawSchedule = json['return_schedule_text']?.toString();
+    if (rawSchedule == null && rentalData != null) {
+      final endDate = rentalData['end_date']?.toString();
+      final endTime = rentalData['end_time']?.toString() ?? '18:00 WIB';
+      if (endDate != null) {
+        try {
+          final parsedEnd = DateTime.tryParse(endDate);
+          if (parsedEnd != null) {
+            final now = DateTime.now();
+            final isToday = parsedEnd.year == now.year && parsedEnd.month == now.month && parsedEnd.day == now.day;
+            if (isToday) {
+              rawSchedule = 'Kembali Hari Ini: $endTime';
+            } else {
+              rawSchedule = 'Kembali: ${Formatters.date(parsedEnd)} • $endTime';
+            }
+          } else {
+            rawSchedule = 'Kembali: $endDate • $endTime';
+          }
+        } catch (_) {
+          rawSchedule = 'Kembali: $endDate • $endTime';
+        }
+      }
+    }
+
+    final rawStatus = json['status']?.toString() ?? 'ready';
+    final effectiveStatus = (rentalData != null && (rawStatus.toLowerCase() == 'ready' || rawStatus.toLowerCase() == 'tersedia'))
+        ? 'disewa'
+        : rawStatus;
+
     return IphoneModel(
       id: json['id'] is int
           ? json['id'] as int
@@ -258,7 +303,7 @@ class IphoneModel {
       color: json['color']?.toString() ?? 'Default',
       serialNumber: json['serial_number']?.toString() ?? '-',
       assetCode: json['asset_code']?.toString() ?? '-',
-      status: json['status']?.toString() ?? 'ready',
+      status: effectiveStatus,
       batteryHealth: json['battery_health'] is int
           ? json['battery_health'] as int
           : int.tryParse(json['battery_health']?.toString() ?? '100') ?? 100,
@@ -267,9 +312,9 @@ class IphoneModel {
       photoUrl: rawPhoto,
       branchName: rawBranch,
       maintenanceNote: json['maintenance_note']?.toString(),
-      customerName: json['customer_name']?.toString(),
-      bookingCode: json['booking_code']?.toString(),
-      returnScheduleText: json['return_schedule_text']?.toString(),
+      customerName: rawCustomerName,
+      bookingCode: rawBookingCode,
+      returnScheduleText: rawSchedule,
       slug: json['slug']?.toString(),
       description: json['description']?.toString(),
       galleryId: rawGalleryId,
@@ -289,6 +334,7 @@ class IphoneModel {
       'battery_health': batteryHealth,
       'durations': durations.map((d) => d.toJson()).toList(),
       'affiliate_id': affiliateId,
+      'affiliate_name': branchName,
       'photo_url': photoUrl,
       'branch_name': branchName,
       'maintenance_note': maintenanceNote,

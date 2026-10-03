@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../data/booking_repository.dart';
+import '../../../models/affiliate_model.dart';
 import '../../../models/iphone_model.dart';
 import '../../../services/api_service.dart';
 import '../../../theme/app_theme.dart';
@@ -10,12 +11,22 @@ import '../../../utils/formatters.dart';
 class CreateIphoneDialog extends StatefulWidget {
   final BookingRepository repository;
   final ValueChanged<IphoneModel>? onCreated;
+  final IphoneModel? initialUnit;
 
   const CreateIphoneDialog({
     super.key,
     required this.repository,
     this.onCreated,
+    this.initialUnit,
   });
+
+  const CreateIphoneDialog.edit({
+    super.key,
+    required this.repository,
+    required IphoneModel unit,
+    ValueChanged<IphoneModel>? onSaved,
+  })  : initialUnit = unit,
+        onCreated = onSaved;
 
   @override
   State<CreateIphoneDialog> createState() => _CreateIphoneDialogState();
@@ -38,6 +49,8 @@ class _DurationEntry {
 class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
   final _formKey = GlobalKey<FormState>();
 
+  bool get isEditMode => widget.initialUnit != null;
+
   // Text Controllers
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _slugController = TextEditingController();
@@ -57,6 +70,10 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
   List<Map<String, dynamic>> _galleries = [];
   bool _isLoadingGalleries = false;
 
+  // Affiliate State
+  int? _selectedAffiliateId;
+  List<AffiliateModel> _affiliates = [];
+
   // Slugs & Auto-generation
   bool _isSlugManuallyEdited = false;
 
@@ -64,24 +81,48 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
   final List<_DurationEntry> _durationEntries = [];
 
   // UI state
+  bool _hasAttemptedSubmit = false;
   bool _isSubmitting = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    // Default duration repeater: 24 Jam - Rp 100.000 (matching Create.php:25-31)
-    _durationEntries.add(_DurationEntry(hours: 24, price: 100000));
+    if (isEditMode) {
+      final unit = widget.initialUnit!;
+      _nameController.text = unit.name;
+      _slugController.text = unit.slug ?? _slugify(unit.name);
+      _isSlugManuallyEdited = true;
+      _descriptionController.text = unit.description ?? '';
+      _snController.text = unit.serialNumber;
+      _assetCodeController.text = unit.assetCode;
+      _registrationDate = unit.createdDate ?? DateTime.now();
+      _selectedGalleryId = unit.galleryId;
+      _selectedPosterUrl = unit.photoUrl;
+      _selectedAffiliateId = unit.affiliateId;
 
-    // Auto-generate initial asset code & serial number
-    _generateAssetCode();
-    _generateSerialNumber();
+      if (unit.durations.isNotEmpty) {
+        for (final d in unit.durations) {
+          _durationEntries.add(_DurationEntry(hours: d.hours, price: d.price.round()));
+        }
+      } else {
+        _durationEntries.add(_DurationEntry(hours: 24, price: 100000));
+      }
+    } else {
+      // Default duration repeater: 24 Jam - Rp 100.000 (matching Create.php:25-31)
+      _durationEntries.add(_DurationEntry(hours: 24, price: 100000));
+
+      // Auto-generate initial asset code & serial number
+      _generateAssetCode();
+      _generateSerialNumber();
+    }
 
     // Auto-slug listener on name
     _nameController.addListener(_onNameChanged);
 
-    // Fetch live galleries from backend
+    // Fetch live galleries and affiliates from backend
     _fetchGalleries();
+    _fetchAffiliates();
   }
 
   @override
@@ -144,6 +185,17 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
     } finally {
       if (mounted) setState(() => _isLoadingGalleries = false);
     }
+  }
+
+  Future<void> _fetchAffiliates() async {
+    try {
+      final affs = await widget.repository.getAffiliates();
+      if (mounted) {
+        setState(() {
+          _affiliates = affs;
+        });
+      }
+    } catch (_) {}
   }
 
   void _addDuration({int hours = 12, int price = 65000}) {
@@ -488,7 +540,15 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
   }
 
   Future<void> _submitForm() async {
+    setState(() {
+      _hasAttemptedSubmit = true;
+      _errorMessage = null;
+    });
+
     if (!_formKey.currentState!.validate()) {
+      setState(() {
+        _errorMessage = 'Harap periksa kembali isian formulir. Terdapat data yang belum valid.';
+      });
       return;
     }
 
@@ -503,6 +563,29 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
       return;
     }
 
+    // Check duplicate duration hours
+    final seenHours = <int>{};
+    for (int i = 0; i < _durationEntries.length; i++) {
+      final entry = _durationEntries[i];
+      final h = int.tryParse(entry.hoursController.text.trim());
+      if (h != null) {
+        if (seenHours.contains(h)) {
+          setState(() {
+            _errorMessage = 'Terdapat paket durasi ganda ($h Jam). Setiap baris durasi harus memiliki jumlah jam yang berbeda.';
+          });
+          return;
+        }
+        seenHours.add(h);
+      }
+    }
+
+    if (_durationEntries.isEmpty) {
+      setState(() {
+        _errorMessage = 'Minimal harus memiliki 1 paket durasi sewa.';
+      });
+      return;
+    }
+
     // Build duration list
     final List<IphoneDurationOption> parsedDurations = [];
     for (int i = 0; i < _durationEntries.length; i++) {
@@ -511,7 +594,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
       final rawPriceText = entry.priceController.text.replaceAll(RegExp(r'[^\d]'), '');
       final price = double.tryParse(rawPriceText) ?? 100000.0;
 
-      if (hours > 0) {
+      if (hours > 0 && price > 0) {
         parsedDurations.add(
           IphoneDurationOption(
             id: i + 1,
@@ -524,14 +607,10 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
     }
 
     if (parsedDurations.isEmpty) {
-      parsedDurations.add(
-        const IphoneDurationOption(
-          id: 1,
-          name: '24 Jam',
-          hours: 24,
-          price: 100000.0,
-        ),
-      );
+      setState(() {
+        _errorMessage = 'Paket durasi sewa dan tarif tidak boleh kosong.';
+      });
+      return;
     }
 
     setState(() {
@@ -554,6 +633,49 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
         } catch (_) {}
       }
 
+      final selectedAff = _affiliates.where((a) => a.id == _selectedAffiliateId).firstOrNull;
+      final branchName = selectedAff?.name ?? (isEditMode ? widget.initialUnit!.branchName : null);
+
+      if (isEditMode) {
+        final updatedUnit = widget.initialUnit!.copyWith(
+          name: name,
+          slug: _slugController.text.trim().isNotEmpty ? _slugController.text.trim() : _slugify(name),
+          description: _descriptionController.text.trim().isNotEmpty ? _descriptionController.text.trim() : null,
+          serialNumber: serialNumber,
+          assetCode: assetCode,
+          affiliateId: _selectedAffiliateId,
+          branchName: branchName,
+          photoUrl: _selectedPosterUrl,
+          galleryId: _selectedGalleryId ?? widget.initialUnit!.galleryId ?? 1,
+          createdDate: _registrationDate,
+          durations: parsedDurations,
+        );
+
+        final saved = await widget.repository.updateInventoryUnit(updatedUnit);
+
+        if (!mounted) return;
+        Navigator.of(context).pop();
+
+        widget.onCreated?.call(saved);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('Unit ${saved.fullName} (${saved.assetCode}) berhasil diperbarui!'),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
       final newUnit = IphoneModel(
         id: DateTime.now().millisecondsSinceEpoch % 100000,
         name: name,
@@ -565,8 +687,8 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
         assetCode: assetCode,
         status: 'ready',
         batteryHealth: 100,
-        affiliateId: null,
-        branchName: null,
+        affiliateId: _selectedAffiliateId,
+        branchName: branchName,
         photoUrl: _selectedPosterUrl,
         galleryId: _selectedGalleryId ?? 1,
         createdDate: _registrationDate,
@@ -628,9 +750,13 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
           borderRadius: BorderRadius.circular(20),
           child: Scaffold(
             backgroundColor: Colors.transparent,
+            resizeToAvoidBottomInset: false,
             appBar: _buildAppBar(context, isDark),
             body: Form(
               key: _formKey,
+              autovalidateMode: _hasAttemptedSubmit
+                  ? AutovalidateMode.onUserInteraction
+                  : AutovalidateMode.disabled,
               child: Column(
                 children: [
                   // Error Banner if present
@@ -641,17 +767,32 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
                         color: Colors.red.shade50,
-                        border: Border.all(color: Colors.red.shade200),
+                        border: Border.all(color: Colors.red.shade300, width: 1.2),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Icon(Icons.error_outline_rounded, color: Colors.red.shade700, size: 20),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 10),
                           Expanded(
-                            child: Text(
-                              _errorMessage!,
-                              style: TextStyle(color: Colors.red.shade800, fontSize: 13),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Gagal Menyimpan Data Unit',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFFB91C1C),
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _errorMessage!,
+                                  style: TextStyle(color: Colors.red.shade900, fontSize: 12, height: 1.3),
+                                ),
+                              ],
                             ),
                           ),
                           InkWell(
@@ -695,16 +836,18 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
             child: Icon(Icons.phone_iphone_rounded, color: AppTheme.accent, size: 22),
           ),
           const SizedBox(width: 12),
-          const Column(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Tambah iPhone Baru',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                isEditMode ? 'Edit Unit iPhone' : 'Tambah iPhone Baru',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
               ),
               Text(
-                'Sistem Katalog & Sinkronisasi Web SKYRental',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
+                isEditMode
+                    ? 'Perbarui rincian spesifikasi & paket sewa ${widget.initialUnit!.assetCode}'
+                    : 'Sistem Katalog & Sinkronisasi Web SKYRental',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ],
           ),
@@ -764,6 +907,8 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                 const SizedBox(height: 14),
                 _buildSerialAndAssetSection(isDark),
                 const SizedBox(height: 14),
+                _buildAffiliateSection(isDark),
+                const SizedBox(height: 14),
                 _buildDurationRepeaterSection(isDark),
               ],
             ),
@@ -790,6 +935,8 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
           _buildDateAndSlugSection(isDark),
           const SizedBox(height: 14),
           _buildSerialAndAssetSection(isDark),
+          const SizedBox(height: 14),
+          _buildAffiliateSection(isDark),
           const SizedBox(height: 14),
           _buildDurationRepeaterSection(isDark),
         ],
@@ -847,6 +994,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
           ),
           const SizedBox(height: 8),
           TextFormField(
+            key: const Key('create_iphone_name_field'),
             controller: _nameController,
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
@@ -860,8 +1008,12 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
               contentPadding: EdgeInsets.zero,
             ),
             validator: (val) {
-              if (val == null || val.trim().isEmpty) {
-                return 'Nama model iPhone wajib diisi';
+              final trimmed = val?.trim() ?? '';
+              if (trimmed.isEmpty) {
+                return 'Nama model iPhone wajib diisi.';
+              }
+              if (trimmed.length < 3) {
+                return 'Nama model iPhone minimal 3 karakter.';
               }
               return null;
             },
@@ -1088,7 +1240,9 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                   color: isDark ? const Color(0xFF0F172A).withAlpha(120) : const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppTheme.accent.withAlpha(90),
+                    color: _hasAttemptedSubmit && !hasImage
+                        ? Colors.amber.shade700
+                        : AppTheme.accent.withAlpha(90),
                     width: 1.5,
                   ),
                 ),
@@ -1245,6 +1399,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
           ),
           const SizedBox(height: 6),
           TextFormField(
+            key: const Key('create_iphone_slug_field'),
             controller: _slugController,
             style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
             decoration: InputDecoration(
@@ -1259,6 +1414,16 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             ),
+            validator: (val) {
+              final trimmed = val?.trim() ?? '';
+              if (trimmed.isEmpty) {
+                return 'Slug permalink wajib diisi.';
+              }
+              if (!RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$').hasMatch(trimmed)) {
+                return 'Format slug tidak valid (hanya huruf kecil, angka, dan tanda hubung -)';
+              }
+              return null;
+            },
             onChanged: (val) {
               _isSlugManuallyEdited = true;
             },
@@ -1333,6 +1498,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                     const Text('Serial Number (SN):', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 4),
                     TextFormField(
+                      key: const Key('create_iphone_sn_field'),
                       controller: _snController,
                       style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
                       decoration: InputDecoration(
@@ -1341,7 +1507,26 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                       ),
-                      validator: (val) => val == null || val.trim().isEmpty ? 'Wajib diisi' : null,
+                      validator: (val) {
+                        final trimmed = val?.trim() ?? '';
+                        if (trimmed.isEmpty) {
+                          return 'Nomor seri (SN) wajib diisi.';
+                        }
+                        if (trimmed.length < 4) {
+                          return 'Nomor seri minimal 4 karakter.';
+                        }
+                        final isDuplicate = widget.repository.inventory.any(
+                          (u) =>
+                              (!isEditMode ||
+                                  ((u.id > 0 && u.id != widget.initialUnit!.id) &&
+                                      u.assetCode.trim().toLowerCase() != widget.initialUnit!.assetCode.trim().toLowerCase())) &&
+                              u.serialNumber.trim().toLowerCase() == trimmed.toLowerCase(),
+                        );
+                        if (isDuplicate) {
+                          return 'Nomor seri sudah terdaftar.';
+                        }
+                        return null;
+                      },
                     ),
                   ],
                 ),
@@ -1354,6 +1539,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                     const Text('Asset Code:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 4),
                     TextFormField(
+                      key: const Key('create_iphone_asset_code_field'),
                       controller: _assetCodeController,
                       style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
                       decoration: InputDecoration(
@@ -1362,12 +1548,90 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                       ),
-                      validator: (val) => val == null || val.trim().isEmpty ? 'Wajib diisi' : null,
+                      validator: (val) {
+                        final trimmed = val?.trim() ?? '';
+                        if (trimmed.isEmpty) {
+                          return 'Kode aset unit wajib diisi.';
+                        }
+                        if (trimmed.length < 3) {
+                          return 'Kode aset minimal 3 karakter.';
+                        }
+                        final isDuplicate = widget.repository.inventory.any(
+                          (u) =>
+                              (!isEditMode ||
+                                  ((u.id > 0 && u.id != widget.initialUnit!.id) &&
+                                      u.assetCode.trim().toLowerCase() != widget.initialUnit!.assetCode.trim().toLowerCase())) &&
+                              u.assetCode.trim().toLowerCase() == trimmed.toLowerCase(),
+                        );
+                        if (isDuplicate) {
+                          return 'Kode aset sudah digunakan.';
+                        }
+                        return null;
+                      },
                     ),
                   ],
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 6b. Affiliate / Cabang Section
+  Widget _buildAffiliateSection(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.storefront_rounded, size: 16, color: Color(0xFF6366F1)),
+              const SizedBox(width: 8),
+              Text(
+                'AFFILIATE / CABANG',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<int?>(
+            key: const Key('create_iphone_affiliate_dropdown'),
+            initialValue: _selectedAffiliateId,
+            dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Pilih Affiliate / Cabang',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            ),
+            items: [
+              const DropdownMenuItem<int?>(
+                value: null,
+                child: Text('Pusat / Tanpa Cabang (-)', style: TextStyle(fontSize: 12.5)),
+              ),
+              ..._affiliates.map((a) {
+                return DropdownMenuItem<int?>(
+                  value: a.id,
+                  child: Text('${a.name} (${a.code})', style: const TextStyle(fontSize: 12.5)),
+                );
+              }),
+            ],
+            onChanged: (val) {
+              setState(() => _selectedAffiliateId = val);
+            },
           ),
         ],
       ),
@@ -1456,6 +1720,17 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                       ),
+                      validator: (val) {
+                        final trimmed = val?.trim() ?? '';
+                        if (trimmed.isEmpty) {
+                          return 'Wajib diisi';
+                        }
+                        final hours = int.tryParse(trimmed);
+                        if (hours == null || hours <= 0) {
+                          return '> 0 jam';
+                        }
+                        return null;
+                      },
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -1476,6 +1751,17 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                       ),
+                      validator: (val) {
+                        final raw = (val ?? '').replaceAll(RegExp(r'[^\d]'), '');
+                        if (raw.isEmpty) {
+                          return 'Wajib diisi';
+                        }
+                        final price = double.tryParse(raw);
+                        if (price == null || price <= 0) {
+                          return 'Harus > 0';
+                        }
+                        return null;
+                      },
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -1578,6 +1864,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
             child: const Text('Batal', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
+            key: const Key('create_iphone_submit_btn'),
             onPressed: _isSubmitting ? null : _submitForm,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF0F172A),
@@ -1592,12 +1879,15 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
-                : const Row(
+                : Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.save_rounded, size: 18),
-                      SizedBox(width: 8),
-                      Text('Simpan Unit iPhone', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Icon(Icons.save_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        isEditMode ? 'Simpan Perubahan' : 'Simpan Unit iPhone',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ],
                   ),
           ),

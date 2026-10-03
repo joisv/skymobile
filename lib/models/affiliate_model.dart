@@ -95,7 +95,13 @@ class AffiliateModel {
       longitude: json['longitude'] != null ? double.tryParse(json['longitude'].toString()) : null,
       logo: json['logo'] as String?,
       description: json['description'] as String?,
-      isActive: json['is_active'] as bool? ?? true,
+      isActive: () {
+        final raw = json['is_active'];
+        if (raw is bool) return raw;
+        if (raw is num) return raw != 0;
+        if (raw is String) return raw == '1' || raw.toLowerCase() == 'true';
+        return true;
+      }(),
       iphonesCount: json['iphones_count'] is int
           ? json['iphones_count'] as int
           : int.tryParse(json['iphones_count']?.toString() ?? '0') ?? 0,

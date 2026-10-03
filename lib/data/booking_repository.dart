@@ -9,7 +9,9 @@ import '../models/iphone_transfer_model.dart';
 import '../models/notification_model.dart';
 import '../models/payment_model.dart';
 import '../models/receipt_model.dart';
+import '../models/user_role_model.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../utils/formatters.dart';
 import 'mock_booking_data.dart';
 import 'mock_receipt_data.dart';
@@ -89,6 +91,9 @@ class BookingRepository {
   final List<IphoneModel> _inventory = [];
   Map<String, int>? _unitSummaryCache;
 
+  /// Daftar unit iPhone yang saat ini tersimpan dalam cache inventaris
+  List<IphoneModel> get inventory => _inventory.isNotEmpty ? _inventory : MockBookingData.inventory;
+
   Future<List<BookingModel>> getBookings({
     String? query,
     BookingStatus? statusFilter,
@@ -103,22 +108,25 @@ class BookingRepository {
         status: statusFilter?.name,
         paymentStatus: paymentFilter?.name,
       );
-      if (apiList != null && apiList.isNotEmpty) {
+      if (apiList != null) {
         final parsed = apiList.map((j) => BookingModel.fromJson(j)).toList();
-        for (final item in parsed) {
-          final idx = _bookings.indexWhere((b) => b.bookingCode == item.bookingCode || b.id == item.id);
-          if (idx != -1) {
-            _bookings[idx] = item;
-          } else {
-            _bookings.add(item);
-          }
-        }
+        _bookings.clear();
+        _bookings.addAll(parsed);
       }
     } catch (_) {}
 
     final now = DateTime.now();
+    final auth = AuthService();
+    final isStaff = auth.isStaff;
+    final currentUserId = auth.currentUser?.userIdentifier;
 
     var filtered = _bookings.where((b) {
+      if (isStaff && !auth.canViewAllBookings && currentUserId != null) {
+        final bUserId = b.userId?.toLowerCase();
+        if (bUserId != null && bUserId.isNotEmpty && bUserId != currentUserId.toLowerCase()) {
+          return false;
+        }
+      }
       if (statusFilter != null && b.status != statusFilter) {
         return false;
       }
@@ -529,6 +537,8 @@ class BookingRepository {
       paymentStatus: paymentStatus,
       iphone: updatedIphone,
       notes: notes?.trim(),
+      userName: AuthService().currentUser?.name,
+      userId: AuthService().currentUser?.userIdentifier,
     );
 
     _bookings.insert(0, newBooking);
@@ -1254,7 +1264,8 @@ class BookingRepository {
   bool isUnitCurrentlyRented(String assetCode) {
     final normalized = assetCode.toLowerCase().trim();
     if (normalized.isEmpty) return false;
-    return _bookings.any((b) {
+    final source = _bookings.isNotEmpty ? _bookings : MockBookingData.items;
+    return source.any((b) {
       final sameUnit = b.iphone.assetCode.toLowerCase().trim() == normalized;
       final bookingStatus = b.status.name.toLowerCase().trim();
       final unitStatus = b.iphone.status.toLowerCase().trim();
@@ -1273,16 +1284,35 @@ class BookingRepository {
     String? modelFilter,
     String? branchFilter,
     String? sortBy,
+    int? affiliateId,
   }) async {
     try {
       final res = await ApiService().getAllIphonesApi(
         query: query,
         status: statusFilter,
         model: modelFilter,
+        branch: branchFilter,
+        affiliateId: affiliateId,
       );
       if (res != null && res['data'] is List) {
         final raw = res['data'] as List;
-        final list = raw.map((j) => IphoneModel.fromJson(j as Map<String, dynamic>)).toList();
+        final list = raw.map((j) {
+          var u = IphoneModel.fromJson(j as Map<String, dynamic>);
+          final isAlreadyLate = u.status.toLowerCase() == 'terlambat' || u.status.toLowerCase() == 'overdue' || u.status.toLowerCase() == 'late';
+          if (!isAlreadyLate && (u.status.toLowerCase() == 'disewa' || u.status.toLowerCase() == 'rented' || isUnitCurrentlyRented(u.assetCode)) &&
+              (u.customerName == null || u.customerName!.isEmpty)) {
+            final b = getActiveBookingForUnitSync(u.assetCode);
+            if (b != null) {
+              u = u.copyWith(
+                status: 'disewa',
+                customerName: b.customerName,
+                bookingCode: '#${b.bookingCode}',
+                returnScheduleText: 'Kembali: ${Formatters.date(b.endDate)} • ${b.endTime ?? "18:00 WIB"}${b.jaminanType.isNotEmpty ? " (${b.jaminanType})" : ""}',
+              );
+            }
+          }
+          return u;
+        }).toList();
         if (list.isNotEmpty) {
           _inventory.clear();
           _inventory.addAll(list);
@@ -1292,6 +1322,7 @@ class BookingRepository {
               'total': int.tryParse(s['total']?.toString() ?? '0') ?? list.length,
               'tersedia': int.tryParse(s['tersedia']?.toString() ?? s['ready']?.toString() ?? '0') ?? 0,
               'disewa': int.tryParse(s['disewa']?.toString() ?? s['rented']?.toString() ?? '0') ?? 0,
+              'terlambat': int.tryParse(s['terlambat']?.toString() ?? s['overdue']?.toString() ?? '0') ?? 0,
               'maintenance': int.tryParse(s['maintenance']?.toString() ?? '0') ?? 0,
               'dibooking': int.tryParse(s['dibooking']?.toString() ?? s['booked']?.toString() ?? '0') ?? 0,
             };
@@ -1303,8 +1334,16 @@ class BookingRepository {
 
     final rawSource = _inventory.isNotEmpty ? _inventory : MockBookingData.inventory;
     final source = rawSource.map((unit) {
-      if (isUnitCurrentlyRented(unit.assetCode)) {
-        return unit.copyWith(status: 'disewa');
+      final isAlreadyLate = unit.status.toLowerCase() == 'terlambat' || unit.status.toLowerCase() == 'overdue' || unit.status.toLowerCase() == 'late';
+      if (!isAlreadyLate && isUnitCurrentlyRented(unit.assetCode)) {
+        final b = getActiveBookingForUnitSync(unit.assetCode);
+        return unit.copyWith(
+          status: 'disewa',
+          customerName: unit.customerName ?? b?.customerName,
+          bookingCode: unit.bookingCode ?? (b != null ? '#${b.bookingCode}' : null),
+          returnScheduleText: unit.returnScheduleText ??
+              (b != null ? 'Kembali: ${Formatters.date(b.endDate)} • ${b.endTime ?? "18:00 WIB"}${b.jaminanType.isNotEmpty ? " (${b.jaminanType})" : ""}' : null),
+        );
       }
       return unit;
     }).toList();
@@ -1316,6 +1355,9 @@ class BookingRepository {
           return false;
         } else if (normFilter == 'disewa' && normStatus != 'disewa' && normStatus != 'rented') {
           return false;
+        } else if ((normFilter == 'terlambat' || normFilter == 'overdue') &&
+            normStatus != 'terlambat' && normStatus != 'overdue') {
+          return false;
         } else if ((normFilter == 'maintenance' || normFilter == 'perawatan') &&
             normStatus != 'maintenance' && normStatus != 'perawatan') {
           return false;
@@ -1324,6 +1366,8 @@ class BookingRepository {
           return false;
         } else if (normFilter != 'tersedia' &&
             normFilter != 'disewa' &&
+            normFilter != 'terlambat' &&
+            normFilter != 'overdue' &&
             normFilter != 'maintenance' &&
             normFilter != 'perawatan' &&
             normFilter != 'dibooking' &&
@@ -1338,11 +1382,17 @@ class BookingRepository {
         }
       }
 
+      if (affiliateId != null) {
+        if (unit.affiliateId != null && unit.affiliateId != affiliateId) {
+          return false;
+        }
+      }
+
       if (branchFilter != null &&
           branchFilter.isNotEmpty &&
           !branchFilter.toLowerCase().contains('semua')) {
         final normBranch = branchFilter.toLowerCase().replaceAll('•', '').trim();
-        final unitBranch = (unit.branchName ?? '').toLowerCase();
+        final unitBranch = (unit.branchName ?? unit.affiliateName ?? '').toLowerCase();
         if (!unitBranch.contains(normBranch)) {
           return false;
         }
@@ -1356,7 +1406,9 @@ class BookingRepository {
         final matchColor = unit.color.toLowerCase().contains(q);
         final matchStorage = unit.storage.toLowerCase().contains(q);
         final matchBranch = (unit.branchName ?? '').toLowerCase().contains(q);
-        if (!matchName && !matchAsset && !matchSerial && !matchColor && !matchStorage && !matchBranch) {
+        final matchCustomer = (unit.customerName ?? '').toLowerCase().contains(q);
+        final matchBooking = (unit.bookingCode ?? '').toLowerCase().contains(q);
+        if (!matchName && !matchAsset && !matchSerial && !matchColor && !matchStorage && !matchBranch && !matchCustomer && !matchBooking) {
           return false;
         }
       }
@@ -1395,10 +1447,56 @@ class BookingRepository {
       if (res != null && res['data'] is Map<String, dynamic>) {
         savedUnit = IphoneModel.fromJson(res['data'] as Map<String, dynamic>);
       }
+    } on ApiException {
+      rethrow;
     } catch (_) {}
 
     _inventory.insert(0, savedUnit);
     MockBookingData.inventory.insert(0, savedUnit);
+    _unitSummaryCache = null;
+    return savedUnit;
+  }
+
+  /// Perbarui unit di inventaris
+  Future<IphoneModel> updateInventoryUnit(IphoneModel unit) async {
+    IphoneModel savedUnit = unit;
+    try {
+      final identifier = unit.id > 0 ? unit.id.toString() : unit.assetCode;
+      final payload = unit.toJson();
+      if (unit.durations.isNotEmpty) {
+        payload['durations'] = unit.durations.map((d) => {
+          'hours': d.hours,
+          'price': d.price.round(),
+        }).toList();
+      }
+      final res = await ApiService().updateIphoneApi(identifier, payload);
+      if (res != null && res['data'] is Map<String, dynamic>) {
+        savedUnit = IphoneModel.fromJson(res['data'] as Map<String, dynamic>);
+      }
+    } on ApiException {
+      rethrow;
+    } catch (_) {}
+
+    final invIdx = _inventory.indexWhere((u) => (u.id > 0 && u.id == unit.id) || u.assetCode.toLowerCase() == unit.assetCode.toLowerCase());
+    if (invIdx != -1) {
+      _inventory[invIdx] = savedUnit;
+    } else {
+      _inventory.insert(0, savedUnit);
+    }
+
+    final mockIdx = MockBookingData.inventory.indexWhere((u) => (u.id > 0 && u.id == unit.id) || u.assetCode.toLowerCase() == unit.assetCode.toLowerCase());
+    if (mockIdx != -1) {
+      MockBookingData.inventory[mockIdx] = savedUnit;
+    }
+
+    // Update references in active bookings
+    for (int i = 0; i < _bookings.length; i++) {
+      if ((_bookings[i].iphone.id > 0 && _bookings[i].iphone.id == unit.id) ||
+          _bookings[i].iphone.assetCode.toLowerCase() == unit.assetCode.toLowerCase()) {
+        _bookings[i] = _bookings[i].copyWith(iphone: savedUnit);
+      }
+    }
+
     _unitSummaryCache = null;
     return savedUnit;
   }
@@ -1420,6 +1518,7 @@ class BookingRepository {
           'total': int.tryParse(s['total']?.toString() ?? '0') ?? 0,
           'tersedia': int.tryParse(s['tersedia']?.toString() ?? s['ready']?.toString() ?? '0') ?? 0,
           'disewa': int.tryParse(s['disewa']?.toString() ?? s['rented']?.toString() ?? '0') ?? 0,
+          'terlambat': int.tryParse(s['terlambat']?.toString() ?? s['overdue']?.toString() ?? '0') ?? 0,
           'maintenance': int.tryParse(s['maintenance']?.toString() ?? '0') ?? 0,
           'dibooking': int.tryParse(s['dibooking']?.toString() ?? s['booked']?.toString() ?? '0') ?? 0,
         };
@@ -1441,6 +1540,7 @@ class BookingRepository {
     int total = units.length;
     int tersedia = 0;
     int disewa = 0;
+    int terlambat = 0;
     int maintenance = 0;
     int dibooking = 0;
 
@@ -1450,6 +1550,8 @@ class BookingRepository {
         tersedia++;
       } else if (s == 'disewa' || s == 'rented') {
         disewa++;
+      } else if (s == 'terlambat' || s == 'overdue' || s == 'late') {
+        terlambat++;
       } else if (s == 'maintenance' || s == 'perawatan') {
         maintenance++;
       } else if (s == 'dibooking' || s == 'booked') {
@@ -1463,17 +1565,20 @@ class BookingRepository {
       'total': total,
       'tersedia': tersedia,
       'disewa': disewa,
+      'terlambat': terlambat,
       'maintenance': maintenance,
       'dibooking': dibooking,
     };
   }
 
-  /// Mencari data booking aktif yang sedang menyewa unit ini
-  Future<BookingModel?> getActiveBookingForUnit(String assetCode) async {
+  /// Mencari data booking aktif yang sedang menyewa unit ini (sinkron)
+  BookingModel? getActiveBookingForUnitSync(String assetCode) {
+    final normalized = assetCode.toLowerCase().trim();
     try {
-      return _bookings.firstWhere(
+      final source = _bookings.isNotEmpty ? _bookings : MockBookingData.items;
+      return source.firstWhere(
         (b) =>
-            b.iphone.assetCode.toLowerCase() == assetCode.toLowerCase() &&
+            b.iphone.assetCode.toLowerCase().trim() == normalized &&
             (b.status == BookingStatus.rented ||
                 b.status == BookingStatus.confirmed ||
                 b.iphone.status.toLowerCase() == 'disewa' ||
@@ -1482,6 +1587,11 @@ class BookingRepository {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Mencari data booking aktif yang sedang menyewa unit ini
+  Future<BookingModel?> getActiveBookingForUnit(String assetCode) async {
+    return getActiveBookingForUnitSync(assetCode);
   }
 
   /// Memperbarui status unit di inventory
@@ -1713,11 +1823,6 @@ class BookingRepository {
         }
       }
     }
-    if (revenueToday == 0) {
-      for (final tx in MockBookingData.paymentTransactions) {
-        revenueToday += tx.paidAmount;
-      }
-    }
 
     // Hitung status booking & antrean
     int activeRentals = 0;
@@ -1867,6 +1972,8 @@ class BookingRepository {
     String? paymentMethod,
     DateTime? startDate,
     DateTime? endDate,
+    int page = 1,
+    int perPage = 20,
   }) async {
     try {
       final res = await ApiService().getSalesReportApi(
@@ -1874,6 +1981,8 @@ class BookingRepository {
         paymentMethod: paymentMethod,
         startDate: startDate,
         endDate: endDate,
+        page: page,
+        perPage: perPage,
       );
       if (res != null) {
         // Adapt API response to PaymentTransactionModel objects
@@ -1935,6 +2044,25 @@ class BookingRepository {
           });
         }
         res['modelRentalCount'] = modelCount;
+
+        final rawAffBreakdown = res['affiliateBreakdown'] ?? res['affiliate_breakdown'];
+        if (rawAffBreakdown is List) {
+          res['affiliateBreakdown'] = rawAffBreakdown.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+        } else {
+          res['affiliateBreakdown'] = <Map<String, dynamic>>[];
+        }
+
+        if (res['pagination'] is Map) {
+          res['pagination'] = Map<String, dynamic>.from(res['pagination'] as Map);
+        } else {
+          final txsList = res['transactions'] as List;
+          res['pagination'] = {
+            'current_page': page,
+            'per_page': perPage,
+            'total': txsList.length,
+            'last_page': 1,
+          };
+        }
 
         return res;
       }
@@ -2017,6 +2145,16 @@ class BookingRepository {
       ),
     ];
 
+    // Gabungkan transaksi mock operasional dengan sample data (keyed by bookingCode to prevent ID collision)
+    final Map<String, PaymentTransactionModel> combinedMap = {};
+    for (final tx in MockBookingData.paymentTransactions) {
+      combinedMap[tx.bookingCode] = tx;
+    }
+    for (final tx in sampleTxs) {
+      combinedMap[tx.bookingCode] = tx;
+    }
+    final allTransactions = combinedMap.values.toList();
+
     DateTime filterStart;
     DateTime filterEnd;
 
@@ -2034,21 +2172,25 @@ class BookingRepository {
         case 'this_week':
           final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
           filterStart = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day, 0, 0, 0);
-          filterEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+          final endOfWeek = startOfWeek.add(const Duration(days: 6));
+          filterEnd = DateTime(endOfWeek.year, endOfWeek.month, endOfWeek.day, 23, 59, 59, 999);
           break;
         case 'bulan ini':
         case 'this_month':
           filterStart = DateTime(now.year, now.month, 1, 0, 0, 0);
-          filterEnd = DateTime(now.year, now.month + 1, 0, 23, 59, 59, 999);
+          final lastDay = DateTime(now.year, now.month + 1, 0).day;
+          filterEnd = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
           break;
+        case 'semua':
+        case 'all':
         default:
-          filterStart = DateTime(2020, 1, 1);
-          filterEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+          filterStart = DateTime(2020, 1, 1, 0, 0, 0);
+          filterEnd = DateTime(now.year + 1, 12, 31, 23, 59, 59, 999);
           break;
       }
     }
 
-    List<PaymentTransactionModel> finalTxs = sampleTxs.where((tx) {
+    List<PaymentTransactionModel> finalTxs = allTransactions.where((tx) {
       return !tx.transactionDate.isBefore(filterStart) && !tx.transactionDate.isAfter(filterEnd);
     }).toList();
 
@@ -2120,6 +2262,34 @@ class BookingRepository {
       'model_rental_count': modelCount,
       'modelRevenue': modelRevenue,
       'model_revenue': modelRevenue,
+      'affiliateBreakdown': _affiliates.map((aff) {
+        return {
+          'id': aff.id,
+          'code': aff.code,
+          'name': aff.name,
+          'city': aff.city ?? '-',
+          'revenue': aff.revenueToday,
+          'booking_count': aff.bookingsCount,
+          'is_active': aff.isActive,
+          'iphones_count': aff.iphonesCount,
+          'revenue_today': aff.revenueToday,
+          'total_revenue': aff.totalRevenue,
+        };
+      }).toList(),
+      'affiliate_breakdown': _affiliates.map((aff) {
+        return {
+          'id': aff.id,
+          'code': aff.code,
+          'name': aff.name,
+          'city': aff.city ?? '-',
+          'revenue': aff.revenueToday,
+          'booking_count': aff.bookingsCount,
+          'is_active': aff.isActive,
+          'iphones_count': aff.iphonesCount,
+          'revenue_today': aff.revenueToday,
+          'total_revenue': aff.totalRevenue,
+        };
+      }).toList(),
       'transactions': finalTxs,
     };
   }
@@ -2330,6 +2500,8 @@ class BookingRepository {
         return List.unmodifiable(_affiliates);
       }
     } catch (_) {}
+
+
 
     // Fallback in-memory filter jika offline
     var result = List<AffiliateModel>.from(_affiliates);
@@ -2588,6 +2760,19 @@ class BookingRepository {
         final tr = IphoneTransferModel.fromJson(res['data'] as Map<String, dynamic>);
         final index = _iphoneTransfers.indexWhere((t) => t.id == transferId);
         if (index != -1) _iphoneTransfers[index] = tr;
+
+        // Perbarui status unit iPhone di inventaris lokal menjadi tersedia dan cabang tujuan
+        if (_inventory.isEmpty) {
+          _inventory.addAll(MockBookingData.inventory);
+        }
+        final invIdx = _inventory.indexWhere((u) => u.id == tr.iphoneId);
+        if (invIdx != -1) {
+          _inventory[invIdx] = _inventory[invIdx].copyWith(
+            status: 'tersedia',
+            affiliateId: tr.toAffiliateId,
+            branchName: tr.toAffiliateName,
+          );
+        }
         return tr;
       }
     } catch (e) {
@@ -2602,6 +2787,18 @@ class BookingRepository {
         receivedAt: DateTime.now(),
       );
       _iphoneTransfers[index] = updated;
+
+      if (_inventory.isEmpty) {
+        _inventory.addAll(MockBookingData.inventory);
+      }
+      final invIdx = _inventory.indexWhere((u) => u.id == updated.iphoneId);
+      if (invIdx != -1) {
+        _inventory[invIdx] = _inventory[invIdx].copyWith(
+          status: 'tersedia',
+          affiliateId: updated.toAffiliateId,
+          branchName: updated.toAffiliateName,
+        );
+      }
       return updated;
     }
     throw Exception('Transfer iPhone #$transferId tidak ditemukan.');
@@ -2821,6 +3018,210 @@ class BookingRepository {
       );
       return true;
     }
+    return true;
+  }
+
+  // =========================================================================
+  // USER & ROLE PERMISSION MANAGEMENT (Matches web admin/roles-permissions)
+  // =========================================================================
+
+  final List<UserRoleModel> _mockUsers = [
+    const UserRoleModel(
+      id: 'mock-u1',
+      name: 'Super Admin SKYRental',
+      email: 'admin@skyrental.id',
+      roles: ['super-admin'],
+      role: 'super-admin',
+      createdAtFormatted: '15 Sep 2026, 10:00',
+      updatedAtFormatted: '15 Sep 2026',
+    ),
+    const UserRoleModel(
+      id: 'mock-u2',
+      name: 'Budi Kasir',
+      email: 'kasir@skyrental.id',
+      roles: ['admin'],
+      role: 'admin',
+      createdAtFormatted: '16 Sep 2026, 09:30',
+      updatedAtFormatted: '16 Sep 2026',
+    ),
+    const UserRoleModel(
+      id: 'mock-u3',
+      name: 'Rian Pratama',
+      email: 'rian@skyrental.id',
+      roles: ['staff'],
+      role: 'staff',
+      createdAtFormatted: '18 Sep 2026, 14:15',
+      updatedAtFormatted: '18 Sep 2026',
+    ),
+    const UserRoleModel(
+      id: 'mock-u4',
+      name: 'Dewi Lestari',
+      email: 'dewi@skyrental.id',
+      roles: [],
+      role: '-',
+      createdAtFormatted: '20 Sep 2026, 11:20',
+      updatedAtFormatted: '20 Sep 2026',
+    ),
+  ];
+
+  final List<RoleItemModel> _mockRoles = [
+    const RoleItemModel(
+      id: 1,
+      name: 'super-admin',
+      displayName: 'Super Admin',
+      permissionsCount: 3,
+      permissions: ['create', 'update', 'delete'],
+    ),
+    const RoleItemModel(
+      id: 2,
+      name: 'admin',
+      displayName: 'Admin',
+      permissionsCount: 2,
+      permissions: ['create', 'update'],
+    ),
+    const RoleItemModel(
+      id: 3,
+      name: 'staff',
+      displayName: 'Staff Kasir',
+      permissionsCount: 2,
+      permissions: ['create', 'update'],
+    ),
+  ];
+
+  static final List<PermissionItemModel> _mockPermissions = [
+    const PermissionItemModel(id: 1, name: 'create', displayName: 'Create (Tambah Data)'),
+    const PermissionItemModel(id: 2, name: 'update', displayName: 'Update (Ubah Data)'),
+    const PermissionItemModel(id: 3, name: 'delete', displayName: 'Delete (Hapus Data)'),
+  ];
+
+  /// Mengambil daftar pengguna sistem
+  Future<List<UserRoleModel>> getUsers({String? search, String? role}) async {
+    try {
+      final list = await _apiService.getUsersApi(search: search, role: role);
+      if (list != null) {
+        final users = list.map((item) => UserRoleModel.fromJson(item)).toList();
+        return List.unmodifiable(users);
+      }
+    } catch (_) {}
+
+    // Fallback offline / test
+    List<UserRoleModel> result = List.from(_mockUsers);
+    if (search != null && search.trim().isNotEmpty) {
+      final q = search.trim().toLowerCase();
+      result = result.where((u) => u.name.toLowerCase().contains(q) || u.email.toLowerCase().contains(q)).toList();
+    }
+    if (role != null && role.isNotEmpty && role != 'all' && role != 'semua') {
+      result = result.where((u) => u.role.toLowerCase() == role.toLowerCase()).toList();
+    }
+    return List.unmodifiable(result);
+  }
+
+  /// Mengambil daftar role yang tersedia
+  Future<List<RoleItemModel>> getRoles() async {
+    try {
+      final list = await _apiService.getRolesApi();
+      if (list != null) {
+        final roles = list.map((item) => RoleItemModel.fromJson(item)).toList();
+        return List.unmodifiable(roles);
+      }
+    } catch (_) {}
+
+    return List.unmodifiable(_mockRoles);
+  }
+
+  /// Mengambil daftar semua izin hak akses (permissions)
+  Future<List<PermissionItemModel>> getPermissions() async {
+    try {
+      final list = await _apiService.getPermissionsApi();
+      if (list != null) {
+        final perms = list.map((item) => PermissionItemModel.fromJson(item)).toList();
+        return List.unmodifiable(perms);
+      }
+    } catch (_) {}
+
+    return List.unmodifiable(_mockPermissions);
+  }
+
+  /// Menetapkan (assign / sync) role dan/atau permissions untuk pengguna
+  Future<bool> assignUserRole(String userId, String? role, {List<String>? permissions}) async {
+    try {
+      final success = await _apiService.assignUserRoleApi(userId, role, permissions: permissions);
+      if (success) {
+        final index = _mockUsers.indexWhere((u) => u.id == userId);
+        if (index != -1) {
+          final current = _mockUsers[index];
+          final newRole = role ?? current.role;
+          _mockUsers[index] = current.copyWith(
+            role: newRole,
+            roles: role != null ? [role] : current.roles,
+            permissions: permissions ?? current.permissions,
+            directPermissions: permissions ?? current.directPermissions,
+          );
+        }
+        return true;
+      }
+    } catch (_) {}
+
+    // Fallback offline / test
+    final index = _mockUsers.indexWhere((u) => u.id == userId);
+    if (index != -1) {
+      final current = _mockUsers[index];
+      final newRole = role ?? current.role;
+      _mockUsers[index] = current.copyWith(
+        role: newRole,
+        roles: role != null ? [role] : current.roles,
+        permissions: permissions ?? current.permissions,
+        directPermissions: permissions ?? current.directPermissions,
+      );
+      return true;
+    }
+    return true;
+  }
+
+  /// Menambahkan pengguna baru
+  Future<UserRoleModel> createUser({
+    required String name,
+    required String email,
+    required String password,
+    String? role,
+  }) async {
+    try {
+      final res = await _apiService.createUserApi(
+        name: name,
+        email: email,
+        password: password,
+        role: role,
+      );
+      final newUser = UserRoleModel.fromJson(res);
+      _mockUsers.insert(0, newUser);
+      return newUser;
+    } catch (_) {}
+
+    // Fallback offline / test
+    final newUser = UserRoleModel(
+      id: 'mock-${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      email: email,
+      role: role ?? '-',
+      roles: role != null && role.isNotEmpty && role != '-' ? [role] : [],
+      createdAtFormatted: 'Hari ini',
+      updatedAtFormatted: 'Hari ini',
+    );
+    _mockUsers.insert(0, newUser);
+    return newUser;
+  }
+
+  /// Menghapus pengguna
+  Future<bool> deleteUser(String userId) async {
+    try {
+      final success = await _apiService.deleteUserApi(userId);
+      if (success) {
+        _mockUsers.removeWhere((u) => u.id == userId);
+        return true;
+      }
+    } catch (_) {}
+
+    _mockUsers.removeWhere((u) => u.id == userId);
     return true;
   }
 }

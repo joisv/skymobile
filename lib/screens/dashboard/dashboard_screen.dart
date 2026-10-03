@@ -9,6 +9,8 @@ import '../../services/auth_service.dart';
 import '../../services/thermal_print_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../payment/payment_deposit_screen.dart';
+import '../../widgets/app_header.dart';
 import 'widgets/dashboard_skeleton.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -27,6 +29,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
   Map<String, dynamic> _dashboardData = {};
   List<IphoneModel> _readyInventory = [];
+  int _pendingTransferCount = 0;
   String _selectedQueueFilter = 'semua'; // 'semua', 'pickup', 'return'
   String _selectedSort = 'created_at'; // 'created_at', 'start_booking_date', 'end_booking_date', 'status', 'price'
   final TextEditingController _queueSearchController = TextEditingController();
@@ -70,10 +73,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (readyUnits.isEmpty) {
         readyUnits = MockBookingData.inventory.where((u) => u.status == 'tersedia').toList();
       }
+
+      int pendingTransferCount = 0;
+      try {
+        final transfers = await widget.repository.getIphoneTransfers(
+          status: 'in_transit',
+          affiliateId: AuthService().isAffiliateAdmin ? AuthService().affiliateId : null,
+          type: AuthService().isAffiliateAdmin ? 'inbound' : null,
+          forceRefresh: true,
+        );
+        pendingTransferCount = transfers.where((t) => t.isInTransit).length;
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _dashboardData = data;
           _readyInventory = readyUnits;
+          _pendingTransferCount = pendingTransferCount;
           _isLoading = false;
         });
       }
@@ -197,7 +213,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         return Scaffold(
           backgroundColor: AppTheme.background,
-          appBar: _buildStitchAppBar(isTablet: isTablet),
+          appBar: AppHeader(isTablet: isTablet),
           body: RefreshIndicator(
             onRefresh: _loadDashboard,
             color: AppTheme.accent,
@@ -310,9 +326,190 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: _buildOperationalMetricsSection(metrics),
         ),
 
+        // Quick Action khusus Affiliate Admin: Transfer iPhone Masuk & Terima iPhone
+        if (AuthService().isAffiliateAdmin)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: InkWell(
+              onTap: () => Navigator.of(context).pushNamed(AppRoutes.iphoneTransfer).then((_) => _loadDashboard()),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: _pendingTransferCount > 0 ? const Color(0xFFF0FDF4) : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _pendingTransferCount > 0 ? const Color(0xFF86EFAC) : Colors.grey.shade200,
+                    width: _pendingTransferCount > 0 ? 1.5 : 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: _pendingTransferCount > 0
+                            ? const Color(0xFF16A34A).withValues(alpha: 0.15)
+                            : Colors.indigo.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        _pendingTransferCount > 0 ? Icons.local_shipping_rounded : Icons.swap_horiz_rounded,
+                        color: _pendingTransferCount > 0 ? const Color(0xFF16A34A) : Colors.indigo,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'Transfer iPhone Masuk',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                              ),
+                              if (_pendingTransferCount > 0) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDC2626),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '$_pendingTransferCount',
+                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _pendingTransferCount > 0
+                                ? '$_pendingTransferCount unit dalam perjalanan, klik untuk terima'
+                                : 'Riwayat mutasi & penerimaan iPhone cabang',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _pendingTransferCount > 0 ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                              fontWeight: _pendingTransferCount > 0 ? FontWeight.w500 : FontWeight.normal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _pendingTransferCount > 0 ? const Color(0xFF16A34A) : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _pendingTransferCount > 0 ? 'Terima Unit' : 'Buka',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: _pendingTransferCount > 0 ? Colors.white : const Color(0xFF334155),
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 14,
+                            color: _pendingTransferCount > 0 ? Colors.white : const Color(0xFF334155),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        // Quick Action: Manajemen User & Role Akses (Hanya untuk Super Admin & Admin)
+        if (AuthService().isSuperAdmin || (AuthService().isAdmin && !AuthService().isAffiliateAdmin))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: InkWell(
+              onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEA580C).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.manage_accounts_rounded, color: Color(0xFFEA580C), size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Manajemen Pengguna & Role',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                          ),
+                          Text(
+                            'Kelola user, tambah akun & assign hak akses',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEA580C),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Buka', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+                          SizedBox(width: 3),
+                          Icon(Icons.chevron_right_rounded, size: 14, color: Colors.white),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
         // 3. Antrean Transaksi Section
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: _buildTransactionQueueSection(allQueue, pickupItems, returnItems, displayItems),
         ),
       ],
@@ -1157,11 +1354,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           onPressed: () {
                             Navigator.pushNamed(
                               context,
-                              AppRoutes.returnInspection,
+                              AppRoutes.paymentDeposit,
                               arguments: {
                                 'booking': b,
-                                'lateFee': 50000.0,
-                                'daysLate': 1,
+                                'initialPaymentType': PaymentTypeOption.penalty,
+                                'initialAmount': b.estimatedLateFee > 0 ? b.estimatedLateFee : 50000.0,
+                                'isReturnFlow': true,
                               },
                             ).then((_) => _loadDashboard());
                           },
@@ -1376,7 +1574,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           onPressed: () {
                             Navigator.pushNamed(
                               context,
-                              AppRoutes.returnInspection,
+                              AppRoutes.bookingDetail,
                               arguments: b,
                             ).then((_) => _loadDashboard());
                           },
@@ -1702,6 +1900,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
+          if (AuthService().isAffiliateAdmin || AuthService().isSuperAdmin) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              height: 36,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pushNamed(context, AppRoutes.iphoneTransfer).then((_) => _loadDashboard());
+                },
+                icon: Icon(
+                  _pendingTransferCount > 0 ? Icons.local_shipping_rounded : Icons.swap_horiz_rounded,
+                  size: 14,
+                  color: _pendingTransferCount > 0 ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
+                ),
+                label: Text(
+                  _pendingTransferCount > 0
+                      ? 'Terima Transfer iPhone ($_pendingTransferCount)'
+                      : 'Transfer iPhone',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.bold,
+                    color: _pendingTransferCount > 0 ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pendingTransferCount > 0 ? const Color(0xFFDCFCE7) : const Color(0xFFEFF6FF),
+                  foregroundColor: _pendingTransferCount > 0 ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2117,371 +2351,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Helper format badge role user
-  String _getRoleBadgeText(String? role) {
-    if (role == null || role.isEmpty) return 'ADMIN';
-    final lower = role.toLowerCase();
-    if (lower.contains('superadmin')) return 'SUPERADMIN';
-    if (lower.contains('manager')) return 'MANAGER';
-    if (lower.contains('kasir')) return 'KASIR';
-    if (lower.contains('admin')) return 'ADMIN';
-    return 'STAFF';
-  }
 
-  /// Badge status printer reaktif (menampilkan nama printer & status terhubung/belum)
-  Widget _buildPrinterStatusBadge() {
-    final printService = ThermalPrintService();
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        printService.activePrinterNotifier,
-        printService.isConnectedNotifier,
-      ]),
-      builder: (context, _) {
-        final activePrinter = printService.activePrinterNotifier.value;
-        final isConnected = printService.isConnectedNotifier.value;
 
-        String printerName = activePrinter?.name.trim() ?? '';
-        if (printerName.isEmpty || printerName == 'Belum Ada Printer Dipilih') {
-          printerName = 'Printer Thermal';
-        }
 
-        final statusText = isConnected ? 'Terhubung' : 'Belum Terhubung';
-
-        return GestureDetector(
-          onTap: () async {
-            await Navigator.pushNamed(context, AppRoutes.printerSettings);
-            if (mounted) setState(() {});
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: isConnected
-                  ? const Color(0xFFECFDF5)
-                  : const Color(0xFFFEF2F2),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isConnected
-                    ? const Color(0xFFA7F3D0)
-                    : const Color(0xFFFECACA),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: isConnected ? AppTheme.success : AppTheme.error,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 5),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 105),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        printerName,
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.bold,
-                          color: isConnected
-                              ? const Color(0xFF065F46)
-                              : const Color(0xFF991B1B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        statusText,
-                        style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w600,
-                          color: isConnected
-                              ? const Color(0xFF047857)
-                              : const Color(0xFFB91C1C),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  String _getDayName(DateTime dt) {
-    const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
-    return days[dt.weekday - 1];
-  }
-
-  /// Stitch Top AppBar matching data user login & dynamic printer status
-  PreferredSizeWidget _buildStitchAppBar({bool isTablet = false}) {
-    final user = AuthService().currentUser;
-    final userName = user?.name.trim().isNotEmpty == true ? user!.name : 'Admin SKYRental';
-    final userRole = user?.role.trim().isNotEmpty == true ? user!.role : 'Staff Operasional';
-    final roleBadge = _getRoleBadgeText(user?.role);
-
-    if (isTablet) {
-      final now = DateTime.now();
-      final dateFormatted = '${_getDayName(now)}, ${Formatters.date(now)}';
-      final topPadding = MediaQuery.paddingOf(context).top;
-      final cashierName = user?.name.trim().isNotEmpty == true ? user!.name : 'Budi Santoso';
-      final cashierRole = (user?.role.trim().isNotEmpty == true ? user!.role : 'KASIR').toUpperCase();
-
-      return PreferredSize(
-        preferredSize: const Size.fromHeight(68),
-        child: RepaintBoundary(
-          child: Container(
-            padding: EdgeInsets.only(top: topPadding + 8, bottom: 10, left: 24, right: 24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'SKYRental',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0F172A),
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                Row(
-                  children: [
-                    _buildPrinterStatusBadge(),
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
-                          const SizedBox(width: 8),
-                          Text(
-                            dateFormatted,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF334155),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Row(
-                      children: [
-                        GestureDetector(
-                          onTap: () => Navigator.pushNamed(context, AppRoutes.account),
-                          child: Stack(
-                            children: [
-                              const CircleAvatar(
-                                radius: 18,
-                                backgroundColor: Color(0xFFE2E8F0),
-                                child: Icon(Icons.person, size: 20, color: Color(0xFF475569)),
-                              ),
-                              Positioned(
-                                right: 0,
-                                bottom: 0,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 1.5),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        GestureDetector(
-                          onTap: () => Navigator.pushNamed(context, AppRoutes.account),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    cashierName,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF0F172A),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      cashierRole,
-                                      style: const TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const Text('Shift Pagi • POS-01', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return PreferredSize(
-      preferredSize: Size.fromHeight(isTablet ? 72 : 68),
-      child: Container(
-        padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top + (isTablet ? 12 : 8),
-          bottom: isTablet ? 12 : 10,
-          left: isTablet ? 24 : 16,
-          right: isTablet ? 24 : 16,
-        ),
-        decoration: BoxDecoration(
-          color: AppTheme.surface.withValues(alpha: 0.95),
-          border: Border(
-            bottom: BorderSide(color: AppTheme.cardBorder, width: 1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // User yang sedang login (tanpa icon di kiri & tanpa outlet malioboro)
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          userName,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
-                            letterSpacing: -0.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceContainer,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          roleBadge,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    userRole,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppTheme.textSecondary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-
-            // Hardware Printer & Profile Avatar
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildPrinterStatusBadge(),
-                const SizedBox(width: 8),
-
-                // Staff Avatar with online dot
-                GestureDetector(
-                  onTap: () => Navigator.pushNamed(context, AppRoutes.account),
-                  child: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 17,
-                        backgroundColor: AppTheme.surfaceContainer,
-                        child: Icon(Icons.person, size: 20, color: AppTheme.primary),
-                      ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 9,
-                          height: 9,
-                          decoration: BoxDecoration(
-                            color: AppTheme.success,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: AppTheme.surface, width: 1.5),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
 
 

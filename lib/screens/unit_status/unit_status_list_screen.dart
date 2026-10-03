@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
+import '../../models/affiliate_model.dart';
 import '../../models/booking_model.dart';
 import '../../models/iphone_model.dart';
 import '../../routes/app_routes.dart';
 import '../../services/auth_service.dart';
-import '../../services/thermal_print_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/app_header.dart';
+import '../payment/payment_deposit_screen.dart';
 import 'widgets/create_iphone_dialog.dart';
 import 'widgets/unit_status_filter_chips.dart';
 import 'widgets/unit_status_skeleton.dart';
@@ -27,23 +29,22 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   List<IphoneModel> _units = [];
+  List<AffiliateModel> _affiliates = [];
   Map<String, int> _summary = {
-    'total': 24,
-    'tersedia': 18,
-    'disewa': 5,
-    'maintenance': 1,
+    'total': 0,
+    'tersedia': 0,
+    'disewa': 0,
+    'terlambat': 0,
+    'maintenance': 0,
     'dibooking': 0,
   };
-  Map<String, int> _branchCounts = {
-    'genteng': 2,
-    'siliragung': 2,
-    'purwoharjo': 2,
-  };
+  Map<String, int> _affiliateUnitCounts = {};
 
   // Cache active bookings for rented units: assetCode -> BookingModel
   final Map<String, BookingModel?> _activeBookings = {};
 
   bool _isLoading = true;
+  String? _errorMessage;
   String _selectedStatus = 'Semua';
   String _selectedModel = 'Semua';
   String _selectedAffiliate = 'Semua Cabang';
@@ -63,19 +64,65 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
       final summary = await widget.repository.getUnitStatusSummary();
+      var affiliates = await widget.repository.getAffiliates();
       final allUnits = await widget.repository.getAllInventoryUnits();
 
-      // Compute dynamic branch counts
-      final branchCounts = <String, int>{'genteng': 0, 'siliragung': 0, 'purwoharjo': 0};
-      for (final u in allUnits) {
-        final b = (u.branchName ?? '').toLowerCase();
-        if (b.contains('genteng')) branchCounts['genteng'] = (branchCounts['genteng'] ?? 0) + 1;
-        if (b.contains('siliragung')) branchCounts['siliragung'] = (branchCounts['siliragung'] ?? 0) + 1;
-        if (b.contains('purwoharjo')) branchCounts['purwoharjo'] = (branchCounts['purwoharjo'] ?? 0) + 1;
+      // If affiliates list from repository is empty, infer from actual inventory units so dropdown is populated
+      if (affiliates.isEmpty) {
+        final seen = <String>{};
+        final inferred = <AffiliateModel>[];
+        for (final u in allUnits) {
+          final name = u.affiliateName ?? u.branchName;
+          if (name != null && name.trim().isNotEmpty && !seen.contains(name.toLowerCase())) {
+            seen.add(name.toLowerCase());
+            inferred.add(AffiliateModel(
+              id: u.affiliateId ?? (inferred.length + 1),
+              name: name,
+              code: (name.length >= 3 ? name.substring(0, 3).toUpperCase() : name.toUpperCase()),
+              slug: name.toLowerCase().replaceAll(' ', '-'),
+              isActive: true,
+            ));
+          }
+        }
+        if (inferred.isNotEmpty) {
+          affiliates = inferred;
+        }
+      }
+
+      if (AuthService().isAffiliateAdmin) {
+        final myAffId = AuthService().currentUser?.affiliateId;
+        if (myAffId != null) {
+          affiliates = affiliates.where((a) => a.id == myAffId).toList();
+        }
+        if (affiliates.isNotEmpty && _selectedAffiliate == 'Semua Cabang') {
+          _selectedAffiliate = affiliates.first.name;
+        }
+      }
+
+      // Compute dynamic branch counts from actual inventory
+      final branchCounts = <String, int>{};
+      for (final aff in affiliates) {
+        final count = allUnits.where((u) {
+          if (u.affiliateId != null && u.affiliateId == aff.id) return true;
+          final b = (u.branchName ?? u.affiliateName ?? '').toLowerCase();
+          return b.contains(aff.name.toLowerCase()) || b.contains(aff.code.toLowerCase());
+        }).length;
+        branchCounts[aff.name] = count;
+      }
+
+      int? filterAffiliateId;
+      if (AuthService().isAffiliateAdmin) {
+        filterAffiliateId = AuthService().currentUser?.affiliateId;
+      } else if (_selectedAffiliate != 'Semua Cabang') {
+        final match = affiliates.where((a) => a.name.toLowerCase() == _selectedAffiliate.toLowerCase()).firstOrNull;
+        filterAffiliateId = match?.id;
       }
 
       final units = await widget.repository.getAllInventoryUnits(
@@ -83,13 +130,14 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         statusFilter: _selectedStatus == 'Semua' ? null : _selectedStatus,
         modelFilter: _selectedModel == 'Semua' ? null : _selectedModel,
         branchFilter: _selectedAffiliate == 'Semua Cabang' ? null : _selectedAffiliate,
+        affiliateId: filterAffiliateId,
         sortBy: _selectedSort,
       );
 
       // Pre-fetch active booking for units that are rented/disewa
       for (final unit in units) {
         final s = unit.status.toLowerCase();
-        if (s == 'disewa' || s == 'rented') {
+        if (s == 'disewa' || s == 'rented' || widget.repository.isUnitCurrentlyRented(unit.assetCode) || (unit.customerName != null && unit.customerName!.isNotEmpty)) {
           final booking = await widget.repository.getActiveBookingForUnit(unit.assetCode);
           _activeBookings[unit.assetCode] = booking;
         }
@@ -98,14 +146,19 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
       if (mounted) {
         setState(() {
           _summary = summary;
-          _branchCounts = branchCounts;
+          _affiliates = affiliates;
+          _affiliateUnitCounts = branchCounts;
           _units = units;
           _isLoading = false;
+          _errorMessage = null;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Gagal memuat data unit: $e';
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Gagal memuat unit: $e'),
@@ -124,6 +177,10 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
       case 'disewa':
       case 'rented':
         return const Color(0xFFD97706); // Amber / Orange
+      case 'terlambat':
+      case 'overdue':
+      case 'late':
+        return const Color(0xFFDC2626); // Crimson Red
       case 'maintenance':
       case 'perawatan':
         return const Color(0xFFE11D48); // Rose / Red
@@ -143,6 +200,10 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
       case 'disewa':
       case 'rented':
         return const Color(0xFFFEF3C7);
+      case 'terlambat':
+      case 'overdue':
+      case 'late':
+        return const Color(0xFFFEF2F2);
       case 'maintenance':
       case 'perawatan':
         return const Color(0xFFFEE2E2);
@@ -162,6 +223,10 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
       case 'disewa':
       case 'rented':
         return 'Disewa';
+      case 'terlambat':
+      case 'overdue':
+      case 'late':
+        return 'Terlambat';
       case 'maintenance':
       case 'perawatan':
         return 'Perawatan';
@@ -229,13 +294,174 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     );
   }
 
-  void _handlePengembalian(IphoneModel unit) {
-    final activeBooking = _activeBookings[unit.assetCode];
-    Navigator.pushNamed(
-      context,
-      AppRoutes.returnInspection,
-      arguments: activeBooking != null ? {'booking': activeBooking} : null,
+  Future<void> _handlePengembalian(IphoneModel unit) async {
+    var activeBooking = _activeBookings[unit.assetCode] ??
+        widget.repository.getActiveBookingForUnitSync(unit.assetCode);
+    if (activeBooking == null) {
+      activeBooking = await widget.repository.getActiveBookingForUnit(unit.assetCode);
+      if (activeBooking != null) {
+        _activeBookings[unit.assetCode] = activeBooking;
+      }
+    }
+
+    if (!mounted) return;
+
+    // 1. Jika unit memiliki booking aktif
+    if (activeBooking != null) {
+      // Jika telat dan ada estimasi denda: arahkan langsung ke konfirmasi kasir & settlement pembayaran denda
+      if (activeBooking.isCurrentlyLate && activeBooking.estimatedLateFee > 0) {
+        Navigator.pushNamed(
+          context,
+          AppRoutes.paymentDeposit,
+          arguments: {
+            'booking': activeBooking,
+            'initialPaymentType': PaymentTypeOption.penalty,
+            'initialAmount': activeBooking.estimatedLateFee,
+            'isReturnFlow': true,
+          },
+        ).then((_) {
+          if (mounted) _loadData();
+        });
+        return;
+      }
+
+      // Jika tepat waktu / bebas denda: dialog konfirmasi cepat dan selesaikan pengembalian
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 24),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Konfirmasi Pengembalian',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Unit ${unit.fullName.isNotEmpty ? unit.fullName : unit.name} dikembalikan tepat waktu tanpa denda. Selesaikan pengembalian unit dan ubah status unit menjadi Tersedia (Ready)?',
+            style: const TextStyle(fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Ya, Selesaikan'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true && mounted) {
+        try {
+          await widget.repository.completeReturn(
+            bookingCode: activeBooking.bookingCode,
+            physicalCondition: 'Baik / Sempurna',
+            batteryHealthFinal: unit.batteryHealth,
+            lateFee: 0,
+            damageFee: 0,
+            depositRefunded: 0,
+            refundMethod: 'Tanpa Denda',
+            accessoriesReturned: ['Lengkap'],
+            staffNotes: 'Pengembalian unit tepat waktu diselesaikan langsung.',
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Pengembalian unit berhasil diselesaikan! Status unit kembali Tersedia.'),
+                backgroundColor: Color(0xFF10B981),
+              ),
+            );
+            _loadData();
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Gagal menyelesaikan pengembalian: $e'),
+                backgroundColor: AppTheme.error,
+              ),
+            );
+          }
+        }
+      }
+      return;
+    }
+
+    // 2. Fallback jika data booking aktif tidak ditemukan tapi unit berstatus disewa
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 24),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Konfirmasi Pengembalian',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Selesaikan pengembalian unit ${unit.name} dan ubah status unit menjadi Tersedia (Ready)?',
+          style: const TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ya, Selesaikan'),
+          ),
+        ],
+      ),
     );
+
+    if (confirmed == true && mounted) {
+      try {
+        await widget.repository.updateUnitStatus(unit.assetCode, 'tersedia');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Pengembalian unit berhasil diselesaikan! Status unit kembali Tersedia.'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+          _loadData();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Gagal menyelesaikan pengembalian: $e'),
+              backgroundColor: AppTheme.error,
+            ),
+          );
+        }
+      }
+    }
   }
 
   void _showUnitDetail(IphoneModel unit) {
@@ -403,73 +629,15 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   void _showEditUnitDialog(IphoneModel unit) {
-    final bhCtrl = TextEditingController(text: unit.batteryHealth.toString());
-    String selectedStatus = unit.status;
-
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (dialogCtx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Edit Unit: ${unit.fullName}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Kode Aset: ${unit.assetCode} • SN: ${unit.serialNumber}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-              const SizedBox(height: 12),
-              TextField(
-                controller: bhCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Battery Health (%)',
-                  border: OutlineInputBorder(),
-                  suffixText: '%',
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: selectedStatus.toLowerCase(),
-                decoration: const InputDecoration(labelText: 'Status Unit', border: OutlineInputBorder()),
-                items: const [
-                  DropdownMenuItem(value: 'tersedia', child: Text('Tersedia')),
-                  DropdownMenuItem(value: 'disewa', child: Text('Disewa')),
-                  DropdownMenuItem(value: 'perawatan', child: Text('Perawatan')),
-                ],
-                onChanged: (val) {
-                  if (val != null) setDialogState(() => selectedStatus = val);
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F172A), foregroundColor: Colors.white),
-              onPressed: () async {
-                final newBh = int.tryParse(bhCtrl.text);
-                Navigator.pop(ctx);
-                await widget.repository.updateUnitStatus(
-                  unit.assetCode,
-                  selectedStatus,
-                  batteryHealth: newBh,
-                );
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Unit ${unit.assetCode} berhasil diperbarui'),
-                    backgroundColor: const Color(0xFF10B981),
-                  ),
-                );
-                _loadData();
-              },
-              child: const Text('Simpan Perubahan'),
-            ),
-          ],
-        ),
+      barrierDismissible: false,
+      builder: (ctx) => CreateIphoneDialog.edit(
+        repository: widget.repository,
+        unit: unit,
+        onSaved: (updated) {
+          _loadData();
+        },
       ),
     );
   }
@@ -665,6 +833,21 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(Icons.location_on_outlined, size: 13, color: Color(0xFF64748B)),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Affiliate: ${unit.branchName ?? unit.affiliateName ?? "-"}',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -703,7 +886,10 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: isTablet ? _buildTabletAppBar(context) : _buildMobileAppBar(context),
+      appBar: AppHeader(
+        isTablet: isTablet,
+        title: 'Status Unit iPhone',
+      ),
       body: RefreshIndicator(
         onRefresh: _loadData,
         child: isTablet ? _buildTabletBody() : _buildMobileBody(),
@@ -728,11 +914,8 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
           // 4 Summary Metric Cards (Total, Tersedia, Disewa, Perawatan)
           _buildSummaryCardsTablet(),
 
-          // Status Filter Pills with Counts + Sort Dropdown + Grid/List View Switcher
+          // Status Filter Pills with Counts + Branch Dropdown + Sort + Grid/List View Switcher
           _buildStatusFilterAndControlsRow(),
-
-          // Affiliate Branch Filter Chips (AFFILIATE: [Semua Cabang] [• Genteng] ...)
-          _buildAffiliateFilterRow(),
 
           const SizedBox(height: 8),
 
@@ -741,6 +924,11 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: UnitStatusListSkeleton(itemCount: 6),
+            )
+          else if (_errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              child: _buildErrorState(),
             )
           else if (_units.isEmpty)
             _buildEmptyState()
@@ -778,28 +966,38 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               // Search field with barcode scan button
-              SizedBox(
-                width: 260,
-                height: 40,
+              ConstrainedBox(
+                constraints: const BoxConstraints(
+                  minWidth: 320,
+                  maxWidth: 440,
+                ),
                 child: Container(
+                  height: 44,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.02),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
                   ),
                   child: Row(
                     children: [
+                      const SizedBox(width: 12),
+                      const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
                       const SizedBox(width: 10),
-                      const Icon(Icons.search_rounded, size: 18, color: Color(0xFF94A3B8)),
-                      const SizedBox(width: 8),
                       Expanded(
                         child: TextField(
                           controller: _searchController,
                           onChanged: (_) => _loadData(),
-                          style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
+                          style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
                           decoration: const InputDecoration(
-                            hintText: 'Ketik model iPhone, kode ba...',
-                            hintStyle: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                            hintText: 'Cari model, kode aset, SN, penyewa...',
+                            hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
                             border: InputBorder.none,
                             isDense: true,
                             contentPadding: EdgeInsets.zero,
@@ -808,24 +1006,40 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                       ),
                       if (_searchController.text.isNotEmpty)
                         IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 15, color: Color(0xFF94A3B8)),
+                          icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF94A3B8)),
                           padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                           onPressed: () {
                             _searchController.clear();
                             _loadData();
                           },
                         ),
-                      Container(
-                        margin: const EdgeInsets.only(right: 6),
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: InkWell(
-                          onTap: _openBarcodeScannerModal,
-                          child: const Icon(Icons.qr_code_scanner_rounded, size: 16, color: Color(0xFF64748B)),
+                      InkWell(
+                        onTap: _openBarcodeScannerModal,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.qr_code_scanner_rounded, size: 15, color: Color(0xFF475569)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Scan',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF475569),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -839,13 +1053,13 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text(
                   '+ Tambah iPhone Baru',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0F172A),
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
                   elevation: 0,
                 ),
                 onPressed: _showAddUnitDialog,
@@ -858,6 +1072,12 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   Widget _buildSummaryCardsTablet() {
+    final totalUnits = _summary['total'] ?? _units.length;
+    final readyUnits = _summary['tersedia'] ?? 0;
+    final rentedUnits = _summary['disewa'] ?? 0;
+    final lateUnits = _summary['terlambat'] ?? 0;
+    final maintenanceUnits = _summary['maintenance'] ?? 0;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       child: Row(
@@ -867,10 +1087,12 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
             iconColor: const Color(0xFF7C3AED),
             iconBg: const Color(0xFFFAF5FF),
             borderColor: const Color(0xFFE9D5FF),
-            count: _summary['total'] ?? 24,
+            count: totalUnits,
             countColor: const Color(0xFF6B21A8),
             title: 'TOTAL UNIT',
-            subtitle: 'Terdaftar di Gerai Gandaria',
+            subtitle: _selectedAffiliate == 'Semua Cabang'
+                ? 'Terdaftar di Gerai Gandaria'
+                : 'Terdaftar di $_selectedAffiliate',
             titleColor: const Color(0xFF6B21A8),
           ),
           const SizedBox(width: 14),
@@ -879,7 +1101,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
             iconColor: const Color(0xFF059669),
             iconBg: const Color(0xFFECFDF5),
             borderColor: const Color(0xFFA7F3D0),
-            count: _summary['tersedia'] ?? 18,
+            count: readyUnits,
             countColor: const Color(0xFF059669),
             title: 'TERSEDIA',
             subtitle: 'Siap Sewa / Ready Stock',
@@ -891,7 +1113,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
             iconColor: const Color(0xFFD97706),
             iconBg: const Color(0xFFFFFBEB),
             borderColor: const Color(0xFFFDE68A),
-            count: _summary['disewa'] ?? 5,
+            count: rentedUnits,
             countColor: const Color(0xFFD97706),
             title: 'DISEWA',
             subtitle: 'Sedang Digunakan Customer',
@@ -899,16 +1121,30 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
           ),
           const SizedBox(width: 14),
           _buildKpiCard(
-            icon: Icons.block_flipped,
-            iconColor: const Color(0xFFE11D48),
-            iconBg: const Color(0xFFFFF1F2),
-            borderColor: const Color(0xFFFECDD3),
-            count: _summary['maintenance'] ?? 1,
-            countColor: const Color(0xFFE11D48),
-            title: 'PERAWATAN',
-            subtitle: 'Inspeksi & Maintenance',
-            titleColor: const Color(0xFFE11D48),
+            icon: Icons.warning_amber_rounded,
+            iconColor: const Color(0xFFDC2626),
+            iconBg: const Color(0xFFFEF2F2),
+            borderColor: const Color(0xFFFECACA),
+            count: lateUnits,
+            countColor: const Color(0xFFDC2626),
+            title: 'TERLAMBAT',
+            subtitle: 'Melewati Batas Sewa',
+            titleColor: const Color(0xFFDC2626),
           ),
+          if (maintenanceUnits > 0) ...[
+            const SizedBox(width: 14),
+            _buildKpiCard(
+              icon: Icons.block_flipped,
+              iconColor: const Color(0xFFE11D48),
+              iconBg: const Color(0xFFFFF1F2),
+              borderColor: const Color(0xFFFECDD3),
+              count: maintenanceUnits,
+              countColor: const Color(0xFFE11D48),
+              title: 'PERAWATAN',
+              subtitle: 'Inspeksi & Maintenance',
+              titleColor: const Color(0xFFE11D48),
+            ),
+          ],
         ],
       ),
     );
@@ -1073,10 +1309,14 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
           ),
           const SizedBox(width: 12),
 
-          // Right side: Sort + View Toggle
+          // Right side: Branch Dropdown + Sort + View Toggle
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Branch Dropdown
+              _buildBranchDropdown(),
+              const SizedBox(width: 8),
+
               // Sort Dropdown
               PopupMenuButton<String>(
                 onSelected: (val) {
@@ -1177,111 +1417,6 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     );
   }
 
-  Widget _buildAffiliateFilterRow() {
-    final branches = [
-      {'name': 'Semua Cabang', 'count': _summary['total'] ?? 24, 'dot': null},
-      {'name': 'Genteng', 'count': _branchCounts['genteng'] ?? 2, 'dot': const Color(0xFF7C3AED)},
-      {'name': 'Siliragung', 'count': _branchCounts['siliragung'] ?? 2, 'dot': const Color(0xFF10B981)},
-      {'name': 'Purwoharjo', 'count': _branchCounts['purwoharjo'] ?? 2, 'dot': const Color(0xFFF59E0B)},
-    ];
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6366F1)),
-                SizedBox(width: 4),
-                Text(
-                  'AFFILIATE:',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 10),
-            ...branches.map((b) {
-              final name = b['name'] as String;
-              final isSelected = _selectedAffiliate == name;
-              final dotColor = b['dot'] as Color?;
-              final count = b['count'] as int;
-
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: InkWell(
-                  onTap: () {
-                    setState(() => _selectedAffiliate = name);
-                    _loadData();
-                  },
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isSelected ? const Color(0xFF0F172A) : Colors.white,
-                      border: Border.all(
-                        color: isSelected ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0),
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (dotColor != null) ...[
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: dotColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                        ],
-                        Text(
-                          name,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                            color: isSelected ? Colors.white : const Color(0xFF334155),
-                          ),
-                        ),
-                        if (dotColor != null) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: isSelected ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '$count',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: isSelected ? Colors.white : const Color(0xFF64748B),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildUnitCardsGridTablet() {
     if (!_isGridView) {
       return ListView.separated(
@@ -1339,21 +1474,34 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   // =========================================================================
 
   Widget _buildUnitCard(IphoneModel unit) {
-    final activeBooking = _activeBookings[unit.assetCode];
+    final activeBooking = _activeBookings[unit.assetCode] ?? widget.repository.getActiveBookingForUnitSync(unit.assetCode);
+    final statusLower = unit.status.toLowerCase();
+    final isOverdue = statusLower == 'terlambat' ||
+        statusLower == 'overdue' ||
+        statusLower == 'late';
+    final isUnitRented = !isOverdue && (statusLower == 'disewa' ||
+        statusLower == 'rented' ||
+        activeBooking != null ||
+        (unit.customerName != null && unit.customerName!.isNotEmpty));
+    final effectiveStatus = isOverdue
+        ? 'terlambat'
+        : (isUnitRented ? 'disewa' : unit.status);
     final bhColor = _getBatteryColor(unit.batteryHealth);
-    final statusColor = _getStatusColor(unit.status);
-    final statusBg = _getStatusBgColor(unit.status);
-    final outlineColor = _getModelOutlineColor(unit);
-    final isMaintenance = unit.status.toLowerCase() == 'perawatan' || unit.status.toLowerCase() == 'maintenance';
-    final isRented = unit.status.toLowerCase() == 'disewa' || unit.status.toLowerCase() == 'rented';
+    final statusColor = _getStatusColor(effectiveStatus);
+    final statusBg = _getStatusBgColor(effectiveStatus);
+    final outlineColor = isOverdue ? const Color(0xFFDC2626) : _getModelOutlineColor(unit);
+    final isMaintenance = effectiveStatus.toLowerCase() == 'perawatan' || effectiveStatus.toLowerCase() == 'maintenance';
+    final isRented = isUnitRented;
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isMaintenance ? const Color(0xFFFECDD3) : const Color(0xFFE2E8F0),
-          width: isMaintenance ? 1.5 : 1.0,
+          color: isOverdue
+              ? const Color(0xFFFECACA)
+              : (isMaintenance ? const Color(0xFFFECDD3) : const Color(0xFFE2E8F0)),
+          width: (isOverdue || isMaintenance) ? 1.5 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
@@ -1442,7 +1590,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          _getStatusLabel(unit.status),
+                          _getStatusLabel(effectiveStatus),
                           style: TextStyle(
                             fontSize: 10.5,
                             fontWeight: FontWeight.bold,
@@ -1452,7 +1600,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                       ],
                     ),
                   ),
-                  _buildBranchBadge(unit.branchName),
+                  _buildBranchBadge(unit.branchName ?? unit.affiliateName),
                 ],
               ),
             ],
@@ -1515,9 +1663,9 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
             ),
           ),
 
-          // Context Box: Active Rental Info (if Disewa) or Maintenance Note (if Perawatan)
-          if (isRented)
-            _buildActiveRentalBox(unit, activeBooking)
+          // Context Box: Active Rental Info (if Disewa or Terlambat) or Maintenance Note (if Perawatan)
+          if (isOverdue || isRented)
+            _buildActiveRentalBox(unit, activeBooking, isOverdue: isOverdue)
           else if (isMaintenance)
             _buildMaintenanceBox(unit)
           else
@@ -1551,8 +1699,8 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
           const SizedBox(height: 12),
 
           // Action Buttons Row
-          if (isRented)
-            _buildRentedActions(unit)
+          if (isOverdue || isRented)
+            _buildRentedActions(unit, isOverdue: isOverdue)
           else if (isMaintenance)
             _buildMaintenanceActions(unit)
           else
@@ -1563,33 +1711,52 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   Widget _buildBranchBadge(String? branchName) {
-    if (branchName == null || branchName.isEmpty) return const SizedBox.shrink();
+    final rawName = (branchName != null && branchName.trim().isNotEmpty)
+        ? branchName.trim()
+        : '-';
+
     Color borderColor;
     Color bgColor;
     Color textColor;
     Color iconColor;
+    IconData icon;
 
-    final b = branchName.toLowerCase();
+    final b = rawName.toLowerCase();
     if (b.contains('purwoharjo')) {
       borderColor = const Color(0xFFFDE68A);
       bgColor = const Color(0xFFFFFBEB);
       textColor = const Color(0xFFB45309);
       iconColor = const Color(0xFFD97706);
+      icon = Icons.location_on_rounded;
     } else if (b.contains('genteng')) {
       borderColor = const Color(0xFFE9D5FF);
       bgColor = const Color(0xFFFAF5FF);
       textColor = const Color(0xFF6B21A8);
       iconColor = const Color(0xFF7C3AED);
-    } else {
+      icon = Icons.location_on_rounded;
+    } else if (b.contains('siliragung')) {
       borderColor = const Color(0xFFA7F3D0);
       bgColor = const Color(0xFFECFDF5);
       textColor = const Color(0xFF047857);
       iconColor = const Color(0xFF059669);
+      icon = Icons.location_on_rounded;
+    } else if (rawName == '-') {
+      borderColor = const Color(0xFFE2E8F0);
+      bgColor = const Color(0xFFF8FAFC);
+      textColor = const Color(0xFF64748B);
+      iconColor = const Color(0xFF94A3B8);
+      icon = Icons.storefront_outlined;
+    } else {
+      borderColor = const Color(0xFFC7D2FE);
+      bgColor = const Color(0xFFEEF2FF);
+      textColor = const Color(0xFF4338CA);
+      iconColor = const Color(0xFF6366F1);
+      icon = Icons.location_on_rounded;
     }
 
     return Container(
       margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(12),
@@ -1598,13 +1765,13 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.location_on_rounded, size: 9, color: iconColor),
-          const SizedBox(width: 3),
+          Icon(icon, size: 9.5, color: iconColor),
+          const SizedBox(width: 3.5),
           Text(
-            branchName,
+            rawName,
             style: TextStyle(
               fontSize: 9.5,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w600,
               color: textColor,
             ),
           ),
@@ -1613,21 +1780,44 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     );
   }
 
-  Widget _buildActiveRentalBox(IphoneModel unit, BookingModel? activeBooking) {
-    final customer = unit.customerName ?? activeBooking?.customerName ?? 'Customer';
-    final code = unit.bookingCode ?? (activeBooking != null ? '#${activeBooking.bookingCode}' : '#SKY-8421');
-    final schedule = unit.returnScheduleText ??
-        (activeBooking != null
-            ? 'Kembali: ${Formatters.formatDateTime(activeBooking.endDate)}'
-            : 'Kembali: Hari Ini');
+  Widget _buildActiveRentalBox(IphoneModel unit, BookingModel? activeBooking, {bool isOverdue = false}) {
+    final customer = (unit.customerName != null && unit.customerName!.isNotEmpty)
+        ? unit.customerName!
+        : (activeBooking?.customerName ?? 'Pelanggan');
+
+    String code = '';
+    if (unit.bookingCode != null && unit.bookingCode!.isNotEmpty) {
+      code = unit.bookingCode!;
+    } else if (activeBooking != null && activeBooking.bookingCode.isNotEmpty) {
+      final raw = activeBooking.bookingCode.replaceFirst('#', '').trim();
+      code = '#$raw';
+    } else {
+      code = '#SKY-${unit.assetCode}';
+    }
+
+    String schedule = '';
+    if (unit.returnScheduleText != null && unit.returnScheduleText!.isNotEmpty) {
+      schedule = unit.returnScheduleText!;
+    } else if (activeBooking != null) {
+      final dateStr = Formatters.date(activeBooking.endDate);
+      final timeStr = activeBooking.endTime ?? '14:00 WIB';
+      final jaminan = activeBooking.jaminanType.isNotEmpty ? ' (${activeBooking.jaminanType})' : '';
+      schedule = isOverdue
+          ? 'Terlambat: Harusnya $dateStr • $timeStr$jaminan'
+          : 'Kembali: $dateStr • $timeStr$jaminan';
+    } else {
+      schedule = isOverdue
+          ? 'Terlambat: Harusnya batas sewa hari ini'
+          : 'Kembali: Batas sewa hari ini';
+    }
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
+        color: isOverdue ? const Color(0xFFFEF2F2) : const Color(0xFFFFFBEB),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFFDE68A)),
+        border: Border.all(color: isOverdue ? const Color(0xFFFECACA) : const Color(0xFFFDE68A)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1638,10 +1828,10 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
               Expanded(
                 child: Text(
                   'Customer: $customer',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF78350F),
+                    color: isOverdue ? const Color(0xFF991B1B) : const Color(0xFF78350F),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1650,10 +1840,10 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
               const SizedBox(width: 4),
               Text(
                 code,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF78350F),
+                  color: isOverdue ? const Color(0xFF991B1B) : const Color(0xFF78350F),
                 ),
               ),
             ],
@@ -1661,15 +1851,19 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
           const SizedBox(height: 3),
           Row(
             children: [
-              const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFFD97706)),
+              Icon(
+                isOverdue ? Icons.warning_amber_rounded : Icons.access_time_rounded,
+                size: 12,
+                color: isOverdue ? const Color(0xFFDC2626) : const Color(0xFFD97706),
+              ),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
                   schedule,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF92400E),
+                    fontWeight: isOverdue ? FontWeight.bold : FontWeight.w600,
+                    color: isOverdue ? const Color(0xFFB91C1C) : const Color(0xFF92400E),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1765,15 +1959,18 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     );
   }
 
-  Widget _buildRentedActions(IphoneModel unit) {
+  Widget _buildRentedActions(IphoneModel unit, {bool isOverdue = false}) {
     return Row(
       children: [
         Expanded(
           child: ElevatedButton.icon(
             icon: const Icon(Icons.arrow_upward_rounded, size: 14),
-            label: const Text('Pengembalian', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+            label: Text(
+              isOverdue ? 'Kembalikan (Telat)' : 'Pengembalian',
+              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+            ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFD97706),
+              backgroundColor: isOverdue ? const Color(0xFFDC2626) : const Color(0xFFD97706),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1889,13 +2086,17 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
           child: Row(
             children: [
-              _buildMobileMetricCard('Total Unit', _summary['total'] ?? 24, Icons.devices_rounded, const Color(0xFF7C3AED)),
+              _buildMobileMetricCard('Total Unit', _summary['total'] ?? _units.length, Icons.devices_rounded, const Color(0xFF7C3AED)),
               const SizedBox(width: 6),
-              _buildMobileMetricCard('Tersedia', _summary['tersedia'] ?? 18, Icons.check_circle_outline_rounded, const Color(0xFF059669)),
+              _buildMobileMetricCard('Tersedia', _summary['tersedia'] ?? 0, Icons.check_circle_outline_rounded, const Color(0xFF059669)),
               const SizedBox(width: 6),
-              _buildMobileMetricCard('Disewa', _summary['disewa'] ?? 5, Icons.access_time_rounded, const Color(0xFFD97706)),
+              _buildMobileMetricCard('Disewa', _summary['disewa'] ?? 0, Icons.access_time_rounded, const Color(0xFFD97706)),
               const SizedBox(width: 6),
-              _buildMobileMetricCard('Perawatan', _summary['maintenance'] ?? 1, Icons.block_flipped, const Color(0xFFE11D48)),
+              _buildMobileMetricCard('Terlambat', _summary['terlambat'] ?? 0, Icons.warning_amber_rounded, const Color(0xFFDC2626)),
+              if ((_summary['maintenance'] ?? 0) > 0) ...[
+                const SizedBox(width: 6),
+                _buildMobileMetricCard('Perawatan', _summary['maintenance'] ?? 0, Icons.block_flipped, const Color(0xFFE11D48)),
+              ],
             ],
           ),
         ),
@@ -1903,43 +2104,78 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         // Search bar
         Container(
           color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (_) => _loadData(),
-                  decoration: InputDecoration(
-                    hintText: 'Cari iPhone, kode aset, SN...',
-                    hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                    prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF64748B)),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 18),
-                            onPressed: () {
-                              _searchController.clear();
-                              _loadData();
-                            },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: const Color(0xFFF1F5F9),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                child: Container(
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 12),
+                      const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (_) => _loadData(),
+                          style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
+                          decoration: const InputDecoration(
+                            hintText: 'Cari iPhone, kode aset, SN, penyewa...',
+                            hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ),
+                      if (_searchController.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF94A3B8)),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          onPressed: () {
+                            _searchController.clear();
+                            _loadData();
+                          },
+                        ),
+                      IconButton(
+                        icon: const Icon(Icons.qr_code_scanner_rounded, size: 20, color: Color(0xFF475569)),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                        tooltip: 'Scan Barcode',
+                        onPressed: _openBarcodeScannerModal,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                style: IconButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              const SizedBox(width: 10),
+              Container(
+                height: 46,
+                width: 46,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
                 ),
-                icon: const Icon(Icons.add_rounded, size: 20),
-                tooltip: 'Tambah iPhone',
-                onPressed: _showAddUnitDialog,
+                child: IconButton(
+                  icon: const Icon(Icons.add_rounded, size: 22, color: Colors.white),
+                  tooltip: 'Tambah iPhone',
+                  onPressed: _showAddUnitDialog,
+                ),
               ),
             ],
           ),
@@ -1955,18 +2191,34 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
           },
         ),
 
+        // Branch & Sort Controls
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildBranchDropdown(isCompact: true),
+              ),
+              const SizedBox(width: 8),
+              _buildMobileSortButton(),
+            ],
+          ),
+        ),
+
         // Unit list
         Expanded(
           child: _isLoading
               ? const UnitStatusListSkeleton(itemCount: 4)
-              : _units.isEmpty
-                  ? _buildEmptyState()
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      itemCount: _units.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) => _buildUnitCard(_units[index]),
-                    ),
+              : _errorMessage != null
+                  ? _buildErrorState()
+                  : _units.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          itemCount: _units.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) => _buildUnitCard(_units[index]),
+                        ),
         ),
       ],
     );
@@ -2036,7 +2288,9 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   _searchController.clear();
                   _selectedStatus = 'Semua';
                   _selectedModel = 'Semua';
-                  _selectedAffiliate = 'Semua Cabang';
+                  _selectedAffiliate = (AuthService().isAffiliateAdmin && _affiliates.isNotEmpty)
+                      ? _affiliates.first.name
+                      : 'Semua Cabang';
                 });
                 _loadData();
               },
@@ -2049,369 +2303,179 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   // =========================================================================
-  // CONSISTENT APP BAR SYSTEM (TABLET & MOBILE)
+  // BRANCH DROPDOWN & SORT CONTROLS
   // =========================================================================
 
-  String _getDayName(DateTime date) {
-    switch (date.weekday) {
-      case 1:
-        return 'Senin';
-      case 2:
-        return 'Selasa';
-      case 3:
-        return 'Rabu';
-      case 4:
-        return 'Kamis';
-      case 5:
-        return 'Jumat';
-      case 6:
-        return 'Sabtu';
-      case 7:
-        return 'Minggu';
-      default:
-        return '';
-    }
-  }
+  Widget _buildBranchDropdown({bool isCompact = false}) {
+    final totalUnits = _summary['total'] ?? _units.length;
+    final isAffAdmin = AuthService().isAffiliateAdmin;
 
-  String _getRoleBadgeText(String? role) {
-    final r = (role ?? '').toUpperCase();
-    if (r.contains('SUPER') || r.contains('OWNER')) return 'SUPER-ADMIN';
-    if (r.contains('ADMIN')) return 'ADMIN';
-    if (r.contains('KASIR')) return 'KASIR';
-    return 'STAFF';
-  }
-
-  Widget _buildPrinterStatusBadge({bool isTablet = false}) {
-    final printService = ThermalPrintService();
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        printService.activePrinterNotifier,
-        printService.isConnectedNotifier,
-      ]),
-      builder: (context, _) {
-        final activePrinter = printService.activePrinterNotifier.value;
-        final isConnected = printService.isConnectedNotifier.value;
-
-        String printerName = activePrinter?.name.trim() ?? '';
-        if (printerName.isEmpty || printerName == 'Belum Ada Printer Dipilih') {
-          printerName = isConnected ? 'Thermal 58mm' : 'Printer';
-        }
-
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: isConnected ? const Color(0xFFF0FDF4) : const Color(0xFFFEF2F2),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isConnected ? const Color(0xFFBBF7D0) : const Color(0xFFFECACA),
+    final items = <DropdownMenuItem<String>>[
+      if (!isAffAdmin)
+        DropdownMenuItem<String>(
+          value: 'Semua Cabang',
+          child: Text(
+            'Semua Cabang ($totalUnits)',
+            style: TextStyle(
+              fontSize: isCompact ? 12 : 12.5,
+              fontWeight: _selectedAffiliate == 'Semua Cabang' ? FontWeight.bold : FontWeight.w500,
+              color: const Color(0xFF0F172A),
             ),
+            overflow: TextOverflow.ellipsis,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isConnected ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Icon(
-                Icons.print_outlined,
-                size: 14,
-                color: isConnected ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                printerName,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: isConnected ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-                ),
-              ),
-            ],
+        ),
+      ..._affiliates.map((aff) {
+        final count = _affiliateUnitCounts[aff.name] ?? _units.length;
+        return DropdownMenuItem<String>(
+          value: aff.name,
+          child: Text(
+            '${aff.name} ($count)',
+            style: TextStyle(
+              fontSize: isCompact ? 12 : 12.5,
+              fontWeight: _selectedAffiliate == aff.name ? FontWeight.bold : FontWeight.w500,
+              color: const Color(0xFF0F172A),
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         );
-      },
-    );
-  }
+      }),
+    ];
 
-  PreferredSizeWidget _buildTabletAppBar(BuildContext context) {
-    final user = AuthService().currentUser;
-    final now = DateTime.now();
-    final dateFormatted = '${_getDayName(now)}, ${Formatters.date(now)}';
-    final topPadding = MediaQuery.paddingOf(context).top;
-    final cashierName = user?.name.trim().isNotEmpty == true ? user!.name : 'Budi Santoso';
+    // Ensure _selectedAffiliate matches one of the items
+    final validValues = isAffAdmin
+        ? _affiliates.map((a) => a.name).toList()
+        : ['Semua Cabang', ..._affiliates.map((a) => a.name)];
+    final currentValue = validValues.contains(_selectedAffiliate)
+        ? _selectedAffiliate
+        : (validValues.isNotEmpty ? validValues.first : 'Semua Cabang');
 
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(68),
-      child: RepaintBoundary(
-        child: Container(
-          padding: EdgeInsets.only(top: topPadding + 8, bottom: 10, left: 24, right: 24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
+    return Container(
+      height: isCompact ? 36 : 38,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: isAffAdmin ? const Color(0xFFF1F5F9) : Colors.white,
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: currentValue,
+          icon: isAffAdmin
+              ? const SizedBox.shrink()
+              : const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF64748B)),
+          isDense: true,
+          isExpanded: isCompact,
+          borderRadius: BorderRadius.circular(12),
+          dropdownColor: Colors.white,
+          elevation: 3,
+          style: TextStyle(
+            fontSize: isCompact ? 12 : 12.5,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF334155),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'SKYRental',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF0F172A),
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      'Status Unit iPhone',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF2563EB),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  reverse: true,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.refresh_rounded, color: Color(0xFF334155), size: 20),
-                        tooltip: 'Segarkan Data',
-                        onPressed: _loadData,
-                      ),
-                      const SizedBox(width: 6),
-                      _buildPrinterStatusBadge(isTablet: true),
-                      const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
-                            const SizedBox(width: 8),
-                            Text(
-                              dateFormatted,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF334155),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () => Navigator.pushNamed(context, AppRoutes.account),
-                            child: Stack(
-                              children: [
-                                CircleAvatar(
-                                  radius: 18,
-                                  backgroundColor: const Color(0xFF0F172A),
-                                  child: Text(
-                                    cashierName.isNotEmpty
-                                        ? cashierName.trim().split(' ').map((p) => p.isNotEmpty ? p[0] : '').take(2).join().toUpperCase()
-                                        : 'BS',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 0,
-                                  bottom: 0,
-                                  child: Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF10B981),
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.white, width: 1.5),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          GestureDetector(
-                            onTap: () => Navigator.pushNamed(context, AppRoutes.account),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  cashierName,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                                const Text('Kasir • Shift Pagi', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+          items: items,
+          onChanged: (isAffAdmin || validValues.length <= 1)
+              ? null
+              : (val) {
+                  if (val != null) {
+                    setState(() => _selectedAffiliate = val);
+                    _loadData();
+                  }
+                },
         ),
       ),
     );
   }
 
-  PreferredSizeWidget _buildMobileAppBar(BuildContext context) {
-    final user = AuthService().currentUser;
-    final userName = user?.name.trim().isNotEmpty == true ? user!.name : 'Admin SKYRental';
-    final roleBadge = _getRoleBadgeText(user?.role);
-
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(68),
-      child: Container(
-        padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top + 8,
-          bottom: 10,
-          left: 16,
-          right: 16,
+  Widget _buildMobileSortButton() {
+    return PopupMenuButton<String>(
+      onSelected: (val) {
+        setState(() => _selectedSort = val);
+        _loadData();
+      },
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      itemBuilder: (ctx) => [
+        const PopupMenuItem(
+          value: 'bh_desc',
+          child: Text('Battery Health (Tertinggi)', style: TextStyle(fontSize: 12.5)),
         ),
+        const PopupMenuItem(
+          value: 'bh_asc',
+          child: Text('Battery Health (Terendah)', style: TextStyle(fontSize: 12.5)),
+        ),
+        const PopupMenuItem(
+          value: 'name_asc',
+          child: Text('Model iPhone (A - Z)', style: TextStyle(fontSize: 12.5)),
+        ),
+        const PopupMenuItem(
+          value: 'asset_asc',
+          child: Text('Kode Aset (A - Z)', style: TextStyle(fontSize: 12.5)),
+        ),
+      ],
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: AppTheme.surface.withValues(alpha: 0.95),
-          border: Border(
-            bottom: BorderSide(color: AppTheme.cardBorder, width: 1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+          color: Colors.white,
+          border: Border.all(color: const Color(0xFFCBD5E1)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.sort_rounded, size: 16, color: Color(0xFF64748B)),
+            SizedBox(width: 4),
+            Text(
+              'Urutkan',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF334155),
+              ),
             ),
           ],
         ),
-        child: Row(
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          userName,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
-                            letterSpacing: -0.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceContainer,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          roleBadge,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Status Unit iPhone',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEF2F2),
+                shape: BoxShape.circle,
               ),
+              child: const Icon(Icons.error_outline_rounded, size: 48, color: Color(0xFFDC2626)),
             ),
-            const SizedBox(width: 4),
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              tooltip: 'Segarkan Data',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            const SizedBox(height: 16),
+            const Text(
+              'Gagal Memuat Data Unit',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _errorMessage ?? 'Terjadi kesalahan saat mengambil inventaris unit iPhone.',
+              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F172A),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Coba Lagi'),
               onPressed: _loadData,
-            ),
-            const SizedBox(width: 4),
-            _buildPrinterStatusBadge(isTablet: false),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => Navigator.pushNamed(context, AppRoutes.account),
-              child: Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 17,
-                    backgroundColor: AppTheme.surfaceContainer,
-                    child: Icon(Icons.person, size: 20, color: AppTheme.primary),
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 9,
-                      height: 9,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.5),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),

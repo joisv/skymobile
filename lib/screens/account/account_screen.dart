@@ -19,6 +19,7 @@ import '../dashboard/notification_list_screen.dart';
 import '../receipt/printer_settings_screen.dart';
 import '../receipt/receipt_format_settings_screen.dart';
 import '../receipt/reprint_receipt_list_screen.dart';
+import 'roles_permissions_screen.dart';
 import 'theme_settings_screen.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -1098,6 +1099,22 @@ class _AccountScreenState extends State<AccountScreen> {
                   icon: Icons.swap_horiz_rounded,
                   title: 'Mutasi & Transfer Unit iPhone',
                   subtitle: 'Riwayat pengiriman antar cabang',
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Category: PENGGUNA & HAK AKSES
+            _buildTabletCategorySection(
+              title: 'PENGGUNA & HAK AKSES',
+              children: [
+                _buildTabletSidebarItem(
+                  key: 'rolePermissions',
+                  icon: Icons.manage_accounts_rounded,
+                  title: 'Manajemen Pengguna & Role',
+                  subtitle: 'Daftar user, tambah akun & assign hak akses',
+                  trailingBadge: 'Kelola Akses',
+                  trailingBadgeColor: const Color(0xFFEA580C),
                 ),
               ],
             ),
@@ -2205,33 +2222,10 @@ class _AccountScreenState extends State<AccountScreen> {
   // =========================================================================
 
   Widget _buildRolePermissionsDetail() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildDetailHeader(
-          title: 'Role & Izin Hak Akses Akun',
-          subtitle: 'Rincian izin modul operasional sistem yang diberikan kepada profil akun ini.',
-        ),
-        const SizedBox(height: 16),
-        _buildDetailCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('INFORMASI HAK AKSES PENGGUNA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.6, color: Color(0xFF475569))),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  _buildMetricBox('Role Akun', _user.role, Icons.badge_outlined, const Color(0xFF2563EB)),
-                  const SizedBox(width: 12),
-                  _buildMetricBox('Otoritas', 'Akses Penuh', Icons.verified_user_outlined, const Color(0xFF059669)),
-                  const SizedBox(width: 12),
-                  _buildMetricBox('Outlet Ditugaskan', _user.outletName, Icons.storefront_outlined, const Color(0xFF7C3AED)),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
+    return RolesPermissionsScreen(
+      key: const ValueKey('embedded_roles_permissions'),
+      repository: widget.repository,
+      isEmbedded: true,
     );
   }
 
@@ -2623,6 +2617,30 @@ class _AccountScreenState extends State<AccountScreen> {
             _buildOperationalStatusCard(),
             const SizedBox(height: 20),
 
+            _buildSectionHeader('MANAJEMEN PENGGUNA & HAK AKSES'),
+            _buildMenuContainer([
+              _buildMenuItem(
+                icon: Icons.manage_accounts_rounded,
+                iconColor: const Color(0xFFEA580C),
+                title: 'Daftar Pengguna & Role',
+                subtitle: 'Kelola akun pengguna, tambah user baru & hapus akun',
+                trailingBadge: 'Kelola User',
+                trailingBadgeColor: const Color(0xFFEA580C),
+                onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
+              ),
+              const Divider(height: 1, indent: 56),
+              _buildMenuItem(
+                icon: Icons.security_rounded,
+                iconColor: const Color(0xFF4F46E5),
+                title: 'Assign Role & Permission',
+                subtitle: 'Tetapkan role utama & hak akses izin pengguna',
+                trailingBadge: 'Assign Role',
+                trailingBadgeColor: const Color(0xFF4F46E5),
+                onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
+              ),
+            ]),
+            const SizedBox(height: 20),
+
             _buildSectionHeader('TOKO & OUTLET'),
             _buildMenuContainer([
               _buildMenuItem(
@@ -2688,9 +2706,9 @@ class _AccountScreenState extends State<AccountScreen> {
                 iconColor: Colors.indigo,
                 title: 'Role & Izin Akses',
                 subtitle: _user.role,
-                trailingBadge: 'Admin Penuh',
+                trailingBadge: 'Kelola Role',
                 trailingBadgeColor: Colors.indigo,
-                onTap: () {},
+                onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
               ),
             ]),
             const SizedBox(height: 20),

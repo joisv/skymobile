@@ -10,9 +10,9 @@ class IphoneTransferModel {
   final int toAffiliateId;
   final String toAffiliateName;
   final String toAffiliateCode;
-  final int? sentBy;
+  final String? sentBy;
   final String senderName;
-  final int? receivedBy;
+  final String? receivedBy;
   final String? receiverName;
   final String status; // 'in_transit', 'received', 'pending'
   final String? notes;
@@ -78,9 +78,9 @@ class IphoneTransferModel {
           : int.tryParse(json['to_affiliate_id']?.toString() ?? '0') ?? 0,
       toAffiliateName: json['to_affiliate_name'] as String? ?? 'Tujuan',
       toAffiliateCode: json['to_affiliate_code'] as String? ?? '-',
-      sentBy: json['sent_by'] != null ? int.tryParse(json['sent_by'].toString()) : null,
+      sentBy: json['sent_by']?.toString(),
       senderName: json['sender_name'] as String? ?? 'Admin',
-      receivedBy: json['received_by'] != null ? int.tryParse(json['received_by'].toString()) : null,
+      receivedBy: json['received_by']?.toString(),
       receiverName: json['receiver_name'] as String?,
       status: json['status'] as String? ?? 'in_transit',
       notes: json['notes'] as String?,
@@ -127,9 +127,9 @@ class IphoneTransferModel {
     int? toAffiliateId,
     String? toAffiliateName,
     String? toAffiliateCode,
-    int? sentBy,
+    String? sentBy,
     String? senderName,
-    int? receivedBy,
+    String? receivedBy,
     String? receiverName,
     String? status,
     String? notes,

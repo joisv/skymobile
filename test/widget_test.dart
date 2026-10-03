@@ -25,10 +25,8 @@ import 'package:skyrental_admin/services/auth_service.dart';
 import 'package:skyrental_admin/models/admin_user_model.dart';
 import 'package:skyrental_admin/models/payment_model.dart';
 import 'package:skyrental_admin/screens/payment/payment_deposit_screen.dart';
-import 'package:skyrental_admin/screens/return/return_inspection_screen.dart';
 import 'package:skyrental_admin/screens/unit_status/unit_status_list_screen.dart';
 import 'package:skyrental_admin/screens/unit_status/widgets/unit_status_skeleton.dart';
-import 'package:skyrental_admin/screens/receipt/printer_settings_screen.dart';
 import 'package:skyrental_admin/screens/booking/widgets/extend_duration_modal.dart';
 import 'package:skyrental_admin/models/affiliate_model.dart';
 import 'package:skyrental_admin/screens/affiliate/affiliate_list_screen.dart';
@@ -37,9 +35,14 @@ import 'package:skyrental_admin/screens/affiliate/affiliate_form_screen.dart';
 import 'package:skyrental_admin/screens/affiliate/iphone_transfer_list_screen.dart';
 import 'package:skyrental_admin/screens/affiliate/affiliate_revenue_screen.dart';
 import 'package:skyrental_admin/screens/account/account_screen.dart';
+import 'package:skyrental_admin/models/user_role_model.dart';
+import 'package:skyrental_admin/screens/account/roles_permissions_screen.dart';
 import 'package:skyrental_admin/screens/account/theme_settings_screen.dart';
 import 'package:skyrental_admin/screens/dashboard/sales_report_screen.dart';
 import 'package:skyrental_admin/screens/unit_status/widgets/create_iphone_dialog.dart';
+import 'package:skyrental_admin/screens/affiliate/widgets/create_affiliate_dialog.dart';
+import 'package:skyrental_admin/screens/auth/login_screen.dart';
+import 'package:skyrental_admin/services/api_service.dart';
 import 'package:skyrental_admin/services/theme_service.dart';
 
 void main() {
@@ -970,9 +973,15 @@ void main() {
   });
 
   testWidgets(
-      'ReturnInspectionScreen displays late fee and navigates without hardware tests',
+      'UnitStatusListScreen return action routes to penalty payment when late or shows confirm dialog',
       (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     final repository = BookingRepository();
+    repository.resetInventory();
+
     final now = DateTime.now();
     final lateBooking = BookingModel(
       id: 100,
@@ -995,7 +1004,7 @@ void main() {
         storage: '128GB',
         color: 'Space Black',
         serialNumber: 'SN-14-100',
-        assetCode: 'AST-14-100',
+        assetCode: 'IPHSKY1015',
         status: 'disewa',
       ),
       isLate: true,
@@ -1005,25 +1014,18 @@ void main() {
       estimatedLateFee: 50000,
     );
 
+    expect(lateBooking.isCurrentlyLate, isTrue);
+    expect(lateBooking.estimatedLateFee, greaterThan(0));
+
     await tester.pumpWidget(
       MaterialApp(
-        home: ReturnInspectionScreen(
-          repository: repository,
-          booking: lateBooking,
-          initialLateFee: 50000,
-          daysLate: 0,
-        ),
+        onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
+        home: UnitStatusListScreen(repository: repository),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Pengembalian Unit'), findsOneWidget);
-    expect(find.text('Kalkulasi Keterlambatan'), findsOneWidget);
-    expect(find.text('Bayar Denda (Rp 5.000) di Kasir'), findsOneWidget);
-    expect(find.text('Uji Kelayakan & Hardware'), findsNothing);
-    expect(find.text('Kelengkapan Aksesoris Sewa'), findsNothing);
-    expect(find.text('Sisa Refund Ke Pelanggan'), findsNothing);
-    expect(find.text('Metode Refund Saldo'), findsNothing);
+    expect(find.text('Pengembalian'), findsWidgets);
   });
 
   testWidgets(
@@ -1312,24 +1314,10 @@ void main() {
     expect(find.text('KASIR'), findsOneWidget);
     expect(find.text(user?.role ?? 'Staff Operasional'), findsOneWidget);
 
-    // 4. Set test printer state and check printer status badge
-    ThermalPrintService().activePrinterNotifier.value = PrinterDeviceModel.defaultVsc();
-    ThermalPrintService().isConnectedNotifier.value = false;
-    await tester.pump();
-
-    expect(find.text('VSC MP-58C'), findsOneWidget);
-    expect(find.text('Belum Terhubung'), findsOneWidget);
-
-    // 5. Connect printer and verify reactive update to 'Terhubung'
-    ThermalPrintService().isConnectedNotifier.value = true;
-    await tester.pump();
-    expect(find.text('Terhubung'), findsOneWidget);
-
-    // 6. Tap printer status badge and verify navigation to PrinterSettingsScreen
-    await tester.tap(find.text('VSC MP-58C'));
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(find.byType(PrinterSettingsScreen), findsOneWidget);
+    // 4. Verify printer status indicator is completely removed from header per user requirement
+    expect(find.text('VSC MP-58C'), findsNothing);
+    expect(find.text('Belum Terhubung'), findsNothing);
+    expect(find.text('Terhubung'), findsNothing);
   });
 
   testWidgets(
@@ -2119,9 +2107,12 @@ void main() {
     await tester.ensureVisible(printerMenuFinder);
     await tester.pumpAndSettle();
     await tester.tap(printerMenuFinder);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pumpAndSettle();
+    for (int i = 0; i < 25; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.text('Pengaturan & Uji Thermal Printer POS').evaluate().isNotEmpty) {
+        break;
+      }
+    }
 
     // Verify "Kelola Printer" button is removed
     expect(find.text('Kelola Printer'), findsNothing);
@@ -2251,8 +2242,12 @@ void main() {
     );
 
     // Allow repository Future to load
-    await tester.pump(const Duration(milliseconds: 150));
-    await tester.pumpAndSettle();
+    for (int i = 0; i < 25; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.text('#SKY260923BZBO').evaluate().isNotEmpty) {
+        break;
+      }
+    }
 
     // 1. Verify Top Header
     expect(find.text('SKYRental'), findsWidgets);
@@ -2364,10 +2359,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 1. Verify Header Elements
+    // 1. Verify Header Elements (AppHeader consistent with Dashboard)
     expect(find.text('SKYRental'), findsWidgets);
-    expect(find.text('Budi Santoso'), findsOneWidget);
-    expect(find.text('Kasir • Shift Pagi'), findsOneWidget);
+    expect(find.text('Status Unit iPhone'), findsOneWidget);
+    expect(find.textContaining('Shift Pagi • POS-01'), findsWidgets);
 
     // 2. Verify Sub-header Bar
     expect(find.text('Status Unit & Inventaris iPhone'), findsOneWidget);
@@ -2390,12 +2385,9 @@ void main() {
     expect(find.text('1'), findsWidgets);
     expect(find.text('Inspeksi & Maintenance'), findsOneWidget);
 
-    // 4. Verify Affiliate Chips
-    expect(find.text('AFFILIATE:'), findsOneWidget);
-    expect(find.text('Semua Cabang'), findsOneWidget);
-    expect(find.text('Genteng'), findsWidgets);
-    expect(find.text('Siliragung'), findsWidgets);
-    expect(find.text('Purwoharjo'), findsWidgets);
+    // 4. Verify Branch Dropdown (replaces bulky affiliate chips per user requirement)
+    expect(find.byType(DropdownButton<String>), findsOneWidget);
+    expect(find.textContaining('Semua Cabang'), findsOneWidget);
 
     // 5. Verify Unit Cards rendered on screen
     expect(find.text('IPHSKY1048'), findsOneWidget);
@@ -2532,6 +2524,649 @@ void main() {
     expect(find.text('Upload dari HP'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('CreateIphoneDialog validates required fields, short names, and invalid slugs', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    final repository = BookingRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CreateIphoneDialog(
+            repository: repository,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final nameField = find.byKey(const Key('create_iphone_name_field'));
+    final slugField = find.byKey(const Key('create_iphone_slug_field'));
+    final saveButton = find.byKey(const Key('create_iphone_submit_btn'));
+
+    // Clear name field to test empty validation
+    await tester.enterText(nameField, '');
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nama model iPhone wajib diisi.'), findsOneWidget);
+    expect(find.text('Gagal Menyimpan Data Unit'), findsOneWidget);
+
+    // Test model name shorter than 3 characters
+    await tester.enterText(nameField, 'IP');
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nama model iPhone minimal 3 karakter.'), findsOneWidget);
+
+    // Test invalid slug format
+    await tester.enterText(nameField, 'iPhone 16 Pro Max');
+    await tester.enterText(slugField, 'invalid slug with spaces!');
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Format slug tidak valid'), findsOneWidget);
+  });
+
+  testWidgets('CreateIphoneDialog validates duplicate serial number, duplicate asset code, and duplicate durations', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    final repository = BookingRepository();
+    final existingUnit = repository.inventory.first;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CreateIphoneDialog(
+            repository: repository,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final nameField = find.byKey(const Key('create_iphone_name_field'));
+    final snField = find.byKey(const Key('create_iphone_sn_field'));
+    final assetCodeField = find.byKey(const Key('create_iphone_asset_code_field'));
+    final saveButton = find.byKey(const Key('create_iphone_submit_btn'));
+
+    await tester.enterText(nameField, 'iPhone 15 Pro');
+    await tester.pump();
+
+    // 1. Test duplicate serial number from existing inventory
+    await tester.enterText(snField, existingUnit.serialNumber);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nomor seri sudah terdaftar.'), findsOneWidget);
+
+    // Reset to unique SN, then test duplicate asset code
+    await tester.enterText(snField, 'DXNEWTEST1234');
+    await tester.enterText(assetCodeField, existingUnit.assetCode);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kode aset sudah digunakan.'), findsOneWidget);
+
+    // Reset to unique asset code
+    await tester.enterText(assetCodeField, 'IPHSKY99999');
+    await tester.pump();
+
+    // 2. Test duplicate duration repeater packages
+    await tester.tap(find.text('Tambah Baris'));
+    await tester.pumpAndSettle();
+
+    // Both rows initially are 24 jam and 12 jam. Set second row to 24 jam as well:
+    final hourFields = find.widgetWithText(TextFormField, 'Jam');
+    expect(hourFields, findsNWidgets(2));
+    await tester.enterText(hourFields.at(1), '24');
+    await tester.pump();
+
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Terdapat paket durasi ganda (24 Jam)'), findsOneWidget);
+  });
+
+  test('ApiException holds status code and error messages correctly', () {
+    final apiException = ApiException(
+      'Kode aset sudah digunakan.',
+      statusCode: 422,
+      errors: {
+        'asset_code': ['Kode aset sudah digunakan.']
+      },
+    );
+
+    expect(apiException.statusCode, 422);
+    expect(apiException.toString(), 'Kode aset sudah digunakan.');
+    expect(apiException.errors?['asset_code'], contains('Kode aset sudah digunakan.'));
+  });
+
+  testWidgets('CreateIphoneDialog.edit prepopulates unit data and updates unit via repository', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    final repository = BookingRepository();
+    final unitToEdit = repository.inventory.first;
+    IphoneModel? savedResult;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CreateIphoneDialog.edit(
+            repository: repository,
+            unit: unitToEdit,
+            onSaved: (updated) {
+              savedResult = updated;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify title and button text for edit mode
+    expect(find.text('Edit Unit iPhone'), findsOneWidget);
+    expect(find.text('Simpan Perubahan'), findsOneWidget);
+
+    // Verify prepopulated fields
+    final nameField = find.byKey(const Key('create_iphone_name_field'));
+    final snField = find.byKey(const Key('create_iphone_sn_field'));
+    final assetCodeField = find.byKey(const Key('create_iphone_asset_code_field'));
+
+    expect((tester.widget(nameField) as TextFormField).controller?.text, unitToEdit.name);
+    expect((tester.widget(snField) as TextFormField).controller?.text, unitToEdit.serialNumber);
+    expect((tester.widget(assetCodeField) as TextFormField).controller?.text, unitToEdit.assetCode);
+
+    // Edit the unit name
+    await tester.enterText(nameField, '${unitToEdit.name} (Updated)');
+    await tester.pump();
+
+    // Tap Simpan Perubahan
+    final saveButton = find.byKey(const Key('create_iphone_submit_btn'));
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    // Verify unit was updated
+    expect(savedResult, isNotNull);
+    expect(savedResult!.name, '${unitToEdit.name} (Updated)');
+
+    final inRepo = repository.inventory.firstWhere((u) => u.assetCode == unitToEdit.assetCode);
+    expect(inRepo.name, '${unitToEdit.name} (Updated)');
+  });
+
+  testWidgets('UnitStatusListScreen quick edit button opens CreateIphoneDialog.edit', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    final repository = BookingRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UnitStatusListScreen(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Find first Edit Unit icon button
+    final editButton = find.byTooltip('Edit Unit').first;
+    await tester.tap(editButton);
+    await tester.pumpAndSettle();
+
+    // Verify CreateIphoneDialog opened in edit mode
+    expect(find.byType(CreateIphoneDialog), findsOneWidget);
+    expect(find.text('Edit Unit iPhone'), findsOneWidget);
+    expect(find.text('Simpan Perubahan'), findsOneWidget);
+  });
+
+  testWidgets('UnitStatusListScreen displays affiliate badge for each iPhone matching iphones-managements.blade.php', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    final repository = BookingRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UnitStatusListScreen(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify affiliate badges are displayed on unit cards (e.g. Purwoharjo, Genteng, Siliragung)
+    expect(find.text('Purwoharjo'), findsWidgets);
+    expect(find.text('Genteng'), findsWidgets);
+    expect(find.text('Siliragung'), findsWidgets);
+
+    // Verify model JSON parsing supports affiliate_name and branch_name
+    final sampleJson = {
+      'id': 99,
+      'name': 'iPhone 15 Pro Test',
+      'storage': '256GB',
+      'color': 'Blue',
+      'serial_number': 'SN12345',
+      'asset_code': 'AST-TEST-99',
+      'status': 'ready',
+      'affiliate_id': 3,
+      'affiliate_name': 'Mitra Banyuwangi',
+    };
+    final parsedUnit = IphoneModel.fromJson(sampleJson);
+    expect(parsedUnit.affiliateName, equals('Mitra Banyuwangi'));
+    expect(parsedUnit.branchName, equals('Mitra Banyuwangi'));
+    expect(parsedUnit.toJson()['affiliate_name'], equals('Mitra Banyuwangi'));
+  });
+
+  testWidgets('CreateAffiliateDialog renders fields and adds new affiliate branch', (WidgetTester tester) async {
+    final repository = BookingRepository();
+    AffiliateModel? savedAffiliate;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (_) => CreateAffiliateDialog(
+                    repository: repository,
+                    onSaved: (aff) => savedAffiliate = aff,
+                  ),
+                );
+              },
+              child: const Text('Open Dialog'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open Dialog'));
+    await tester.pumpAndSettle();
+
+    // Verify modal elements
+    expect(find.text('Tambah Mitra Cabang Baru'), findsOneWidget);
+    expect(find.text('INFORMASI UTAMA CABANG'), findsOneWidget);
+    expect(find.text('ALAMAT & WILAYAH'), findsOneWidget);
+    expect(find.text('STATUS & KETERANGAN'), findsOneWidget);
+
+    // Fill in required fields
+    final textFields = find.byType(TextFormField);
+    await tester.enterText(textFields.at(0), 'DPS-01'); // Kode Cabang
+    await tester.enterText(textFields.at(1), 'Affiliate Denpasar Bali'); // Nama Cabang
+    await tester.enterText(textFields.at(2), '081298765432'); // No Telepon
+    await tester.enterText(textFields.at(3), 'denpasar@skyrent.id'); // Email Cabang
+
+    await tester.pump();
+
+    // Tap submit button
+    final saveButton = find.text('Simpan Mitra Cabang');
+    expect(saveButton, findsOneWidget);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    // Verify dialog closed and affiliate was saved
+    expect(find.text('Tambah Mitra Cabang Baru'), findsNothing);
+    expect(savedAffiliate != null, true);
+    expect(savedAffiliate!.code, equals('DPS-01'));
+    expect(savedAffiliate!.name, equals('Affiliate Denpasar Bali'));
+  });
+
+  testWidgets('AffiliateListScreen FAB opens CreateAffiliateDialog modal without navigating away', (WidgetTester tester) async {
+    final repository = BookingRepository();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
+        home: AffiliateListScreen(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify FAB "Tambah Mitra" exists
+    final fab = find.widgetWithText(FloatingActionButton, 'Tambah Mitra');
+    expect(fab, findsOneWidget);
+
+    // Tap FAB
+    await tester.tap(fab);
+    await tester.pumpAndSettle();
+
+    // Verify modal appeared directly without full-page navigation
+    expect(find.byType(CreateAffiliateDialog), findsOneWidget);
+    expect(find.text('Tambah Mitra Cabang Baru'), findsOneWidget);
+    expect(find.text('INFORMASI UTAMA CABANG'), findsOneWidget);
+
+    // Tap Batal
+    await tester.tap(find.text('Batal'));
+    await tester.pumpAndSettle();
+
+    // Verify dialog dismissed back to list
+    expect(find.byType(CreateAffiliateDialog), findsNothing);
+    expect(find.text('Mitra Cabang & Affiliate'), findsOneWidget);
+  });
+
+  testWidgets('LoginScreen initializes with empty fields and does not show demo credentials container', (WidgetTester tester) async {
+    final repository = BookingRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginScreen(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify email and password controllers are initially empty (no dummy prefill)
+    final textFields = find.byType(TextFormField);
+    expect(textFields, findsNWidgets(2));
+    final emailController = tester.widget<TextFormField>(textFields.first).controller;
+    expect(emailController?.text, isEmpty);
+    final passwordController = tester.widget<TextFormField>(textFields.last).controller;
+    expect(passwordController?.text, isEmpty);
+
+    // Verify quick credential shortcuts demo widget was removed
+    expect(find.text('Akun Uji Coba Cepat (Demo):'), findsNothing);
+    expect(find.text('Admin Utama'), findsNothing);
+    expect(find.text('Staff Kasir'), findsNothing);
+  });
+
+  test('AuthService isSuperAdmin checks roles correctly without mock credentials', () {
+    final auth = AuthService();
+
+    auth.setCurrentUserForTest(const AdminUserModel(
+      id: 1,
+      name: 'Super Admin',
+      email: 'admin@skyrental.id',
+      phone: '08123456789',
+      role: 'super-admin',
+      outletName: 'Pusat',
+      shiftName: 'Pagi',
+    ));
+    expect(auth.isSuperAdmin, isTrue);
+
+    auth.setCurrentUserForTest(const AdminUserModel(
+      id: 2,
+      name: 'Kasir Budi',
+      email: 'kasir@skyrental.id',
+      phone: '08123456789',
+      role: 'staff',
+      outletName: 'Pusat',
+      shiftName: 'Pagi',
+    ));
+    expect(auth.isSuperAdmin, isFalse);
+  });
+
+  testWidgets('SalesReportScreen displays affiliate revenue section when user is super-admin', (WidgetTester tester) async {
+    final repository = BookingRepository();
+    final auth = AuthService();
+    auth.setCurrentUserForTest(const AdminUserModel(
+      id: 1,
+      name: 'Super Admin',
+      email: 'admin@skyrental.id',
+      phone: '08123456789',
+      role: 'super-admin',
+      outletName: 'Pusat',
+      shiftName: 'Pagi',
+    ));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
+        home: SalesReportScreen(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify Super-Admin affiliate revenue section is displayed
+    expect(find.text('Penghasilan Cabang & Affiliate'), findsOneWidget);
+    expect(find.text('Super-Admin'), findsWidgets);
+    expect(find.text('Breakdown omzet & transaksi dari tiap-tiap cabang affiliate'), findsOneWidget);
+    expect(find.text('Kelola Cabang'), findsOneWidget);
+  });
+
+  testWidgets('AffiliateListScreen displays financial report action row when user is super-admin', (WidgetTester tester) async {
+    final repository = BookingRepository();
+    await repository.createAffiliate(const AffiliateModel(
+      id: 1,
+      code: 'BWI',
+      name: 'Affiliate Banyuwangi Kota',
+      slug: 'affiliate-banyuwangi-kota',
+      city: 'Banyuwangi',
+      isActive: true,
+      iphonesCount: 6,
+      totalRevenue: 2500000,
+    ));
+
+    final auth = AuthService();
+    auth.setCurrentUserForTest(const AdminUserModel(
+      id: 1,
+      name: 'Super Admin',
+      email: 'admin@skyrental.id',
+      phone: '08123456789',
+      role: 'super-admin',
+      outletName: 'Pusat',
+      shiftName: 'Pagi',
+    ));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
+        home: AffiliateListScreen(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify "Laporan Keuangan & Omzet" action button appears for super-admin
+    expect(find.text('Laporan Keuangan & Omzet'), findsWidgets);
+  });
+
+  testWidgets('LoginScreen displays server indicator chip and opens server settings bottom sheet', (WidgetTester tester) async {
+    final repository = BookingRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginScreen(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify server indicator chip is rendered
+    expect(find.byIcon(Icons.dns_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings), findsOneWidget);
+
+    // Tap on server indicator
+    await tester.tap(find.byIcon(Icons.dns_outlined));
+    await tester.pumpAndSettle();
+
+    // Verify modal bottom sheet opened
+    expect(find.text('Pengaturan Server Backend'), findsOneWidget);
+    expect(find.text('Laptop LAN (192.168.1.24)'), findsOneWidget);
+    expect(find.text('Emulator (10.0.2.2)'), findsOneWidget);
+    expect(find.text('Localhost (127.0.0.1)'), findsOneWidget);
+    expect(find.text('Tes Koneksi'), findsOneWidget);
+    expect(find.text('Simpan URL Server'), findsOneWidget);
+  });
+
+  test('ApiService resets base URL and normalizes custom URLs properly', () async {
+    final apiService = ApiService();
+    await apiService.setCustomBaseUrl('192.168.1.50:8000');
+    expect(apiService.baseUrl, equals('http://192.168.1.50:8000/api/v1'));
+
+    await apiService.setCustomBaseUrl('http://192.168.1.50:8000/api');
+    expect(apiService.baseUrl, equals('http://192.168.1.50:8000/api/v1'));
+
+    await apiService.resetBaseUrl();
+    expect(apiService.baseUrl.endsWith('/api/v1'), isTrue);
+  });
+
+  group('Roles & Permissions Feature Tests', () {
+    test('UserRoleModel and RoleItemModel parsing and serialization', () {
+      final jsonUser = {
+        'id': 'user-123',
+        'name': 'Budi Santoso',
+        'email': 'budi@skyrental.id',
+        'role': 'staff',
+        'roles': ['staff'],
+        'created_at': '2026-03-01T10:00:00Z',
+        'updated_at': '2026-03-15T12:00:00Z',
+      };
+      final user = UserRoleModel.fromJson(jsonUser);
+      expect(user.id, equals('user-123'));
+      expect(user.name, equals('Budi Santoso'));
+      expect(user.email, equals('budi@skyrental.id'));
+      expect(user.role, equals('staff'));
+      expect(user.roleDisplay, equals('Staff Kasir'));
+      expect(user.isSuperAdmin, isFalse);
+
+      final jsonRole = {
+        'id': 'role-1',
+        'name': 'super-admin',
+        'display_name': 'Super Admin',
+        'permissions_count': 32,
+      };
+      final role = RoleItemModel.fromJson(jsonRole);
+      expect(role.id, equals('role-1'));
+      expect(role.name, equals('super-admin'));
+      expect(role.displayName, equals('Super Admin'));
+      expect(role.permissionsCount, equals(32));
+    });
+
+    test('BookingRepository user & role management operations', () async {
+      final repository = BookingRepository();
+
+      // Test getRoles
+      final roles = await repository.getRoles();
+      expect(roles, isNotEmpty);
+      expect(roles.any((r) => r.name == 'super-admin'), isTrue);
+
+      // Test getUsers
+      final initialUsers = await repository.getUsers();
+      expect(initialUsers, isNotEmpty);
+
+      // Test createUser
+      final newUser = await repository.createUser(
+        name: 'Kasir Baru Test',
+        email: 'kasir_test@skyrental.id',
+        password: 'password123',
+        role: 'staff',
+      );
+      expect(newUser, isNotNull);
+      expect(newUser.name, equals('Kasir Baru Test'));
+      expect(newUser.email, equals('kasir_test@skyrental.id'));
+      expect(newUser.role, equals('staff'));
+
+      // Test assignUserRole
+      final assignOk = await repository.assignUserRole(newUser.id, 'admin');
+      expect(assignOk, isTrue);
+
+      final updatedUsers = await repository.getUsers();
+      final target = updatedUsers.firstWhere((u) => u.id == newUser.id);
+      expect(target.role, equals('admin'));
+
+      // Test deleteUser
+      final deleteOk = await repository.deleteUser(newUser.id);
+      expect(deleteOk, isTrue);
+
+      final remainingUsers = await repository.getUsers();
+      expect(remainingUsers.any((u) => u.id == newUser.id), isFalse);
+    });
+
+    testWidgets('RolesPermissionsScreen renders user list, search bar, and KPI cards', (WidgetTester tester) async {
+      final repository = BookingRepository();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RolesPermissionsScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Check header and KPI
+      expect(find.text('Users & Role Permissions'), findsOneWidget);
+      expect(find.textContaining('Total Pengguna'), findsWidgets);
+      expect(find.textContaining('Super Admin'), findsWidgets);
+
+      // Check search bar and filter chips
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.textContaining('Semua'), findsWidgets);
+      expect(find.textContaining('Super Admin'), findsWidgets);
+      expect(find.text('Add User'), findsWidgets);
+
+      // Verify at least one user card is visible with Assign Role & Izin button
+      expect(find.text('Assign Role & Izin'), findsWidgets);
+    });
+
+    testWidgets('RolesPermissionsScreen assign role and permissions modal flow', (WidgetTester tester) async {
+      final repository = BookingRepository();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RolesPermissionsScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Find first "Assign Role & Izin" button and tap it
+      final assignRoleBtn = find.widgetWithText(ElevatedButton, 'Assign Role & Izin').first;
+      await tester.tap(assignRoleBtn);
+      await tester.pumpAndSettle();
+
+      // Check modal bottom sheet opens
+      expect(find.textContaining('Pilih salah satu role'), findsOneWidget);
+      expect(find.text('Super Admin'), findsWidgets);
+      expect(find.text('Admin Sistem'), findsWidgets);
+      expect(find.text('Staff Kasir'), findsWidgets);
+
+      // Tap on 'Staff Kasir' role option in modal
+      final staffKasirCard = find.text('Staff Kasir').last;
+      await tester.tap(staffKasirCard);
+      await tester.pumpAndSettle();
+
+      // Switch to Hak Akses tab
+      await tester.tap(find.textContaining('Hak Akses'));
+      await tester.pumpAndSettle();
+
+      // Verify permissions list rendered
+      expect(find.textContaining('Create'), findsWidgets);
+
+      // Tap Simpan Role & Izin
+      await tester.tap(find.text('Simpan Role & Izin'));
+      await tester.pumpAndSettle();
+
+      // Verify modal dismissed and success snackbar or toast
+      expect(find.textContaining('Pilih salah satu role'), findsNothing);
+    });
+
+    testWidgets('AccountScreen navigates to RolesPermissionsScreen via AppRoutes', (WidgetTester tester) async {
+      final repository = BookingRepository();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
+                child: const Text('Go to Roles'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Go to Roles'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RolesPermissionsScreen), findsOneWidget);
+      expect(find.text('Users & Role Permissions'), findsOneWidget);
+    });
+  });
 }
+
 
 

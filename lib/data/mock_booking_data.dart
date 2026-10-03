@@ -356,6 +356,8 @@ class MockBookingData {
       assetCode: 'AST-IP15PM-002',
       status: 'disewa',
       batteryHealth: 100,
+      affiliateId: 1,
+      branchName: 'Genteng',
       customerName: 'Kevin Wijaya',
       bookingCode: '#SKY-8418',
       returnScheduleText: 'Kembali: 10 Sep 2026 • 10:00 WIB',
@@ -369,6 +371,8 @@ class MockBookingData {
       assetCode: 'AST-IP13P-001',
       status: 'disewa',
       batteryHealth: 92,
+      affiliateId: 3,
+      branchName: 'Purwoharjo',
       customerName: 'Rizky Ramadhan',
       bookingCode: '#SKY-8417',
       returnScheduleText: 'Kembali: 09 Sep 2026 • 18:00 WIB',
@@ -382,6 +386,8 @@ class MockBookingData {
       assetCode: 'AST-IP14P-003',
       status: 'disewa',
       batteryHealth: 94,
+      affiliateId: 2,
+      branchName: 'Siliragung',
       customerName: 'Hendra Setiawan',
       bookingCode: '#SKY-8416',
       returnScheduleText: 'Kembali Hari Ini: 15:00 WIB',
@@ -397,6 +403,8 @@ class MockBookingData {
       assetCode: 'AST-IP15P-001',
       status: 'tersedia',
       batteryHealth: 98,
+      affiliateId: 1,
+      branchName: 'Genteng',
     ),
     IphoneModel(
       id: 2,
@@ -407,6 +415,8 @@ class MockBookingData {
       assetCode: 'AST-IP15P-002',
       status: 'tersedia',
       batteryHealth: 100,
+      affiliateId: 1,
+      branchName: 'Genteng',
     ),
     IphoneModel(
       id: 3,
@@ -417,6 +427,8 @@ class MockBookingData {
       assetCode: 'AST-IP15P-003',
       status: 'tersedia',
       batteryHealth: 97,
+      affiliateId: 3,
+      branchName: 'Purwoharjo',
     ),
     IphoneModel(
       id: 4,
@@ -427,6 +439,8 @@ class MockBookingData {
       assetCode: 'AST-IP15PM-001',
       status: 'tersedia',
       batteryHealth: 99,
+      affiliateId: 3,
+      branchName: 'Purwoharjo',
     ),
     IphoneModel(
       id: 6,
@@ -437,6 +451,8 @@ class MockBookingData {
       assetCode: 'AST-IP15-001',
       status: 'tersedia',
       batteryHealth: 100,
+      affiliateId: 2,
+      branchName: 'Siliragung',
     ),
     IphoneModel(
       id: 9,
@@ -447,6 +463,8 @@ class MockBookingData {
       assetCode: 'AST-IP15-002',
       status: 'tersedia',
       batteryHealth: 99,
+      affiliateId: 2,
+      branchName: 'Siliragung',
     ),
     IphoneModel(
       id: 10,
@@ -457,6 +475,8 @@ class MockBookingData {
       assetCode: 'AST-IP14P-001',
       status: 'tersedia',
       batteryHealth: 92,
+      affiliateId: 1,
+      branchName: 'Genteng',
     ),
     IphoneModel(
       id: 11,
@@ -467,6 +487,8 @@ class MockBookingData {
       assetCode: 'AST-IP14-002',
       status: 'tersedia',
       batteryHealth: 96,
+      affiliateId: 3,
+      branchName: 'Purwoharjo',
     ),
     IphoneModel(
       id: 12,
@@ -477,6 +499,8 @@ class MockBookingData {
       assetCode: 'AST-IP14-003',
       status: 'tersedia',
       batteryHealth: 95,
+      affiliateId: 2,
+      branchName: 'Siliragung',
     ),
     IphoneModel(
       id: 13,
@@ -487,6 +511,8 @@ class MockBookingData {
       assetCode: 'AST-IP13-001',
       status: 'tersedia',
       batteryHealth: 89,
+      affiliateId: 1,
+      branchName: 'Genteng',
     ),
     IphoneModel(
       id: 14,
@@ -497,6 +523,8 @@ class MockBookingData {
       assetCode: 'AST-IP13-002',
       status: 'tersedia',
       batteryHealth: 91,
+      affiliateId: 3,
+      branchName: 'Purwoharjo',
     ),
     IphoneModel(
       id: 15,
@@ -507,6 +535,8 @@ class MockBookingData {
       assetCode: 'AST-IP13-003',
       status: 'tersedia',
       batteryHealth: 93,
+      affiliateId: 2,
+      branchName: 'Siliragung',
     ),
     IphoneModel(
       id: 16,
@@ -517,6 +547,8 @@ class MockBookingData {
       assetCode: 'AST-IP12P-001',
       status: 'tersedia',
       batteryHealth: 88,
+      affiliateId: 1,
+      branchName: 'Genteng',
     ),
     IphoneModel(
       id: 17,
@@ -527,6 +559,8 @@ class MockBookingData {
       assetCode: 'AST-IP12-001',
       status: 'tersedia',
       batteryHealth: 86,
+      affiliateId: 3,
+      branchName: 'Purwoharjo',
     ),
     IphoneModel(
       id: 18,

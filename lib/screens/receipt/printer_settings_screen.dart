@@ -49,61 +49,67 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Future<void> _loadPreferences() async {
     setState(() => _isLoading = true);
-    await _storage.init();
-    final settings = await _storage.getPrinterSettings();
-
-    // Diagnostik status Bluetooth dan izin sistem
-    BluetoothDiagnosticInfo? diag;
     try {
-      diag = await _printService.checkBluetoothDiagnostic();
-    } catch (_) {}
+      await _storage.init();
+      final settings = await _storage.getPrinterSettings();
 
-    // Ambil daftar printer bluetooth yang nyata terpasang dari Android
-    List<PrinterDeviceModel> devices = [];
-    try {
-      devices = await _printService.getPairedPrinters();
-    } catch (_) {}
+      // Diagnostik status Bluetooth dan izin sistem
+      BluetoothDiagnosticInfo? diag;
+      try {
+        diag = await _printService.checkBluetoothDiagnostic();
+      } catch (_) {}
 
-    // Pastikan status primary printer dicek & di-reconnect jika autoConnect aktif
-    PrinterDeviceModel active = await _printService.ensurePrimaryConnected();
+      // Ambil daftar printer bluetooth yang nyata terpasang dari Android
+      List<PrinterDeviceModel> devices = [];
+      try {
+        devices = await _printService.getPairedPrinters();
+      } catch (_) {}
 
-    // Jika ada printer yang di-pair di Android
-    if (devices.isNotEmpty) {
-      final matchIndex = devices.indexWhere((d) => d.address == active.address);
-      if (matchIndex != -1) {
-        active = devices[matchIndex].copyWith(isConnected: active.isConnected);
-      } else if (active.address.isEmpty) {
-        // Jika printer tersimpan sebelumnya belum ada, pilih printer pertama yang nyata
-        active = devices.first;
-        await _storage.savePrimaryPrinter(active);
+      // Pastikan status primary printer dicek & di-reconnect jika autoConnect aktif
+      PrinterDeviceModel active = await _printService.ensurePrimaryConnected();
+
+      // Jika ada printer yang di-pair di Android
+      if (devices.isNotEmpty) {
+        final matchIndex = devices.indexWhere((d) => d.address == active.address);
+        if (matchIndex != -1) {
+          active = devices[matchIndex].copyWith(isConnected: active.isConnected);
+        } else if (active.address.isEmpty) {
+          // Jika printer tersimpan sebelumnya belum ada, pilih printer pertama yang nyata
+          active = devices.first;
+          await _storage.savePrimaryPrinter(active);
+        }
+      } else if (active.address.isEmpty ||
+          active.address == '58:A2:3B:11:89:DC' ||
+          active.address == 'AA:BB:CC:22:33:44') {
+        active = const PrinterDeviceModel(
+          name: 'Belum Ada Printer Dipilih',
+          address: '',
+          isConnected: false,
+        );
       }
-    } else if (active.address.isEmpty ||
-        active.address == '58:A2:3B:11:89:DC' ||
-        active.address == 'AA:BB:CC:22:33:44') {
-      active = const PrinterDeviceModel(
-        name: 'Belum Ada Printer Dipilih',
-        address: '',
-        isConnected: false,
-      );
-    }
 
-    if (active.address.isNotEmpty) {
-      final isConn = await _printService.checkConnection();
-      if (active.isConnected != isConn) {
-        active = active.copyWith(isConnected: isConn);
-        await _storage.savePrimaryPrinter(active);
+      if (active.address.isNotEmpty) {
+        final isConn = await _printService.checkConnection();
+        if (active.isConnected != isConn) {
+          active = active.copyWith(isConnected: isConn);
+          await _storage.savePrimaryPrinter(active);
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _activeDevice = active;
+        _primaryAddress = active.address;
+        _settings = settings;
+        _discoveredDevices = List.from(devices);
+        _diagnostic = diag;
+      });
+    } catch (_) {
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
-
-    if (!mounted) return;
-    setState(() {
-      _activeDevice = active;
-      _primaryAddress = active.address;
-      _settings = settings;
-      _discoveredDevices = List.from(devices);
-      _diagnostic = diag;
-      _isLoading = false;
-    });
   }
 
   Future<void> _setAsPrimary(PrinterDeviceModel device) async {

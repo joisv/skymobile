@@ -5,6 +5,7 @@ import '../../models/iphone_model.dart';
 import '../../models/iphone_transfer_model.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../services/auth_service.dart';
 
 class IphoneTransferListScreen extends StatefulWidget {
   final BookingRepository repository;
@@ -33,7 +34,8 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
   @override
   void initState() {
     super.initState();
-    _selectedAffiliateId = widget.initialAffiliateId;
+    _selectedAffiliateId = widget.initialAffiliateId ??
+        (AuthService().isAffiliateAdmin ? AuthService().affiliateId : null);
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) setState(() {});
@@ -140,6 +142,11 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
     if (confirmed == true) {
       try {
         await widget.repository.acceptIphoneTransfer(transfer.id);
+        // Refresh unit inventory di repository agar layar Unit iPhone langsung ter-update
+        try {
+          widget.repository.getAllInventoryUnits();
+        } catch (_) {}
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -189,7 +196,8 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: Text('Mutasi & Transfer Unit',
+        title: Text(
+          AuthService().isAffiliateAdmin ? 'Transfer iPhone Masuk' : 'Mutasi & Transfer Unit',
           style: TextStyle(
             color: AppTheme.textPrimary,
             fontWeight: FontWeight.bold,
@@ -220,7 +228,7 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text('Terkirim'),
+                  Text(AuthService().isAffiliateAdmin ? 'Dalam Pengiriman' : 'Terkirim'),
                   if (inTransitCount > 0) ...[
                     const SizedBox(width: 5),
                     Container(
@@ -238,17 +246,23 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
                 ],
               ),
             ),
-            Tab(text: 'Selesai (${_allTransfers.where((t) => t.isReceived).length})'),
+            Tab(
+              text: AuthService().isAffiliateAdmin
+                  ? 'Diterima (${_allTransfers.where((t) => t.isReceived).length})'
+                  : 'Selesai (${_allTransfers.where((t) => t.isReceived).length})',
+            ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCreateTransferModal,
-        backgroundColor: AppTheme.accent,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.send_rounded),
-        label: const Text('Kirim Unit iPhone', style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
+      floatingActionButton: (AuthService().isSuperAdmin || (AuthService().isAdmin && !AuthService().isAffiliateAdmin))
+          ? FloatingActionButton.extended(
+              onPressed: _showCreateTransferModal,
+              backgroundColor: AppTheme.accent,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.send_rounded),
+              label: const Text('Kirim Unit iPhone', style: TextStyle(fontWeight: FontWeight.bold)),
+            )
+          : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : TabBarView(
@@ -548,18 +562,20 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
                   icon: const Icon(Icons.refresh_rounded, size: 20, color: Color(0xFF475569)),
                   tooltip: 'Segarkan Data',
                 ),
-                const SizedBox(width: 6),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F172A),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                if (AuthService().isSuperAdmin || (AuthService().isAdmin && !AuthService().isAffiliateAdmin)) ...[
+                  const SizedBox(width: 6),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F172A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: _showCreateTransferModal,
+                    icon: const Icon(Icons.send_rounded, size: 16),
+                    label: const Text('Kirim Unit iPhone', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
-                  onPressed: _showCreateTransferModal,
-                  icon: const Icon(Icons.send_rounded, size: 16),
-                  label: const Text('Kirim Unit iPhone', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                ),
+                ],
               ],
             ),
           ],

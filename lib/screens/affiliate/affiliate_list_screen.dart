@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
 import '../../models/affiliate_model.dart';
 import '../../routes/app_routes.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import 'widgets/create_affiliate_dialog.dart';
 
 class AffiliateListScreen extends StatefulWidget {
   final BookingRepository repository;
@@ -63,6 +65,20 @@ class _AffiliateListScreenState extends State<AffiliateListScreen> {
     }
   }
 
+  Future<void> _showAddAffiliateDialog() async {
+    final created = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => CreateAffiliateDialog(
+        repository: widget.repository,
+        onSaved: (_) => _loadAffiliates(),
+      ),
+    );
+    if (created == true) {
+      _loadAffiliates();
+    }
+  }
+
   int get _totalIphones => _affiliates.fold(0, (sum, a) => sum + a.iphonesCount);
   int get _activeCount => _affiliates.where((a) => a.isActive).length;
 
@@ -104,13 +120,7 @@ class _AffiliateListScreenState extends State<AffiliateListScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final created = await Navigator.pushNamed(
-            context,
-            AppRoutes.affiliateForm,
-          );
-          if (created == true) _loadAffiliates();
-        },
+        onPressed: _showAddAffiliateDialog,
         backgroundColor: AppTheme.accent,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_business_rounded),
@@ -449,6 +459,62 @@ class _AffiliateListScreenState extends State<AffiliateListScreen> {
                   ),
                 ],
               ),
+              if (AuthService().isSuperAdmin) ...[
+                const SizedBox(height: 10),
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () {
+                    Navigator.pushNamed(
+                      context,
+                      AppRoutes.affiliateRevenue,
+                      arguments: affiliate,
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.analytics_outlined, size: 14, color: Color(0xFF2563EB)),
+                            SizedBox(width: 6),
+                            Text(
+                              'Laporan Keuangan & Omzet',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF2563EB),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              affiliate.totalRevenue > 0
+                                  ? Formatters.currency(affiliate.totalRevenue)
+                                  : (affiliate.revenueToday > 0 ? Formatters.currency(affiliate.revenueToday) : 'Rp 0'),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF1D4ED8),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Color(0xFF2563EB)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -505,10 +571,7 @@ class _AffiliateListScreenState extends State<AffiliateListScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: () async {
-                final created = await Navigator.pushNamed(context, AppRoutes.affiliateForm);
-                if (created == true) _loadAffiliates();
-              },
+              onPressed: _showAddAffiliateDialog,
               icon: const Icon(Icons.add),
               label: const Text('Tambah Mitra Sekarang'),
               style: ElevatedButton.styleFrom(
@@ -582,10 +645,7 @@ class _AffiliateListScreenState extends State<AffiliateListScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
-                  onPressed: () async {
-                    final created = await Navigator.pushNamed(context, AppRoutes.affiliateForm);
-                    if (created == true) _loadAffiliates();
-                  },
+                  onPressed: _showAddAffiliateDialog,
                   icon: const Icon(Icons.add_business_rounded, size: 16),
                   label: const Text('Tambah Mitra', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 ),

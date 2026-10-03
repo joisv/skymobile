@@ -4,6 +4,7 @@ import '../../models/booking_model.dart';
 import '../../routes/app_routes.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../payment/payment_deposit_screen.dart';
 
 class ReturnSummaryScreen extends StatefulWidget {
   final BookingModel booking;
@@ -31,15 +32,24 @@ class _ReturnSummaryScreenState extends State<ReturnSummaryScreen> {
   double get _lateFee => b.estimatedLateFee;
 
   void _onProceedToInspection() {
-    Navigator.pushNamed(
-      context,
-      AppRoutes.returnInspection,
-      arguments: {
-        'booking': b,
-        'daysLate': _daysLate,
-        'lateFee': _lateFee,
-      },
-    );
+    if (_isOverdue && _lateFee > 0) {
+      Navigator.pushNamed(
+        context,
+        AppRoutes.paymentDeposit,
+        arguments: {
+          'booking': b,
+          'initialPaymentType': PaymentTypeOption.penalty,
+          'initialAmount': _lateFee,
+          'isReturnFlow': true,
+        },
+      );
+    } else {
+      Navigator.pushNamed(
+        context,
+        AppRoutes.bookingDetail,
+        arguments: b,
+      );
+    }
   }
 
   @override

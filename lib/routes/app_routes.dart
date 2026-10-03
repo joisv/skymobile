@@ -7,6 +7,7 @@ import '../models/payment_model.dart';
 import '../models/receipt_model.dart';
 import '../screens/account/account_screen.dart';
 import '../screens/account/change_password_screen.dart';
+import '../screens/account/roles_permissions_screen.dart';
 import '../screens/account/shop_settings_screen.dart';
 import '../screens/account/theme_settings_screen.dart';
 import '../screens/affiliate/affiliate_detail_screen.dart';
@@ -34,7 +35,6 @@ import '../screens/receipt/printer_settings_screen.dart';
 import '../screens/receipt/receipt_format_settings_screen.dart';
 import '../screens/receipt/receipt_screen.dart';
 import '../screens/receipt/reprint_receipt_list_screen.dart';
-import '../screens/return/return_inspection_screen.dart';
 import '../screens/return/return_screen.dart';
 import '../screens/return/return_success_screen.dart';
 import '../screens/return/return_summary_screen.dart';
@@ -74,6 +74,7 @@ class AppRoutes {
   static const String account = '/account';
   static const String changePassword = '/change-password';
   static const String shopSettings = '/shop-settings';
+  static const String rolesPermissions = '/admin/roles-permissions';
   static const String login = '/login';
   static const String affiliateList = '/affiliates';
   static const String affiliateDetail = '/affiliates/detail';
@@ -407,8 +408,20 @@ class AppRoutes {
       case returnInspection:
         if (settings.arguments is BookingModel) {
           final booking = settings.arguments as BookingModel;
+          if (booking.isCurrentlyLate && booking.estimatedLateFee > 0) {
+            return MaterialPageRoute(
+              builder: (_) => PaymentDepositScreen(
+                repository: repository,
+                booking: booking,
+                initialPaymentType: PaymentTypeOption.penalty,
+                initialAmount: booking.estimatedLateFee,
+                isReturnFlow: true,
+              ),
+              settings: settings,
+            );
+          }
           return MaterialPageRoute(
-            builder: (_) => ReturnInspectionScreen(
+            builder: (_) => BookingDetailScreen(
               booking: booking,
               repository: repository,
             ),
@@ -416,19 +429,24 @@ class AppRoutes {
           );
         } else if (settings.arguments is Map<String, dynamic>) {
           final args = settings.arguments as Map<String, dynamic>;
+          final booking = args['booking'] as BookingModel?;
+          final lateFee = (args['lateFee'] as num?)?.toDouble() ?? booking?.estimatedLateFee ?? 0.0;
           return MaterialPageRoute(
-            builder: (_) => ReturnInspectionScreen(
-              booking: args['booking'] as BookingModel?,
+            builder: (_) => PaymentDepositScreen(
               repository: repository,
-              initialLateFee: (args['lateFee'] as num?)?.toDouble() ?? 50000.0,
-              daysLate: args['daysLate'] as int? ?? 0,
+              booking: booking,
+              initialPaymentType: PaymentTypeOption.penalty,
+              initialAmount: lateFee > 0 ? lateFee : null,
+              isReturnFlow: true,
             ),
             settings: settings,
           );
         }
         return MaterialPageRoute(
-          builder: (_) => ReturnInspectionScreen(
+          builder: (_) => PaymentDepositScreen(
             repository: repository,
+            initialPaymentType: PaymentTypeOption.penalty,
+            isReturnFlow: true,
           ),
           settings: settings,
         );
@@ -549,6 +567,25 @@ class AppRoutes {
       case shopSettings:
         return MaterialPageRoute(
           builder: (_) => ShopSettingsScreen(repository: repository),
+          settings: settings,
+        );
+
+      case rolesPermissions:
+      case '/admin/roles-permission':
+      case 'admin/roles-permission':
+      case 'admin/roles-permissions':
+      case '/roles-permissions':
+      case '/roles-permission':
+      case 'roles-permissions':
+      case 'roles-permission':
+      case '/user-roles':
+      case 'user-roles':
+      case '/users':
+      case 'users':
+      case '/admin/users':
+      case 'admin/users':
+        return MaterialPageRoute(
+          builder: (_) => RolesPermissionsScreen(repository: repository),
           settings: settings,
         );
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
 import '../../routes/app_routes.dart';
+import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 
@@ -18,8 +19,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController(text: 'admin@skyrental.id');
-  final _passwordController = TextEditingController(text: 'password123');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _authService = AuthService();
 
   bool _isPasswordVisible = false;
@@ -78,12 +79,215 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _fillQuickCredential(String email, String password) {
-    setState(() {
-      _emailController.text = email;
-      _passwordController.text = password;
-      _errorMessage = null;
-    });
+  void _showServerSettingsModal() {
+    final currentUrl = ApiService().baseUrl;
+    final controller = TextEditingController(text: currentUrl);
+    bool isTesting = false;
+    bool? testSuccess;
+    String? testResult;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.dns_rounded, color: AppTheme.primary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Pengaturan Server Backend',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Sesuaikan IP host atau URL API backend jika berpindah jaringan WiFi atau menguji dari perangkat Android/iOS.',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  ActionChip(
+                    avatar: const Icon(Icons.wifi, size: 14),
+                    label: const Text('Laptop LAN (192.168.1.24)', style: TextStyle(fontSize: 11)),
+                    onPressed: () {
+                      setModalState(() {
+                        controller.text = 'http://192.168.1.24:8000/api/v1';
+                        testResult = null;
+                      });
+                    },
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.phone_android, size: 14),
+                    label: const Text('Emulator (10.0.2.2)', style: TextStyle(fontSize: 11)),
+                    onPressed: () {
+                      setModalState(() {
+                        controller.text = 'http://10.0.2.2:8000/api/v1';
+                        testResult = null;
+                      });
+                    },
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.computer, size: 14),
+                    label: const Text('Localhost (127.0.0.1)', style: TextStyle(fontSize: 11)),
+                    onPressed: () {
+                      setModalState(() {
+                        controller.text = 'http://127.0.0.1:8000/api/v1';
+                        testResult = null;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                decoration: InputDecoration(
+                  labelText: 'Base URL API Backend',
+                  hintText: 'http://192.168.1.24:8000/api/v1',
+                  prefixIcon: const Icon(Icons.link, size: 18),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.restore, size: 18),
+                    tooltip: 'Reset ke default',
+                    onPressed: () async {
+                      await ApiService().resetBaseUrl();
+                      setModalState(() {
+                        controller.text = ApiService().baseUrl;
+                        testResult = null;
+                      });
+                    },
+                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  isDense: true,
+                ),
+                style: const TextStyle(fontSize: 13),
+              ),
+              if (testResult != null) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: testSuccess == true ? Colors.green.shade50 : Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: testSuccess == true ? Colors.green.shade300 : Colors.red.shade300,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        testSuccess == true ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+                        size: 16,
+                        color: testSuccess == true ? Colors.green.shade700 : Colors.red.shade700,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          testResult!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: testSuccess == true ? Colors.green.shade800 : Colors.red.shade800,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: isTesting
+                        ? null
+                        : () async {
+                            setModalState(() {
+                              isTesting = true;
+                              testResult = null;
+                            });
+                            final ok = await ApiService().testConnection(controller.text);
+                            setModalState(() {
+                              isTesting = false;
+                              testSuccess = ok;
+                              testResult = ok
+                                  ? 'Koneksi berhasil! Server aktif & merespons API.'
+                                  : 'Gagal terhubung. Pastikan server aktif & route /api/v1 tersedia.';
+                            });
+                          },
+                    icon: isTesting
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.network_check_rounded, size: 16),
+                    label: const Text('Tes Koneksi'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final nav = Navigator.of(ctx);
+                        await ApiService().setCustomBaseUrl(controller.text);
+                        if (mounted) setState(() {});
+                        nav.pop();
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text('Server URL berhasil disimpan: ${ApiService().baseUrl}'),
+                            backgroundColor: AppTheme.primary,
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Text('Simpan URL Server', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -156,19 +360,45 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: Colors.red.shade200),
                         ),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.error_outline, color: Colors.red, size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _errorMessage!,
-                                style: TextStyle(
-                                  color: Colors.red.shade800,
-                                  fontSize: 13,
+                            Row(
+                              children: [
+                                const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: TextStyle(
+                                      color: Colors.red.shade800,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_errorMessage!.contains('server') ||
+                                _errorMessage!.contains('terhubung') ||
+                                _errorMessage!.contains('jaringan') ||
+                                _errorMessage!.contains('database') ||
+                                _errorMessage!.contains('404')) ...[
+                              const SizedBox(height: 8),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  onPressed: _showServerSettingsModal,
+                                  icon: const Icon(Icons.settings_ethernet, size: 14),
+                                  label: const Text('Atur URL Server', style: TextStyle(fontSize: 12)),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.red.shade900,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),
@@ -321,72 +551,46 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
 
-                    // Quick credential shortcuts
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppTheme.cardBorder),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Akun Uji Coba Cepat (Demo):',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textSecondary,
-                            ),
+                    // Server Configuration Indicator
+                    Center(
+                      child: InkWell(
+                        onTap: _showServerSettingsModal,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.grey.shade300),
                           ),
-                          const SizedBox(height: 8),
-                          Row(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Expanded(
-                                child: OutlinedButton(
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    side: BorderSide(color: AppTheme.cardBorder),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  onPressed: () => _fillQuickCredential(
-                                    'admin@skyrental.id',
-                                    'password123',
-                                  ),
-                                  child: Text(
-                                    'Admin Utama',
-                                    style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                                  ),
+                              Icon(
+                                Icons.dns_outlined,
+                                size: 14,
+                                color: AppTheme.textSecondary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Server: ${ApiService().baseUrl.replaceAll('http://', '').replaceAll('https://', '').replaceAll('/api/v1', '')}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppTheme.textSecondary,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: OutlinedButton(
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    side: BorderSide(color: AppTheme.cardBorder),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  onPressed: () => _fillQuickCredential(
-                                    'kasir@skyrental.id',
-                                    'password123',
-                                  ),
-                                  child: Text(
-                                    'Staff Kasir',
-                                    style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                                  ),
-                                ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.settings,
+                                size: 12,
+                                color: AppTheme.textSecondary,
                               ),
                             ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ],

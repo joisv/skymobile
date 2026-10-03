@@ -1,5 +1,6 @@
 class AdminUserModel {
   final int id;
+  final String? uuid;
   final String name;
   final String email;
   final String phone;
@@ -7,9 +8,13 @@ class AdminUserModel {
   final String outletName;
   final String shiftName;
   final bool isActive;
+  final int? affiliateId;
+
+  String get userIdentifier => uuid ?? id.toString();
 
   const AdminUserModel({
     required this.id,
+    this.uuid,
     required this.name,
     required this.email,
     required this.phone,
@@ -17,6 +22,7 @@ class AdminUserModel {
     required this.outletName,
     required this.shiftName,
     this.isActive = true,
+    this.affiliateId,
   });
 
   factory AdminUserModel.defaultAdmin() {
@@ -29,11 +35,13 @@ class AdminUserModel {
       outletName: 'Outlet Utama Malioboro',
       shiftName: 'Shift Pagi (08:00 - 16:00)',
       isActive: true,
+      affiliateId: null,
     );
   }
 
   AdminUserModel copyWith({
     int? id,
+    String? uuid,
     String? name,
     String? email,
     String? phone,
@@ -41,9 +49,11 @@ class AdminUserModel {
     String? outletName,
     String? shiftName,
     bool? isActive,
+    int? affiliateId,
   }) {
     return AdminUserModel(
       id: id ?? this.id,
+      uuid: uuid ?? this.uuid,
       name: name ?? this.name,
       email: email ?? this.email,
       phone: phone ?? this.phone,
@@ -51,12 +61,14 @@ class AdminUserModel {
       outletName: outletName ?? this.outletName,
       shiftName: shiftName ?? this.shiftName,
       isActive: isActive ?? this.isActive,
+      affiliateId: affiliateId ?? this.affiliateId,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'uuid': uuid,
       'name': name,
       'email': email,
       'phone': phone,
@@ -64,6 +76,7 @@ class AdminUserModel {
       'outlet_name': outletName,
       'shift_name': shiftName,
       'is_active': isActive,
+      'affiliate_id': affiliateId,
     };
   }
 
@@ -75,6 +88,15 @@ class AdminUserModel {
       parsedId = int.tryParse(json['id'].toString()) ?? 1;
     }
 
+    final rawUuid = json['uuid']?.toString() ?? json['id']?.toString();
+
+    int? parsedAffiliateId;
+    if (json['affiliate_id'] is int) {
+      parsedAffiliateId = json['affiliate_id'] as int;
+    } else if (json['affiliate_id'] != null) {
+      parsedAffiliateId = int.tryParse(json['affiliate_id'].toString());
+    }
+
     String roleStr = 'Staff Operasional / Kasir';
     if (json['role'] != null) {
       roleStr = json['role'].toString();
@@ -84,6 +106,7 @@ class AdminUserModel {
 
     return AdminUserModel(
       id: parsedId,
+      uuid: rawUuid,
       name: json['name'] as String? ?? 'Admin SKYRental',
       email: json['email'] as String? ?? 'admin@skyrental.id',
       phone: json['phone'] as String? ?? '+62 812-3456-7890',
@@ -91,6 +114,7 @@ class AdminUserModel {
       outletName: json['outlet_name'] as String? ?? 'Outlet Utama Malioboro',
       shiftName: json['shift_name'] as String? ?? 'Shift Pagi (08:00 - 16:00)',
       isActive: json['is_active'] as bool? ?? true,
+      affiliateId: parsedAffiliateId,
     );
   }
 }

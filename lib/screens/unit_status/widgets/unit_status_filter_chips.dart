@@ -17,6 +17,7 @@ class UnitStatusFilterChips extends StatelessWidget {
     'Semua',
     'Tersedia',
     'Disewa',
+    'Terlambat',
     'Perawatan',
     'Dibooking',
   ];
@@ -26,6 +27,7 @@ class UnitStatusFilterChips extends StatelessWidget {
     if (s == 'semua') return counts['total'] ?? 0;
     if (s == 'tersedia') return counts['tersedia'] ?? 0;
     if (s == 'disewa') return counts['disewa'] ?? 0;
+    if (s == 'terlambat' || s == 'overdue') return counts['terlambat'] ?? counts['overdue'] ?? 0;
     if (s == 'perawatan' || s == 'maintenance') {
       return counts['maintenance'] ?? counts['perawatan'] ?? 0;
     }
@@ -39,9 +41,12 @@ class UnitStatusFilterChips extends StatelessWidget {
         return const Color(0xFF10B981); // Emerald Green
       case 'disewa':
         return const Color(0xFFF59E0B); // Amber / Orange
+      case 'terlambat':
+      case 'overdue':
+        return const Color(0xFFDC2626); // Crimson Red
       case 'perawatan':
       case 'maintenance':
-        return const Color(0xFFEF4444); // Red
+        return const Color(0xFF6B7280); // Gray / Muted
       case 'dibooking':
         return const Color(0xFF3B82F6); // Sky Blue
       case 'semua':

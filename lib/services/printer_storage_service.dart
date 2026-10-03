@@ -270,6 +270,7 @@ class PrinterStorageService {
     } catch (_) {}
 
     // 2. Simpan ke file untuk testing & desktop
+    if (Platform.environment.containsKey('FLUTTER_TEST') && customPath == null) return;
     try {
       final file = File(customPath ?? _defaultStoragePath);
       final data = {

@@ -2,13 +2,15 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/booking_repository.dart';
+import '../../models/affiliate_model.dart';
 import '../../models/payment_model.dart';
 import '../../routes/app_routes.dart';
 import '../../services/auth_service.dart';
-import '../../services/thermal_print_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/app_header.dart';
 import 'widgets/report_date_range_picker.dart';
+import 'widgets/sales_report_skeleton.dart';
 
 class SalesReportScreen extends StatefulWidget {
   final BookingRepository repository;
@@ -27,11 +29,19 @@ class SalesReportScreen extends StatefulWidget {
 
 class _SalesReportScreenState extends State<SalesReportScreen> {
   bool _isLoading = true;
+  bool _isLoadingPage = false;
+  String? _errorMessage;
   late String _selectedPeriod;
   DateTimeRange? _customDateRange;
   bool _simulateEmpty = false;
 
+  int _currentPage = 1;
+  int _lastPage = 1;
+  int _totalTransactions = 0;
+  final int _perPage = 15;
+
   Map<String, dynamic> _reportData = {};
+  List<AffiliateModel> _affiliates = [];
 
   final List<String> _periodOptions = [
     'Hari Ini',
@@ -47,15 +57,46 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     _loadReport();
   }
 
-  Future<void> _loadReport() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadReport({int page = 1}) async {
+    setState(() {
+      if (page == 1) {
+        _isLoading = true;
+      } else {
+        _isLoadingPage = true;
+      }
+      _errorMessage = null;
+    });
 
+    final now = DateTime.now();
     DateTime? start;
     DateTime? end;
 
     if (_customDateRange != null) {
-      start = _customDateRange!.start;
-      end = _customDateRange!.end;
+      start = DateTime(_customDateRange!.start.year, _customDateRange!.start.month, _customDateRange!.start.day, 0, 0, 0);
+      end = DateTime(_customDateRange!.end.year, _customDateRange!.end.month, _customDateRange!.end.day, 23, 59, 59, 999);
+    } else {
+      switch (_selectedPeriod.toLowerCase()) {
+        case 'hari ini':
+          start = DateTime(now.year, now.month, now.day, 0, 0, 0);
+          end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+          break;
+        case 'minggu ini':
+          final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+          start = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day, 0, 0, 0);
+          final endOfWeek = startOfWeek.add(const Duration(days: 6));
+          end = DateTime(endOfWeek.year, endOfWeek.month, endOfWeek.day, 23, 59, 59, 999);
+          break;
+        case 'bulan ini':
+          start = DateTime(now.year, now.month, 1, 0, 0, 0);
+          final lastDay = DateTime(now.year, now.month + 1, 0).day;
+          end = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
+          break;
+        case 'semua':
+        default:
+          start = null;
+          end = null;
+          break;
+      }
     }
 
     try {
@@ -63,23 +104,40 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         period: _selectedPeriod,
         startDate: start,
         endDate: end,
+        page: page,
+        perPage: _perPage,
       );
+
+      List<AffiliateModel> affiliateList = [];
+      if (AuthService().isSuperAdmin) {
+        try {
+          affiliateList = await widget.repository.getAffiliates(forceRefresh: false);
+        } catch (_) {}
+      }
+
+      final pagination = data['pagination'] as Map<String, dynamic>?;
+      final curPage = (pagination?['current_page'] as num?)?.toInt() ?? page;
+      final lstPage = (pagination?['last_page'] as num?)?.toInt() ?? 1;
+      final totTxs = (pagination?['total'] as num?)?.toInt() ?? ((data['transactions'] as List?)?.length ?? 0);
 
       if (mounted) {
         setState(() {
           _reportData = data;
+          _affiliates = affiliateList;
+          _currentPage = curPage;
+          _lastPage = lstPage > 0 ? lstPage : 1;
+          _totalTransactions = totTxs;
           _isLoading = false;
+          _isLoadingPage = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal memuat laporan penjualan: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        setState(() {
+          _errorMessage = 'Gagal memuat laporan penjualan: $e';
+          _isLoading = false;
+          _isLoadingPage = false;
+        });
       }
     }
   }
@@ -100,8 +158,9 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
           end: result.endDate,
         );
         _selectedPeriod = result.label;
+        _currentPage = 1;
       });
-      _loadReport();
+      _loadReport(page: 1);
     }
   }
 
@@ -341,6 +400,23 @@ Status Kasir: Telah Ditutup & Sesuai.
     if (_customDateRange != null) {
       return '${Formatters.date(_customDateRange!.start)} - ${Formatters.date(_customDateRange!.end)}';
     }
+    final now = DateTime.now();
+    switch (_selectedPeriod.toLowerCase()) {
+      case 'hari ini':
+        return Formatters.date(now);
+      case 'minggu ini':
+        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+        final endOfWeek = startOfWeek.add(const Duration(days: 6));
+        return '${Formatters.date(startOfWeek)} - ${Formatters.date(endOfWeek)}';
+      case 'bulan ini':
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        final endOfMonth = DateTime(now.year, now.month + 1, 0);
+        return '${Formatters.date(startOfMonth)} - ${Formatters.date(endOfMonth)}';
+      case 'semua':
+        return 'Seluruh Periode';
+      default:
+        break;
+    }
     if (_reportData['start_date'] != null && _reportData['end_date'] != null) {
       final start = DateTime.tryParse(_reportData['start_date'].toString());
       final end = DateTime.tryParse(_reportData['end_date'].toString());
@@ -435,12 +511,14 @@ Status Kasir: Telah Ditutup & Sesuai.
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: isTablet ? _buildTabletAppBar(context) : _buildMobileAppBar(context),
+      appBar: AppHeader(isTablet: isTablet),
       body: RefreshIndicator(
         onRefresh: _loadReport,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
+            ? SalesReportSkeleton(isTablet: isTablet)
+            : _errorMessage != null
+                ? _buildErrorState()
+                : SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.symmetric(horizontal: isTablet ? 24 : 16, vertical: 20),
                 child: Column(
@@ -524,6 +602,50 @@ Status Kasir: Telah Ditutup & Sesuai.
     );
   }
 
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEF2F2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.error_outline_rounded, size: 48, color: Color(0xFFDC2626)),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Gagal Memuat Laporan Penjualan',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage ?? 'Terjadi kesalahan saat mengambil data laporan.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton.icon(
+              onPressed: _loadReport,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Coba Lagi'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F172A),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // =========================================================================
   // SUB-HEADER & FILTER SECTION (TABLET)
   // =========================================================================
@@ -535,11 +657,11 @@ Status Kasir: Telah Ditutup & Sesuai.
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Laporan Penjualan & Kasir',
                 style: TextStyle(
                   fontSize: 22,
@@ -548,10 +670,12 @@ Status Kasir: Telah Ditutup & Sesuai.
                   letterSpacing: -0.5,
                 ),
               ),
-              SizedBox(height: 3),
+              const SizedBox(height: 3),
               Text(
-                'Rekapitulasi omzet, alur kas tunai, transaksi sewa iPhone, dan rekonsiliasi deposit harian.',
-                style: TextStyle(
+                AuthService().isStaff
+                    ? 'Rekapitulasi omzet dan transaksi sewa dari booking yang dibuat oleh akun Anda.'
+                    : 'Rekapitulasi omzet, alur kas tunai, transaksi sewa iPhone, dan rekonsiliasi deposit harian.',
+                style: const TextStyle(
                   fontSize: 12,
                   color: Color(0xFF64748B),
                   fontWeight: FontWeight.w400,
@@ -582,8 +706,9 @@ Status Kasir: Telah Ditutup & Sesuai.
                       setState(() {
                         _selectedPeriod = period;
                         _customDateRange = null;
+                        _currentPage = 1;
                       });
-                      _loadReport();
+                      _loadReport(page: 1);
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -720,19 +845,40 @@ Status Kasir: Telah Ditutup & Sesuai.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Laporan Penjualan & Kasir',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF0F172A),
-            letterSpacing: -0.4,
-          ),
+        Row(
+          children: [
+            const Text(
+              'Laporan Penjualan & Kasir',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F172A),
+                letterSpacing: -0.4,
+              ),
+            ),
+            if (AuthService().isStaff) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: const Text(
+                  'Staff',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                ),
+              ),
+            ],
+          ],
         ),
         const SizedBox(height: 2),
-        const Text(
-          'Rekapitulasi omzet, alur kas tunai, dan rekonsiliasi deposit.',
-          style: TextStyle(
+        Text(
+          AuthService().isStaff
+              ? 'Rekap omzet transaksi booking yang dibuat oleh akun Anda.'
+              : 'Rekapitulasi omzet, alur kas tunai, dan rekonsiliasi deposit.',
+          style: const TextStyle(
             fontSize: 11,
             color: Color(0xFF64748B),
           ),
@@ -757,8 +903,9 @@ Status Kasir: Telah Ditutup & Sesuai.
                         setState(() {
                           _selectedPeriod = period;
                           _customDateRange = null;
+                          _currentPage = 1;
                         });
-                        _loadReport();
+                        _loadReport(page: 1);
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -946,6 +1093,10 @@ Status Kasir: Telah Ditutup & Sesuai.
         ),
         const SizedBox(height: 16),
         _buildTopModelsCard(modelRevenue, modelCount),
+        if (AuthService().isSuperAdmin) ...[
+          const SizedBox(height: 16),
+          _buildAffiliateRevenueBreakdownSection(isTablet: true),
+        ],
         const SizedBox(height: 16),
         _buildTransactionsTableCard(transactions, txCount),
       ],
@@ -1046,6 +1197,10 @@ Status Kasir: Telah Ditutup & Sesuai.
         _buildPaymentTypeCard(typeBreakdown),
         const SizedBox(height: 16),
         _buildTopModelsCard(modelRevenue, modelCount),
+        if (AuthService().isSuperAdmin) ...[
+          const SizedBox(height: 16),
+          _buildAffiliateRevenueBreakdownSection(isTablet: false),
+        ],
         const SizedBox(height: 16),
         _buildTransactionsTableCard(transactions, txCount),
       ],
@@ -1786,9 +1941,119 @@ Status Kasir: Telah Ditutup & Sesuai.
           const SizedBox(height: 16),
           if (_simulateEmpty || transactions.isEmpty)
             _buildEmptyTransactions()
-          else
-            _buildTransactionTableView(transactions),
+          else ...[
+            Opacity(
+              opacity: _isLoadingPage ? 0.5 : 1.0,
+              child: _buildTransactionTableView(transactions),
+            ),
+            if (_lastPage > 1 || (_totalTransactions > 0 && _totalTransactions > _perPage)) ...[
+              const SizedBox(height: 12),
+              _buildPaginationControls(txCount),
+            ],
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildPaginationControls(int totalItems) {
+    final effectiveTotal = _totalTransactions > 0 ? _totalTransactions : totalItems;
+    final startItem = effectiveTotal == 0 ? 0 : (_currentPage - 1) * _perPage + 1;
+    final endItem = math.min(_currentPage * _perPage, effectiveTotal);
+
+    return Container(
+      padding: const EdgeInsets.only(top: 14),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFFF1F5F9), width: 1.5)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 540;
+          return Flex(
+            direction: isNarrow ? Axis.vertical : Axis.horizontal,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: isNarrow ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  effectiveTotal == 0
+                      ? 'Tidak ada data transaksi'
+                      : 'Menampilkan $startItem - $endItem dari $effectiveTotal transaksi',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (isNarrow) const SizedBox(height: 10),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_isLoadingPage) ...[
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  OutlinedButton.icon(
+                    onPressed: (_currentPage > 1 && !_isLoadingPage)
+                        ? () => _loadReport(page: _currentPage - 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_left_rounded, size: 16),
+                    label: const Text('Sebelumnya'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      visualDensity: VisualDensity.compact,
+                      foregroundColor: const Color(0xFF1E293B),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Text(
+                      '$_currentPage / $_lastPage',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1D4ED8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  OutlinedButton.icon(
+                    onPressed: (_currentPage < _lastPage && !_isLoadingPage)
+                        ? () => _loadReport(page: _currentPage + 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_right_rounded, size: 16),
+                    iconAlignment: IconAlignment.end,
+                    label: const Text('Berikutnya'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      visualDensity: VisualDensity.compact,
+                      foregroundColor: const Color(0xFF1E293B),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2072,366 +2337,376 @@ Status Kasir: Telah Ditutup & Sesuai.
   }
 
   // =========================================================================
-  // CONSISTENT APP BAR SYSTEM (TABLET & MOBILE)
+  // PENGHASILAN CABANG & MITRA AFFILIATE (KHUSUS ROLE SUPER-ADMIN)
   // =========================================================================
 
-  String _getDayName(DateTime date) {
-    switch (date.weekday) {
-      case 1:
-        return 'Senin';
-      case 2:
-        return 'Selasa';
-      case 3:
-        return 'Rabu';
-      case 4:
-        return 'Kamis';
-      case 5:
-        return 'Jumat';
-      case 6:
-        return 'Sabtu';
-      case 7:
-        return 'Minggu';
-      default:
-        return '';
+  Widget _buildAffiliateRevenueBreakdownSection({required bool isTablet}) {
+    final rawBreakdown = _reportData['affiliateBreakdown'] ?? _reportData['affiliate_breakdown'];
+    List<Map<String, dynamic>> items = [];
+
+    if (rawBreakdown is List && rawBreakdown.isNotEmpty) {
+      items = rawBreakdown.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+    } else if (_affiliates.isNotEmpty) {
+      items = _affiliates.map((aff) {
+        return {
+          'id': aff.id,
+          'code': aff.code,
+          'name': aff.name,
+          'city': aff.city ?? '-',
+          'revenue': aff.totalRevenue > 0 ? aff.totalRevenue : aff.revenueToday,
+          'booking_count': aff.bookingsCount,
+          'is_active': aff.isActive,
+          'iphones_count': aff.iphonesCount,
+          'revenue_today': aff.revenueToday,
+          'total_revenue': aff.totalRevenue,
+        };
+      }).toList();
     }
-  }
 
-  String _getRoleBadgeText(String? role) {
-    final r = (role ?? '').toUpperCase();
-    if (r.contains('SUPER') || r.contains('OWNER')) return 'SUPER-ADMIN';
-    if (r.contains('ADMIN')) return 'ADMIN';
-    if (r.contains('KASIR')) return 'KASIR';
-    return 'STAFF';
-  }
+    // Urutkan berdasarkan nominal omzet tertinggi
+    items.sort((a, b) => ((b['revenue'] as num?)?.toDouble() ?? 0.0)
+        .compareTo((a['revenue'] as num?)?.toDouble() ?? 0.0));
 
-  Widget _buildPrinterStatusBadge({bool isTablet = false}) {
-    final printService = ThermalPrintService();
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        printService.activePrinterNotifier,
-        printService.isConnectedNotifier,
-      ]),
-      builder: (context, _) {
-        final activePrinter = printService.activePrinterNotifier.value;
-        final isConnected = printService.isConnectedNotifier.value;
+    final totalAffRevenue = items.fold(0.0, (sum, i) => sum + ((i['revenue'] as num?)?.toDouble() ?? 0.0));
+    final totalAffBookings = items.fold(0, (sum, i) => sum + ((i['booking_count'] as num?)?.toInt() ?? 0));
 
-        String printerName = activePrinter?.name.trim() ?? '';
-        if (printerName.isEmpty || printerName == 'Belum Ada Printer Dipilih') {
-          printerName = 'Printer Thermal';
-        }
-
-        final statusText = isConnected ? 'Terhubung' : 'Belum Terhubung';
-
-        return GestureDetector(
-          onTap: () async {
-            await Navigator.pushNamed(context, AppRoutes.printerSettings);
-            if (mounted) setState(() {});
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: isConnected ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isConnected ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: isConnected ? AppTheme.success : AppTheme.error,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 5),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 105),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        printerName,
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.bold,
-                          color: isConnected ? const Color(0xFF065F46) : const Color(0xFF991B1B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        statusText,
-                        style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w600,
-                          color: isConnected ? const Color(0xFF047857) : const Color(0xFFB91C1C),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-        );
-      },
-    );
-  }
-
-  PreferredSizeWidget _buildTabletAppBar(BuildContext context) {
-    final user = AuthService().currentUser;
-    final now = DateTime.now();
-    final dateFormatted = '${_getDayName(now)}, ${Formatters.date(now)}';
-    final topPadding = MediaQuery.paddingOf(context).top;
-    final cashierName = user?.name.trim().isNotEmpty == true ? user!.name : 'Kasir SKYRental';
-    final initials = cashierName.split(' ').take(2).map((e) => e.isNotEmpty ? e[0].toUpperCase() : '').join();
-
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(68),
-      child: RepaintBoundary(
-        child: Container(
-          padding: EdgeInsets.only(top: topPadding + 8, bottom: 10, left: 24, right: 24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
-          ),
-          child: Row(
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section Title & Super-Admin Badge
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Left: Logo + POS Station #01
               Row(
                 children: [
                   Container(
-                    width: 32,
-                    height: 32,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A),
-                      borderRadius: BorderRadius.circular(8),
+                      color: const Color(0xFFEEF2FF),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Center(
-                      child: Icon(Icons.phone_iphone_rounded, color: Colors.white, size: 18),
+                    child: const Icon(
+                      Icons.storefront_rounded,
+                      color: Color(0xFF4F46E5),
+                      size: 20,
                     ),
                   ),
                   const SizedBox(width: 10),
-                  const Column(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        'SKYRental',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
-                          letterSpacing: -0.5,
-                        ),
+                      Row(
+                        children: [
+                          const Text(
+                            'Penghasilan Cabang & Affiliate',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEEF2FF),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFC7D2FE)),
+                            ),
+                            child: const Text(
+                              'Super-Admin',
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF4F46E5),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        'POS Station #01',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF64748B),
-                        ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Breakdown omzet & transaksi dari tiap-tiap cabang affiliate',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                       ),
                     ],
                   ),
                 ],
               ),
-              // Right: Printer Status + Date Pill + Cashier Profile
-              Row(
-                children: [
-                  _buildPrinterStatusBadge(isTablet: true),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF4F46E5),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                ),
+                onPressed: () => Navigator.pushNamed(context, AppRoutes.affiliateList),
+                icon: const Icon(Icons.hub_outlined, size: 15),
+                label: const Text(
+                  'Kelola Cabang',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Total Summary KPI row for Affiliates
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.business_center_outlined, size: 14, color: Color(0xFF64748B)),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${items.length} Cabang Terdata',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Icon(Icons.receipt_outlined, size: 14, color: Color(0xFF64748B)),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$totalAffBookings Booking',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Icon(Icons.account_balance_wallet_rounded, size: 14, color: Color(0xFF10B981)),
+                    const SizedBox(width: 6),
+                    Text(
+                      Formatters.currency(totalAffRevenue),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          if (items.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              alignment: Alignment.center,
+              child: const Text(
+                'Belum ada data pendapatan mitra cabang untuk periode ini.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                final double rev = (item['revenue'] as num?)?.toDouble() ?? 0.0;
+                final int bCount = (item['booking_count'] as num?)?.toInt() ?? 0;
+                final String code = item['code']?.toString() ?? 'AFF';
+                final String name = item['name']?.toString() ?? 'Mitra Cabang';
+                final String city = item['city']?.toString() ?? '-';
+                final bool isActive = item['is_active'] == true;
+                final int id = item['id'] is int ? item['id'] as int : int.tryParse(item['id']?.toString() ?? '0') ?? 0;
+
+                // Cari atau bangun AffiliateModel lengkap untuk navigasi
+                final affModel = _affiliates.firstWhere(
+                  (a) => a.id == id,
+                  orElse: () => AffiliateModel(
+                    id: id,
+                    code: code,
+                    name: name,
+                    slug: item['slug']?.toString() ?? '',
+                    city: city,
+                    isActive: isActive,
+                    bookingsCount: bCount,
+                    totalRevenue: (item['total_revenue'] as num?)?.toDouble() ?? rev,
+                    revenueToday: (item['revenue_today'] as num?)?.toDouble() ?? 0.0,
+                  ),
+                );
+
+                return InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    Navigator.pushNamed(
+                      context,
+                      AppRoutes.affiliateRevenue,
+                      arguments: affModel,
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
-                        const SizedBox(width: 8),
-                        Text(
-                          dateFormatted,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF334155),
+                        // Code Badge
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: isActive
+                                  ? [const Color(0xFF4F46E5), const Color(0xFF3730A3)]
+                                  : [Colors.grey.shade400, Colors.grey.shade600],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            code.length > 5 ? code.substring(0, 5) : code,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  GestureDetector(
-                    onTap: () => Navigator.pushNamed(context, AppRoutes.account),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 17,
-                          backgroundColor: const Color(0xFF0F172A),
-                          child: Text(
-                            initials.isNotEmpty ? initials : 'BS',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                        const SizedBox(width: 12),
+                        // Name & City
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      name,
+                                      style: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (isActive)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFECFDF5),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: const Color(0xFFA7F3D0)),
+                                      ),
+                                      child: const Text(
+                                        'Aktif',
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF059669),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Icon(Icons.location_on_outlined, size: 12, color: AppTheme.textMuted),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    city,
+                                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text('•', style: TextStyle(color: AppTheme.textMuted)),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '$bCount Transaksi',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.indigo.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(width: 10),
+                        // Revenue & Detail Link
                         Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              cashierName,
+                              Formatters.currency(rev),
                               style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
                                 color: Color(0xFF0F172A),
                               ),
                             ),
-                            const Text(
-                              'Kasir • Shift Pagi',
-                              style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                            const SizedBox(height: 2),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Laporan Omset',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
+                                Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Colors.blue.shade700),
+                              ],
                             ),
                           ],
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ],
-          ),
-        ),
+                );
+              },
+            ),
+        ],
       ),
     );
   }
 
-  PreferredSizeWidget _buildMobileAppBar(BuildContext context) {
-    final user = AuthService().currentUser;
-    final userName = user?.name.trim().isNotEmpty == true ? user!.name : 'Admin SKYRental';
-    final roleBadge = _getRoleBadgeText(user?.role);
 
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(68),
-      child: Container(
-        padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top + 8,
-          bottom: 10,
-          left: 16,
-          right: 16,
-        ),
-        decoration: BoxDecoration(
-          color: AppTheme.surface.withValues(alpha: 0.95),
-          border: Border(
-            bottom: BorderSide(color: AppTheme.cardBorder, width: 1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          userName,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
-                            letterSpacing: -0.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceContainer,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          roleBadge,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Laporan Penjualan & Kasir',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 4),
-            _buildPrinterStatusBadge(isTablet: false),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => Navigator.pushNamed(context, AppRoutes.account),
-              child: Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 17,
-                    backgroundColor: AppTheme.surfaceContainer,
-                    child: Icon(Icons.person, size: 20, color: AppTheme.primary),
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 9,
-                      height: 9,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.5),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+
+
+
+
 }
 
 // =========================================================================

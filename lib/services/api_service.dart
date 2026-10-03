@@ -1,9 +1,20 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/iphone_model.dart';
+
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+  final Map<String, dynamic>? errors;
+
+  ApiException(this.message, {this.statusCode, this.errors});
+
+  @override
+  String toString() => message;
+}
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -75,6 +86,15 @@ class ApiService {
     await prefs.setString(_prefKeyBaseUrl, clean);
   }
 
+  /// Reset base URL ke default sistem
+  Future<void> resetBaseUrl() async {
+    baseUrl = _initialBaseUrl;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefKeyBaseUrl);
+    } catch (_) {}
+  }
+
   /// Menguji konektivitas ke server target
   Future<bool> testConnection(String inputUrl) async {
     try {
@@ -97,16 +117,37 @@ class ApiService {
       try {
         final healthUri = Uri.parse('$clean/health');
         final healthResp = await http.get(healthUri).timeout(const Duration(seconds: 3));
-        if (healthResp.statusCode >= 200 && healthResp.statusCode < 400) {
+        if (healthResp.statusCode >= 200 && healthResp.statusCode < 300) {
           return true;
         }
       } catch (_) {}
 
-      // 2. Fallback cek endpoint /login (405 / 200 membuktikan server online)
-      final uri = Uri.parse('$clean/login');
-      final resp = await http.get(uri).timeout(const Duration(seconds: 3));
-      // Jika server merespons (status code apa pun seperti 405 Method Not Allowed untuk GET login, atau 200), berarti host online!
-      return resp.statusCode < 500 || resp.statusCode == 405;
+      // 2. Fallback cek endpoint /ping
+      try {
+        final pingUri = Uri.parse('$clean/ping');
+        final pingResp = await http.get(pingUri).timeout(const Duration(seconds: 2));
+        if (pingResp.statusCode >= 200 && pingResp.statusCode < 300) {
+          return true;
+        }
+      } catch (_) {}
+
+      // 3. Fallback cek endpoint /login dengan POST
+      // Route POST /login di Laravel akan merespons 422 jika body kosong, atau 200/401.
+      // Jika server merespons 404 (Not Found), berarti route tidak tersedia di server tersebut!
+      try {
+        final uri = Uri.parse('$clean/login');
+        final resp = await http.post(
+          uri,
+          headers: {'Accept': 'application/json', 'Content-Type': 'application/json'},
+          body: jsonEncode({'test': true}),
+        ).timeout(const Duration(seconds: 3));
+
+        if (resp.statusCode == 200 || resp.statusCode == 422 || resp.statusCode == 401) {
+          return true;
+        }
+      } catch (_) {}
+
+      return false;
     } catch (_) {
       return false;
     }
@@ -131,6 +172,9 @@ class ApiService {
   }
 
   List<String> get candidateUrls {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      return const [];
+    }
     final list = <String>[];
     final bool isDesktop = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
@@ -140,18 +184,29 @@ class ApiService {
         'http://localhost:8000/api/v1',
         'http://skyrent.test/api/v1',
         'http://localhost/api/v1',
-        baseUrl,
+        if (!baseUrl.contains('skyrental.id')) baseUrl,
         'http://192.168.1.24:8000/api/v1',
       ]);
     } else {
+      // Mobile / Emulator
+      // Jika baseUrl bukan skyrental.id, prioritaskan baseUrl yang tersimpan
+      if (!baseUrl.contains('skyrental.id')) {
+        list.add(baseUrl);
+      }
       list.addAll([
-        baseUrl,
-        'http://10.0.2.2:8000/api/v1',
-        'http://192.168.1.24:8000/api/v1',
-        'http://skyrent.test/api/v1',
+        'http://10.0.2.2:8000/api/v1',       // Android Emulator loopback
+        'http://192.168.1.24:8000/api/v1',   // Laptop LAN IP
         'http://127.0.0.1:8000/api/v1',
+        'http://localhost:8000/api/v1',
+        'http://skyrent.test/api/v1',
+        'http://localhost/api/v1',
       ]);
+      // Jika baseUrl adalah skyrental.id, coba setelah endpoint lokal
+      if (baseUrl.contains('skyrental.id')) {
+        list.add(baseUrl);
+      }
     }
+    // Tambahkan domain production sebagai cadangan terakhir
     list.add('https://skyrental.id/api/v1');
 
     // Return distinct non-empty list
@@ -174,7 +229,10 @@ class ApiService {
 
   /// Login ke Skyrent backend
   /// POST /api/v1/login
-  Future<Map<String, dynamic>?> loginApi(String emailOrUsername, String password) async {
+  Future<Map<String, dynamic>> loginApi(String emailOrUsername, String password) async {
+    String? lastErrorMessage;
+    int? lastStatusCode;
+
     for (final base in candidateUrls) {
       try {
         final uri = Uri.parse('$base/login');
@@ -191,18 +249,112 @@ class ApiService {
           final Map<String, dynamic> json = jsonDecode(response.body);
           if (json['success'] == true && json['data'] != null) {
             baseUrl = base;
+            _saveWorkingUrl(base);
             final data = json['data'] as Map<String, dynamic>;
             if (data['token'] != null) {
               saveAuthToken(data['token'].toString());
             }
             return data;
           }
+        } else if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 422) {
+          // Server valid merespons (kredensial salah atau validasi input gagal)
+          baseUrl = base;
+          _saveWorkingUrl(base);
+          lastStatusCode = response.statusCode;
+          try {
+            final Map<String, dynamic> json = jsonDecode(response.body);
+            if (json['message'] != null) {
+              lastErrorMessage = json['message'].toString();
+            } else if (json['errors'] is Map) {
+              final errors = json['errors'] as Map;
+              if (errors.isNotEmpty && errors.values.first is List && (errors.values.first as List).isNotEmpty) {
+                lastErrorMessage = (errors.values.first as List).first.toString();
+              }
+            }
+          } catch (_) {
+            lastErrorMessage = 'Login gagal dengan kode HTTP ${response.statusCode}.';
+          }
+
+          // Hentikan loop dan lemparkan pesan langsung dari server autentikasi
+          throw ApiException(
+            lastErrorMessage ?? 'Email/nama pengguna atau kata sandi tidak valid. Silakan periksa kembali.',
+            statusCode: response.statusCode,
+          );
+        } else if (response.statusCode == 404) {
+          // Route tidak ditemukan di server candidate ini (misal production belum deploy API atau prefix salah).
+          // JANGAN simpan URL ini sebagai working URL dan JANGAN lempar pesan 404 mentah ke user!
+          debugPrint('API candidate $base mengembalikan 404 pada /login. Melanjutkan pencarian server...');
+          if (baseUrl == base) {
+            baseUrl = _initialBaseUrl;
+          }
+          continue;
+        } else {
+          // Status code lain (misal 500, 502, 503)
+          lastStatusCode = response.statusCode;
+          try {
+            final Map<String, dynamic> json = jsonDecode(response.body);
+            if (json['message'] != null) {
+              lastErrorMessage = json['message'].toString();
+            }
+          } catch (_) {}
         }
-      } catch (_) {
-        // Coba url berikutnya
+      } catch (e) {
+        if (e is ApiException) rethrow;
+        // Coba url berikutnya jika connection timeout / refused
       }
     }
-    return null;
+
+    if (lastErrorMessage != null) {
+      throw ApiException(lastErrorMessage, statusCode: lastStatusCode);
+    }
+
+    throw ApiException(
+      'Tidak dapat terhubung ke server backend database SkyRental. Pastikan backend aktif (misal php artisan serve) dan URL server dapat dijangkau.',
+    );
+  }
+
+  /// Mengubah password akun melalui REST API backend
+  /// POST /api/v1/change-password
+  Future<bool> changePasswordApi(String currentPassword, String newPassword) async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/change-password');
+        final response = await http.post(
+          uri,
+          headers: _buildHeaders(isJson: true),
+          body: jsonEncode({
+            'current_password': currentPassword,
+            'new_password': newPassword,
+            'password': newPassword,
+          }),
+        ).timeout(const Duration(seconds: 5));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          return true;
+        }
+
+        try {
+          final Map<String, dynamic> json = jsonDecode(response.body);
+          String errorMsg = json['message']?.toString() ?? 'Gagal mengubah kata sandi.';
+          if (json['errors'] is Map) {
+            final errors = json['errors'] as Map;
+            if (errors.values.isNotEmpty) {
+              final first = errors.values.first;
+              if (first is List && first.isNotEmpty) {
+                errorMsg = first.first.toString();
+              }
+            }
+          }
+          throw ApiException(errorMsg, statusCode: response.statusCode);
+        } catch (e) {
+          if (e is ApiException) rethrow;
+          throw ApiException('Gagal mengubah kata sandi (Kode: ${response.statusCode})');
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
+      }
+    }
+    throw ApiException('Tidak dapat terhubung ke server untuk mengubah kata sandi.');
   }
 
   /// Ambil data user yang sedang login
@@ -300,6 +452,8 @@ class ApiService {
     String? paymentMethod,
     DateTime? startDate,
     DateTime? endDate,
+    int? page,
+    int? perPage,
   }) async {
     for (final base in candidateUrls) {
       try {
@@ -308,8 +462,10 @@ class ApiService {
         if (paymentMethod != null) queryParams['payment_method'] = paymentMethod;
         if (startDate != null) queryParams['start_date'] = startDate.toIso8601String();
         if (endDate != null) queryParams['end_date'] = endDate.toIso8601String();
+        if (page != null) queryParams['page'] = page.toString();
+        if (perPage != null) queryParams['per_page'] = perPage.toString();
 
-        final uri = Uri.parse('$base/reports/sales').replace(queryParameters: queryParams);
+        final uri = Uri.parse('$base/reports/sales').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
         final response = await http.get(
           uri,
           headers: _buildHeaders(),
@@ -656,6 +812,8 @@ class ApiService {
     String? query,
     String? status,
     String? model,
+    String? branch,
+    int? affiliateId,
   }) async {
     for (final base in candidateUrls) {
       try {
@@ -666,6 +824,12 @@ class ApiService {
         }
         if (model != null && model.isNotEmpty && model.toLowerCase() != 'semua' && model.toLowerCase() != 'all') {
           qParams['model'] = model;
+        }
+        if (branch != null && branch.isNotEmpty && !branch.toLowerCase().contains('semua')) {
+          qParams['branch'] = branch.replaceAll('•', '').trim();
+        }
+        if (affiliateId != null) {
+          qParams['affiliate_id'] = affiliateId.toString();
         }
 
         final uri = Uri.parse('$base/iphones').replace(
@@ -704,12 +868,76 @@ class ApiService {
             return decoded;
           }
         } else if (response.statusCode >= 400) {
+          _saveWorkingUrl(base);
           final decoded = jsonDecode(response.body);
-          final msg = decoded['message'] ?? 'Gagal menambahkan unit iPhone.';
-          throw Exception(msg.toString());
+          String msg = decoded['message']?.toString() ?? 'Gagal menambahkan unit iPhone.';
+          Map<String, dynamic>? errorsMap;
+          if (decoded is Map<String, dynamic> && decoded['errors'] is Map) {
+            errorsMap = (decoded['errors'] as Map).cast<String, dynamic>();
+            final errorList = <String>[];
+            for (final entry in errorsMap.entries) {
+              if (entry.value is List && (entry.value as List).isNotEmpty) {
+                errorList.add((entry.value as List).map((e) => e.toString()).join(', '));
+              } else if (entry.value is String && (entry.value as String).isNotEmpty) {
+                errorList.add(entry.value.toString());
+              }
+            }
+            if (errorList.isNotEmpty) {
+              msg = errorList.join('\n');
+            }
+          }
+          throw ApiException(msg, statusCode: response.statusCode, errors: errorsMap);
         }
       } catch (e) {
-        if (e is Exception && !e.toString().contains('FormatException')) {
+        if (e is ApiException) {
+          rethrow;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Memperbarui unit iPhone di backend
+  /// PUT /api/v1/iphones/{idOrAssetCode}
+  Future<Map<String, dynamic>?> updateIphoneApi(String idOrAssetCode, Map<String, dynamic> data) async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/iphones/$idOrAssetCode');
+        final response = await http.put(
+          uri,
+          headers: _buildHeaders(isJson: true),
+          body: jsonEncode(data),
+        ).timeout(const Duration(seconds: 8));
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic> && decoded['status'] == 'success') {
+            return decoded;
+          }
+        } else if (response.statusCode >= 400) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          String msg = decoded['message']?.toString() ?? 'Gagal memperbarui unit iPhone.';
+          Map<String, dynamic>? errorsMap;
+          if (decoded is Map<String, dynamic> && decoded['errors'] is Map) {
+            errorsMap = (decoded['errors'] as Map).cast<String, dynamic>();
+            final errorList = <String>[];
+            for (final entry in errorsMap.entries) {
+              if (entry.value is List && (entry.value as List).isNotEmpty) {
+                errorList.add((entry.value as List).map((e) => e.toString()).join(', '));
+              } else if (entry.value is String && (entry.value as String).isNotEmpty) {
+                errorList.add(entry.value.toString());
+              }
+            }
+            if (errorList.isNotEmpty) {
+              msg = errorList.join('\n');
+            }
+          }
+          throw ApiException(msg, statusCode: response.statusCode, errors: errorsMap);
+        }
+      } catch (e) {
+        if (e is ApiException) {
           rethrow;
         }
       }
@@ -962,7 +1190,7 @@ class ApiService {
         final uri = Uri.parse('$base/affiliates');
         final response = await http.post(
           uri,
-          headers: _buildHeaders(),
+          headers: _buildHeaders(isJson: true),
           body: jsonEncode(data),
         ).timeout(const Duration(seconds: 8));
 
@@ -974,8 +1202,18 @@ class ApiService {
           }
         } else if (response.statusCode >= 400) {
           final decoded = jsonDecode(response.body);
-          final msg = decoded['message'] ?? 'Gagal membuat mitra affiliate.';
-          throw Exception(msg.toString());
+          String msg = decoded['message'] ?? 'Gagal membuat mitra affiliate.';
+          if (decoded['errors'] is Map) {
+            final errMap = decoded['errors'] as Map;
+            final details = errMap.values
+                .expand((v) => v is List ? v : [v])
+                .map((e) => e.toString())
+                .join('\n');
+            if (details.isNotEmpty) {
+              msg = details;
+            }
+          }
+          throw Exception(msg);
         }
       } catch (e) {
         if (e is Exception && !e.toString().contains('FormatException')) {
@@ -994,7 +1232,7 @@ class ApiService {
         final uri = Uri.parse('$base/affiliates/$id');
         final response = await http.put(
           uri,
-          headers: _buildHeaders(),
+          headers: _buildHeaders(isJson: true),
           body: jsonEncode(data),
         ).timeout(const Duration(seconds: 8));
 
@@ -1006,8 +1244,18 @@ class ApiService {
           }
         } else if (response.statusCode >= 400) {
           final decoded = jsonDecode(response.body);
-          final msg = decoded['message'] ?? 'Gagal memperbarui mitra affiliate.';
-          throw Exception(msg.toString());
+          String msg = decoded['message'] ?? 'Gagal memperbarui mitra affiliate.';
+          if (decoded['errors'] is Map) {
+            final errMap = decoded['errors'] as Map;
+            final details = errMap.values
+                .expand((v) => v is List ? v : [v])
+                .map((e) => e.toString())
+                .join('\n');
+            if (details.isNotEmpty) {
+              msg = details;
+            }
+          }
+          throw Exception(msg);
         }
       } catch (e) {
         if (e is Exception && !e.toString().contains('FormatException')) {
@@ -1308,6 +1556,173 @@ class ApiService {
         if (e is Exception && !e.toString().contains('FormatException')) {
           rethrow;
         }
+      }
+    }
+    return false;
+  }
+
+  /// Mengambil daftar pengguna sistem
+  /// GET /api/v1/users
+  Future<List<Map<String, dynamic>>?> getUsersApi({String? search, String? role, int page = 1}) async {
+    for (final base in candidateUrls) {
+      try {
+        final queryParams = <String, String>{};
+        if (search != null && search.trim().isNotEmpty) {
+          queryParams['search'] = search.trim();
+        }
+        if (role != null && role.isNotEmpty && role != 'all' && role != 'semua') {
+          queryParams['role'] = role;
+        }
+        if (page > 1) {
+          queryParams['page'] = page.toString();
+        }
+
+        final uri = Uri.parse('$base/users').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+        final response = await http.get(uri, headers: _buildHeaders()).timeout(const Duration(seconds: 6));
+
+        if (response.statusCode == 200) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+            return (decoded['data'] as List).cast<Map<String, dynamic>>();
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Mengambil daftar role yang tersedia
+  /// GET /api/v1/roles
+  Future<List<Map<String, dynamic>>?> getRolesApi() async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/roles');
+        final response = await http.get(uri, headers: _buildHeaders()).timeout(const Duration(seconds: 5));
+
+        if (response.statusCode == 200) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+            return (decoded['data'] as List).cast<Map<String, dynamic>>();
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Mengambil daftar semua permissions hak akses
+  /// GET /api/v1/permissions
+  Future<List<Map<String, dynamic>>?> getPermissionsApi() async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/permissions');
+        final response = await http.get(uri, headers: _buildHeaders()).timeout(const Duration(seconds: 5));
+
+        if (response.statusCode == 200) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+            return (decoded['data'] as List).cast<Map<String, dynamic>>();
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Menetapkan / mengubah role dan permissions pengguna
+  /// POST /api/v1/users/{userId}/assign-role
+  Future<bool> assignUserRoleApi(String userId, String? role, {List<String>? permissions}) async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/users/$userId/assign-role');
+        final body = <String, dynamic>{
+          if (role != null && role.isNotEmpty) 'role': role,
+          if (permissions != null) 'permissions': permissions,
+        };
+
+        final response = await http.post(
+          uri,
+          headers: _buildHeaders(isJson: true),
+          body: jsonEncode(body),
+        ).timeout(const Duration(seconds: 6));
+
+        if (response.statusCode == 200) {
+          _saveWorkingUrl(base);
+          return true;
+        } else if (response.statusCode >= 400) {
+          final decoded = jsonDecode(response.body);
+          final msg = decoded['message'] ?? 'Gagal menetapkan role dan permissions pengguna.';
+          throw ApiException(msg.toString(), statusCode: response.statusCode);
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
+      }
+    }
+    return false;
+  }
+
+  /// Menambahkan pengguna baru
+  /// POST /api/v1/users
+  Future<Map<String, dynamic>> createUserApi({
+    required String name,
+    required String email,
+    required String password,
+    String? role,
+  }) async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/users');
+        final response = await http.post(
+          uri,
+          headers: _buildHeaders(isJson: true),
+          body: jsonEncode({
+            'name': name.trim(),
+            'email': email.trim(),
+            'password': password.trim(),
+            if (role != null && role.isNotEmpty && role != '-') 'role': role,
+          }),
+        ).timeout(const Duration(seconds: 6));
+
+        if (response.statusCode == 201 || response.statusCode == 200) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic> && decoded['data'] != null) {
+            return decoded['data'] as Map<String, dynamic>;
+          }
+          return decoded as Map<String, dynamic>;
+        } else if (response.statusCode >= 400) {
+          final decoded = jsonDecode(response.body);
+          final msg = decoded['message'] ?? 'Gagal membuat user baru.';
+          throw ApiException(msg.toString(), statusCode: response.statusCode);
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
+      }
+    }
+    throw ApiException('Tidak dapat terhubung ke server untuk membuat pengguna.');
+  }
+
+  /// Menghapus pengguna dari sistem
+  /// DELETE /api/v1/users/{userId}
+  Future<bool> deleteUserApi(String userId) async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/users/$userId');
+        final response = await http.delete(uri, headers: _buildHeaders()).timeout(const Duration(seconds: 6));
+
+        if (response.statusCode == 200) {
+          _saveWorkingUrl(base);
+          return true;
+        } else if (response.statusCode >= 400) {
+          final decoded = jsonDecode(response.body);
+          final msg = decoded['message'] ?? 'Gagal menghapus pengguna.';
+          throw ApiException(msg.toString(), statusCode: response.statusCode);
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
       }
     }
     return false;
