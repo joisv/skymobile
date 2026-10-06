@@ -34,7 +34,7 @@ class ApiService {
         }
       } catch (_) {}
     }
-    return 'http://192.168.1.24:8000/api/v1';
+    return 'http://192.168.1.93:8000/api/v1';
   }
 
   /// Default API base URL pointing to local Laravel backend or production domain
@@ -185,7 +185,7 @@ class ApiService {
         'http://skyrent.test/api/v1',
         'http://localhost/api/v1',
         if (!baseUrl.contains('skyrental.id')) baseUrl,
-        'http://192.168.1.24:8000/api/v1',
+        'http://192.168.1.93:8000/api/v1',
       ]);
     } else {
       // Mobile / Emulator
@@ -195,7 +195,7 @@ class ApiService {
       }
       list.addAll([
         'http://10.0.2.2:8000/api/v1',       // Android Emulator loopback
-        'http://192.168.1.24:8000/api/v1',   // Laptop LAN IP
+        'http://192.168.1.93:8000/api/v1',   // Host LAN IP
         'http://127.0.0.1:8000/api/v1',
         'http://localhost:8000/api/v1',
         'http://skyrent.test/api/v1',
@@ -405,16 +405,44 @@ class ApiService {
   }
 
   /// Mendapatkan daftar unit iPhone yang tersedia langsung dari API backend
-  /// GET /api/v1/iphones/available?q={query}
+  /// GET /api/v1/iphones/available?q={query}&start_date={...}&end_date={...}
   ///
   /// Mengembalikan list kosong jika request berhasil tetapi memang tidak ada
   /// unit yang tersedia, dan null jika seluruh kandidat host gagal dihubungi.
-  Future<List<IphoneModel>?> getAvailableIphones({String? query}) async {
+  Future<List<IphoneModel>?> getAvailableIphones({
+    String? query,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? startTime,
+    String? endTime,
+    int? duration,
+    int? affiliateId,
+  }) async {
     for (final base in candidateUrls) {
       try {
         final qParams = <String, String>{};
         if (query != null && query.trim().isNotEmpty) {
           qParams['q'] = query.trim();
+        }
+        if (startDate != null) {
+          qParams['start_date'] =
+              "${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}";
+        }
+        if (endDate != null) {
+          qParams['end_date'] =
+              "${endDate.year.toString().padLeft(4, '0')}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}";
+        }
+        if (startTime != null && startTime.trim().isNotEmpty) {
+          qParams['start_time'] = startTime.trim();
+        }
+        if (endTime != null && endTime.trim().isNotEmpty) {
+          qParams['end_time'] = endTime.trim();
+        }
+        if (duration != null && duration > 0) {
+          qParams['duration'] = duration.toString();
+        }
+        if (affiliateId != null) {
+          qParams['affiliate_id'] = affiliateId.toString();
         }
 
         final uri = Uri.parse('$base/iphones/available').replace(
@@ -814,6 +842,12 @@ class ApiService {
     String? model,
     String? branch,
     int? affiliateId,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? startTime,
+    String? endTime,
+    int? duration,
+    bool? availableOnly,
   }) async {
     for (final base in candidateUrls) {
       try {
@@ -830,6 +864,26 @@ class ApiService {
         }
         if (affiliateId != null) {
           qParams['affiliate_id'] = affiliateId.toString();
+        }
+        if (startDate != null) {
+          qParams['start_date'] =
+              "${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}";
+        }
+        if (endDate != null) {
+          qParams['end_date'] =
+              "${endDate.year.toString().padLeft(4, '0')}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}";
+        }
+        if (startTime != null && startTime.trim().isNotEmpty) {
+          qParams['start_time'] = startTime.trim();
+        }
+        if (endTime != null && endTime.trim().isNotEmpty) {
+          qParams['end_time'] = endTime.trim();
+        }
+        if (duration != null && duration > 0) {
+          qParams['duration'] = duration.toString();
+        }
+        if (availableOnly == true) {
+          qParams['available_only'] = '1';
         }
 
         final uri = Uri.parse('$base/iphones').replace(
@@ -1110,7 +1164,7 @@ class ApiService {
         final uri = Uri.parse('$base/bookings/$idOrCode/extend');
         final response = await http.post(
           uri,
-          headers: _buildHeaders(),
+          headers: _buildHeaders(isJson: true),
           body: jsonEncode(payload),
         ).timeout(const Duration(seconds: 5));
 
@@ -1156,8 +1210,14 @@ class ApiService {
           if (decoded is Map<String, dynamic> && decoded['success'] == true) {
             return decoded;
           }
+        } else if (response.statusCode == 403) {
+          final decoded = jsonDecode(response.body);
+          final msg = decoded['message'] ?? 'Akses ditolak: Hanya Super Admin yang dapat mengakses data mitra affiliate.';
+          throw ApiException(msg.toString(), statusCode: 403);
         }
-      } catch (_) {}
+      } catch (e) {
+        if (e is ApiException) rethrow;
+      }
     }
     return null;
   }
@@ -1176,8 +1236,14 @@ class ApiService {
           if (decoded is Map<String, dynamic> && decoded['success'] == true) {
             return decoded['data'] as Map<String, dynamic>?;
           }
+        } else if (response.statusCode == 403) {
+          final decoded = jsonDecode(response.body);
+          final msg = decoded['message'] ?? 'Akses ditolak: Anda tidak memiliki izin mengakses data affiliate ini.';
+          throw ApiException(msg.toString(), statusCode: 403);
         }
-      } catch (_) {}
+      } catch (e) {
+        if (e is ApiException) rethrow;
+      }
     }
     return null;
   }
@@ -1336,23 +1402,38 @@ class ApiService {
         final uri = Uri.parse('$base/affiliates/transfers');
         final response = await http.post(
           uri,
-          headers: _buildHeaders(),
+          headers: _buildHeaders(isJson: true),
           body: jsonEncode(payload),
         ).timeout(const Duration(seconds: 8));
 
         if (response.statusCode == 200 || response.statusCode == 201) {
           _saveWorkingUrl(base);
           final decoded = jsonDecode(response.body);
-          if (decoded is Map<String, dynamic> && decoded['success'] == true) {
+          if (decoded is Map<String, dynamic>) {
             return decoded;
           }
         } else if (response.statusCode >= 400) {
-          final decoded = jsonDecode(response.body);
-          final msg = decoded['message'] ?? 'Gagal membuat transfer iPhone.';
-          throw Exception(msg.toString());
+          String msg = 'Gagal membuat transfer iPhone.';
+          try {
+            final decoded = jsonDecode(response.body);
+            if (decoded is Map<String, dynamic>) {
+              if (decoded['errors'] is Map) {
+                final errors = decoded['errors'] as Map;
+                final firstErr = errors.values.first;
+                if (firstErr is List && firstErr.isNotEmpty) {
+                  msg = firstErr.first.toString();
+                } else if (firstErr != null) {
+                  msg = firstErr.toString();
+                }
+              } else if (decoded['message'] != null) {
+                msg = decoded['message'].toString();
+              }
+            }
+          } catch (_) {}
+          throw ApiException(msg, statusCode: response.statusCode);
         }
       } catch (e) {
-        if (e is Exception && !e.toString().contains('FormatException')) {
+        if (e is ApiException) {
           rethrow;
         }
       }
@@ -1371,16 +1452,16 @@ class ApiService {
         if (response.statusCode == 200) {
           _saveWorkingUrl(base);
           final decoded = jsonDecode(response.body);
-          if (decoded is Map<String, dynamic> && decoded['success'] == true) {
+          if (decoded is Map<String, dynamic>) {
             return decoded;
           }
         } else if (response.statusCode >= 400) {
           final decoded = jsonDecode(response.body);
           final msg = decoded['message'] ?? 'Gagal menerima iPhone.';
-          throw Exception(msg.toString());
+          throw ApiException(msg.toString(), statusCode: response.statusCode);
         }
       } catch (e) {
-        if (e is Exception && !e.toString().contains('FormatException')) {
+        if (e is ApiException) {
           rethrow;
         }
       }
@@ -1586,8 +1667,14 @@ class ApiService {
           if (decoded is Map<String, dynamic> && decoded['data'] is List) {
             return (decoded['data'] as List).cast<Map<String, dynamic>>();
           }
+        } else if (response.statusCode == 403) {
+          final decoded = jsonDecode(response.body);
+          final msg = decoded['message'] ?? 'Akses ditolak: Hanya Super Admin yang dapat mengakses data pengguna.';
+          throw ApiException(msg.toString(), statusCode: 403);
         }
-      } catch (_) {}
+      } catch (e) {
+        if (e is ApiException) rethrow;
+      }
     }
     return null;
   }
@@ -1606,8 +1693,14 @@ class ApiService {
           if (decoded is Map<String, dynamic> && decoded['data'] is List) {
             return (decoded['data'] as List).cast<Map<String, dynamic>>();
           }
+        } else if (response.statusCode == 403) {
+          final decoded = jsonDecode(response.body);
+          final msg = decoded['message'] ?? 'Akses ditolak: Hanya Super Admin yang dapat mengakses data role.';
+          throw ApiException(msg.toString(), statusCode: 403);
         }
-      } catch (_) {}
+      } catch (e) {
+        if (e is ApiException) rethrow;
+      }
     }
     return null;
   }
@@ -1626,8 +1719,14 @@ class ApiService {
           if (decoded is Map<String, dynamic> && decoded['data'] is List) {
             return (decoded['data'] as List).cast<Map<String, dynamic>>();
           }
+        } else if (response.statusCode == 403) {
+          final decoded = jsonDecode(response.body);
+          final msg = decoded['message'] ?? 'Akses ditolak: Hanya Super Admin yang dapat mengakses data permissions.';
+          throw ApiException(msg.toString(), statusCode: 403);
         }
-      } catch (_) {}
+      } catch (e) {
+        if (e is ApiException) rethrow;
+      }
     }
     return null;
   }

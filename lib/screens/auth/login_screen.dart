@@ -141,10 +141,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   ActionChip(
                     avatar: const Icon(Icons.wifi, size: 14),
-                    label: const Text('Laptop LAN (192.168.1.24)', style: TextStyle(fontSize: 11)),
+                    label: const Text('Host LAN (192.168.1.93)', style: TextStyle(fontSize: 11)),
                     onPressed: () {
                       setModalState(() {
-                        controller.text = 'http://192.168.1.24:8000/api/v1';
+                        controller.text = 'http://192.168.1.93:8000/api/v1';
                         testResult = null;
                       });
                     },
@@ -176,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: controller,
                 decoration: InputDecoration(
                   labelText: 'Base URL API Backend',
-                  hintText: 'http://192.168.1.24:8000/api/v1',
+                  hintText: 'http://192.168.1.93:8000/api/v1',
                   prefixIcon: const Icon(Icons.link, size: 18),
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.restore, size: 18),

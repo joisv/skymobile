@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
-import '../../data/mock_booking_data.dart';
 import '../../models/booking_model.dart';
 import '../../models/iphone_model.dart';
 import '../../routes/app_routes.dart';
@@ -68,18 +67,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       try {
         readyUnits = await widget.repository.getAllInventoryUnits(statusFilter: 'tersedia');
       } catch (_) {
-        readyUnits = MockBookingData.inventory.where((u) => u.status == 'tersedia').toList();
-      }
-      if (readyUnits.isEmpty) {
-        readyUnits = MockBookingData.inventory.where((u) => u.status == 'tersedia').toList();
+        readyUnits = [];
       }
 
       int pendingTransferCount = 0;
       try {
+        final isAffUser = AuthService().isAffiliate || AuthService().isAffiliateAdmin;
         final transfers = await widget.repository.getIphoneTransfers(
           status: 'in_transit',
-          affiliateId: AuthService().isAffiliateAdmin ? AuthService().affiliateId : null,
-          type: AuthService().isAffiliateAdmin ? 'inbound' : null,
+          affiliateId: isAffUser ? AuthService().affiliateId : null,
+          type: isAffUser ? 'inbound' : null,
           forceRefresh: true,
         );
         pendingTransferCount = transfers.where((t) => t.isInTransit).length;
@@ -96,7 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _readyInventory = MockBookingData.inventory.where((u) => u.status == 'tersedia').toList();
+          _readyInventory = [];
           _isLoading = false;
         });
       }
@@ -326,8 +323,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: _buildOperationalMetricsSection(metrics),
         ),
 
-        // Quick Action khusus Affiliate Admin: Transfer iPhone Masuk & Terima iPhone
-        if (AuthService().isAffiliateAdmin)
+        // Quick Action khusus Affiliate: Transfer iPhone Masuk & Terima iPhone
+        if (AuthService().isAffiliate || AuthService().isAffiliateAdmin)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
             child: InkWell(
@@ -1900,7 +1897,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-          if (AuthService().isAffiliateAdmin || AuthService().isSuperAdmin) ...[
+          if (AuthService().isAffiliate || AuthService().isAffiliateAdmin || AuthService().isSuperAdmin) ...[
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,

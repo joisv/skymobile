@@ -6,6 +6,7 @@ import '../../models/printer_device_model.dart';
 import '../../services/printer_storage_service.dart';
 import '../../services/thermal_print_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/app_header.dart';
 
 class PrinterSettingsScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -52,33 +53,11 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     try {
       await _storage.init();
       final settings = await _storage.getPrinterSettings();
+      final cachedPrimary = await _storage.getPrimaryPrinter();
+      final cachedDevices = await _storage.getPairedDevices();
 
-      // Diagnostik status Bluetooth dan izin sistem
-      BluetoothDiagnosticInfo? diag;
-      try {
-        diag = await _printService.checkBluetoothDiagnostic();
-      } catch (_) {}
-
-      // Ambil daftar printer bluetooth yang nyata terpasang dari Android
-      List<PrinterDeviceModel> devices = [];
-      try {
-        devices = await _printService.getPairedPrinters();
-      } catch (_) {}
-
-      // Pastikan status primary printer dicek & di-reconnect jika autoConnect aktif
-      PrinterDeviceModel active = await _printService.ensurePrimaryConnected();
-
-      // Jika ada printer yang di-pair di Android
-      if (devices.isNotEmpty) {
-        final matchIndex = devices.indexWhere((d) => d.address == active.address);
-        if (matchIndex != -1) {
-          active = devices[matchIndex].copyWith(isConnected: active.isConnected);
-        } else if (active.address.isEmpty) {
-          // Jika printer tersimpan sebelumnya belum ada, pilih printer pertama yang nyata
-          active = devices.first;
-          await _storage.savePrimaryPrinter(active);
-        }
-      } else if (active.address.isEmpty ||
+      var active = cachedPrimary;
+      if (active.address.isEmpty ||
           active.address == '58:A2:3B:11:89:DC' ||
           active.address == 'AA:BB:CC:22:33:44') {
         active = const PrinterDeviceModel(
@@ -88,28 +67,94 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
         );
       }
 
-      if (active.address.isNotEmpty) {
-        final isConn = await _printService.checkConnection();
-        if (active.isConnected != isConn) {
-          active = active.copyWith(isConnected: isConn);
+      // Fast UI render: Render langsung data tersimpan tanpa menunggu socket Bluetooth
+      if (mounted) {
+        setState(() {
+          _activeDevice = active;
+          _primaryAddress = active.address;
+          _settings = settings;
+          if (cachedDevices.isNotEmpty) {
+            _discoveredDevices = List.from(cachedDevices);
+          }
+          _isLoading = false;
+        });
+      }
+
+      // Sinkronisasi status Bluetooth hardware secara paralel & non-blocking di background
+      _syncBluetoothHardwareAsync(active, settings);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _syncBluetoothHardwareAsync(
+    PrinterDeviceModel currentPrimary,
+    PrinterSettingsModel settings,
+  ) async {
+    try {
+      final diagFuture = _printService.checkBluetoothDiagnostic().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => _diagnostic ?? const BluetoothDiagnosticInfo(
+          isBluetoothOn: false,
+          hasPermission: false,
+          isPermissionPermanentlyDenied: false,
+          pairedDevicesCount: 0,
+          statusMessage: 'Pemeriksaan Bluetooth selesai.',
+        ),
+      );
+
+      final devicesFuture = _printService.getPairedPrinters().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => _discoveredDevices,
+      );
+
+      final isConnFuture = _printService.checkConnection().timeout(
+        const Duration(milliseconds: 800),
+        onTimeout: () => currentPrimary.isConnected,
+      );
+
+      final results = await Future.wait([diagFuture, devicesFuture, isConnFuture]);
+      final diag = results[0] as BluetoothDiagnosticInfo;
+      final devices = results[1] as List<PrinterDeviceModel>;
+      final isConn = results[2] as bool;
+
+      var active = currentPrimary;
+      if (devices.isNotEmpty) {
+        final matchIndex = devices.indexWhere((d) => d.address == active.address);
+        if (matchIndex != -1) {
+          active = devices[matchIndex].copyWith(isConnected: isConn);
+        } else if (active.address.isEmpty) {
+          active = devices.first;
           await _storage.savePrimaryPrinter(active);
         }
+      }
+
+      if (active.address.isNotEmpty && active.isConnected != isConn) {
+        active = active.copyWith(isConnected: isConn);
+        await _storage.savePrimaryPrinter(active);
+      }
+
+      // Jika autoConnect aktif dan belum terhubung, koneksikan di background
+      if (!isConn && settings.autoConnect && active.address.isNotEmpty) {
+        _printService.connectPrinterDetailed(active.address).then((connRes) {
+          if (mounted && connRes.isSuccess) {
+            setState(() {
+              _activeDevice = _activeDevice.copyWith(isConnected: true);
+            });
+          }
+        }).catchError((_) {});
       }
 
       if (!mounted) return;
       setState(() {
         _activeDevice = active;
         _primaryAddress = active.address;
-        _settings = settings;
         _discoveredDevices = List.from(devices);
         _diagnostic = diag;
       });
-    } catch (_) {
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
+    } catch (_) {}
   }
 
   Future<void> _setAsPrimary(PrinterDeviceModel device) async {
@@ -610,31 +655,16 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: Text('Pengaturan & Uji Printer',
-          style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontWeight: FontWeight.bold,
-            fontSize: 17,
-          ),
-        ),
-        backgroundColor: AppTheme.surface,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: IconThemeData(color: AppTheme.textPrimary),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(color: AppTheme.cardBorder, height: 1),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context, _activeDevice),
-        ),
+      appBar: AppHeader(
+        title: 'Pengaturan & Uji Printer',
+        showBackButton: true,
+        onBackPressed: () => Navigator.pop(context, _activeDevice),
         actions: [
           IconButton(
             tooltip: 'Pindai Bluetooth',
             icon: _isScanning
-                ? SizedBox(width: 16,
+                ? SizedBox(
+                    width: 16,
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent),
                   )

@@ -34,8 +34,9 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
   @override
   void initState() {
     super.initState();
+    final isAffiliateUser = AuthService().isAffiliate || AuthService().isAffiliateAdmin;
     _selectedAffiliateId = widget.initialAffiliateId ??
-        (AuthService().isAffiliateAdmin ? AuthService().affiliateId : null);
+        (isAffiliateUser ? AuthService().affiliateId : null);
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) setState(() {});
@@ -52,22 +53,25 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
+      final isAffiliateUser = AuthService().isAffiliate || AuthService().isAffiliateAdmin;
       final transfers = await widget.repository.getIphoneTransfers(
         affiliateId: _selectedAffiliateId,
+        type: isAffiliateUser ? 'inbound' : null,
         forceRefresh: true,
       );
-      final affiliates = await widget.repository.getAffiliates();
-
       if (mounted) {
-        setState(() {
-          _allTransfers = transfers;
-          _affiliateList = affiliates;
-          _isLoading = false;
-        });
+        setState(() => _allTransfers = transfers);
       }
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    } catch (_) {}
+
+    try {
+      final affiliates = await widget.repository.getAffiliates();
+      if (mounted) {
+        setState(() => _affiliateList = affiliates);
+      }
+    } catch (_) {}
+
+    if (mounted) setState(() => _isLoading = false);
   }
 
   List<IphoneTransferModel> _getFilteredTransfers(int tabIndex) {
@@ -197,7 +201,7 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: Text(
-          AuthService().isAffiliateAdmin ? 'Transfer iPhone Masuk' : 'Mutasi & Transfer Unit',
+          (AuthService().isAffiliate || AuthService().isAffiliateAdmin) ? 'Transfer iPhone Masuk' : 'Mutasi & Transfer Unit',
           style: TextStyle(
             color: AppTheme.textPrimary,
             fontWeight: FontWeight.bold,
@@ -228,7 +232,7 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(AuthService().isAffiliateAdmin ? 'Dalam Pengiriman' : 'Terkirim'),
+                  Text((AuthService().isAffiliate || AuthService().isAffiliateAdmin) ? 'Dalam Pengiriman' : 'Terkirim'),
                   if (inTransitCount > 0) ...[
                     const SizedBox(width: 5),
                     Container(
@@ -247,14 +251,14 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
               ),
             ),
             Tab(
-              text: AuthService().isAffiliateAdmin
+              text: (AuthService().isAffiliate || AuthService().isAffiliateAdmin)
                   ? 'Diterima (${_allTransfers.where((t) => t.isReceived).length})'
                   : 'Selesai (${_allTransfers.where((t) => t.isReceived).length})',
             ),
           ],
         ),
       ),
-      floatingActionButton: (AuthService().isSuperAdmin || (AuthService().isAdmin && !AuthService().isAffiliateAdmin))
+      floatingActionButton: (AuthService().isSuperAdmin || (AuthService().isAdmin && !(AuthService().isAffiliate || AuthService().isAffiliateAdmin)))
           ? FloatingActionButton.extended(
               onPressed: _showCreateTransferModal,
               backgroundColor: AppTheme.accent,
@@ -278,6 +282,7 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
 
   Widget _buildTransferList(List<IphoneTransferModel> list) {
     if (list.isEmpty) {
+      final isAffiliate = AuthService().isAffiliate || AuthService().isAffiliateAdmin;
       return RefreshIndicator(
         onRefresh: _loadData,
         child: ListView(
@@ -287,13 +292,15 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
             Icon(Icons.swap_horiz_rounded, size: 64, color: AppTheme.textMuted),
             const SizedBox(height: 16),
             Text(
-              'Tidak Ada Riwayat Transfer',
+              isAffiliate ? 'Belum ada transfer iPhone masuk.' : 'Tidak Ada Riwayat Transfer',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 6),
             Text(
-              'Gunakan tombol "Kirim Unit iPhone" di bawah untuk memutasi unit antar cabang.',
+              isAffiliate
+                  ? 'Unit iPhone yang dikirim ke cabang Anda akan muncul di sini.'
+                  : 'Gunakan tombol "Kirim Unit iPhone" di bawah untuk memutasi unit antar cabang.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
             ),
@@ -531,22 +538,26 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Mutasi & Transfer Unit iPhone',
-                    style: TextStyle(
+                    (AuthService().isAffiliate || AuthService().isAffiliateAdmin)
+                        ? 'Transfer iPhone Masuk'
+                        : 'Mutasi & Transfer Unit iPhone',
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF0F172A),
                     ),
                   ),
-                  SizedBox(height: 3),
+                  const SizedBox(height: 3),
                   Text(
-                    'Pencatatan pengiriman, pelacakan transit, dan serah-terima unit iPhone antar outlet.',
-                    style: TextStyle(
+                    (AuthService().isAffiliate || AuthService().isAffiliateAdmin)
+                        ? 'Daftar unit iPhone yang dikirim ke cabang Anda.'
+                        : 'Pencatatan pengiriman, pelacakan transit, dan serah-terima unit iPhone antar outlet.',
+                    style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFF64748B),
                     ),
@@ -562,7 +573,7 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
                   icon: const Icon(Icons.refresh_rounded, size: 20, color: Color(0xFF475569)),
                   tooltip: 'Segarkan Data',
                 ),
-                if (AuthService().isSuperAdmin || (AuthService().isAdmin && !AuthService().isAffiliateAdmin)) ...[
+                if (AuthService().isSuperAdmin || (AuthService().isAdmin && !(AuthService().isAffiliate || AuthService().isAffiliateAdmin))) ...[
                   const SizedBox(width: 6),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
@@ -672,30 +683,37 @@ class _IphoneTransferListScreenState extends State<IphoneTransferListScreen>
             child: Center(child: CircularProgressIndicator()),
           )
         else if (currentList.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(36),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.swap_horiz_rounded, size: 54, color: AppTheme.textMuted),
-                const SizedBox(height: 14),
-                const Text(
-                  'Tidak Ada Riwayat Transfer',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+          Builder(
+            builder: (context) {
+              final isAffiliate = AuthService().isAffiliate || AuthService().isAffiliateAdmin;
+              return Container(
+                padding: const EdgeInsets.all(36),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'Gunakan tombol "Kirim Unit iPhone" di atas untuk memutasi unit antar cabang.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.swap_horiz_rounded, size: 54, color: AppTheme.textMuted),
+                    const SizedBox(height: 14),
+                    Text(
+                      isAffiliate ? 'Belum ada transfer iPhone masuk.' : 'Tidak Ada Riwayat Transfer',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isAffiliate
+                          ? 'Unit iPhone yang dikirim ke cabang Anda akan muncul di sini.'
+                          : 'Gunakan tombol "Kirim Unit iPhone" di atas untuk memutasi unit antar cabang.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           )
         else
           ListView.separated(
@@ -799,12 +817,19 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
   List<IphoneModel> _availableUnits = [];
   IphoneModel? _selectedUnit;
   int? _selectedToAffiliateId;
+  List<AffiliateModel> _affiliates = [];
   final TextEditingController _notesController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _selectedToAffiliateId = widget.defaultAffiliateId;
+    _affiliates = List.of(widget.affiliates);
+    if (_affiliates.isEmpty) {
+      widget.repository.getAffiliates().then((list) {
+        if (mounted) setState(() => _affiliates = list);
+      });
+    }
     _loadUnits();
   }
 
@@ -819,10 +844,14 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
       final units = await widget.repository.getAllInventoryUnits();
       if (mounted) {
         setState(() {
-          // Hanya unit yang tidak sedang tersewa/disewa yang dapat dimutasi
+          // Hanya unit yang tidak sedang tersewa/disewa atau dalam perjalanan mutasi yang dapat dimutasi
           _availableUnits = units.where((u) {
             final s = u.status.toLowerCase();
-            return s != 'rented' && s != 'disewa' && s != 'booked';
+            return s != 'rented' &&
+                s != 'disewa' &&
+                s != 'booked' &&
+                s != 'transferred' &&
+                s != 'in_transit';
           }).toList();
           _isLoadingUnits = false;
         });
@@ -832,17 +861,58 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
     }
   }
 
+  Future<void> _openIphonePicker() async {
+    if (_availableUnits.isEmpty) return;
+
+    final chosen = await showModalBottomSheet<IphoneModel>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _IphonePickerModal(
+        availableUnits: _availableUnits,
+        selectedUnit: _selectedUnit,
+      ),
+    );
+
+    if (chosen != null && mounted) {
+      setState(() {
+        _selectedUnit = chosen;
+        // Jika affiliate tujuan sama dengan asal unit, reset pilihan tujuan
+        if (_selectedToAffiliateId != null && chosen.affiliateId == _selectedToAffiliateId) {
+          _selectedToAffiliateId = null;
+        }
+      });
+    }
+  }
+
   Future<void> _submitTransfer() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedUnit == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pilih unit iPhone yang akan dikirim.'), backgroundColor: AppTheme.error),
+        const SnackBar(
+          content: Text('Pilih unit iPhone yang akan dikirim.'),
+          backgroundColor: AppTheme.error,
+        ),
       );
       return;
     }
     if (_selectedToAffiliateId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pilih cabang tujuan pengiriman.'), backgroundColor: AppTheme.error),
+        const SnackBar(
+          content: Text('Pilih cabang tujuan pengiriman.'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedUnit!.affiliateId != null &&
+        _selectedUnit!.affiliateId == _selectedToAffiliateId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cabang tujuan tidak boleh sama dengan cabang asal unit.'),
+          backgroundColor: AppTheme.error,
+        ),
       );
       return;
     }
@@ -852,6 +922,7 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
       await widget.repository.createIphoneTransfer(
         iphoneId: _selectedUnit!.id,
         toAffiliateId: _selectedToAffiliateId!,
+        fromAffiliateId: _selectedUnit!.affiliateId,
         notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
       );
 
@@ -867,7 +938,10 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: AppTheme.error),
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: AppTheme.error,
+          ),
         );
       }
     } finally {
@@ -877,6 +951,21 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
 
   @override
   Widget build(BuildContext context) {
+    // Saring pilihan cabang: jangan tampilkan cabang yang saat ini memegang unit
+    final eligibleAffiliates = _affiliates.where((a) {
+      if (_selectedUnit?.affiliateId != null) {
+        return a.id != _selectedUnit!.affiliateId;
+      }
+      return true;
+    }).toList();
+
+    AffiliateModel? targetAffiliate;
+    if (_selectedToAffiliateId != null) {
+      targetAffiliate = _affiliates
+          .where((a) => a.id == _selectedToAffiliateId)
+          .firstOrNull;
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surface,
@@ -901,28 +990,53 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
                   ),
                 ),
               ),
-              Row(children: [
-                  Icon(Icons.swap_horiz_rounded, color: AppTheme.accent, size: 22),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Kirim & Mutasi iPhone',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.swap_horiz_rounded, color: AppTheme.accent, size: 22),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Kirim & Mutasi iPhone',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Kirim unit iPhone ke cabang mitra affiliate lain.',
+                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Kirim unit iPhone ke cabang mitra affiliate lain.',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
 
-              // Pilih Unit iPhone
-              const Text('Unit iPhone *', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+              // Bagian Pemilihan Unit iPhone yang Scalable
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Unit iPhone *', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                  if (!_isLoadingUnits && _availableUnits.isNotEmpty)
+                    Text(
+                      '${_availableUnits.length} unit tersedia',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontWeight: FontWeight.w500),
+                    ),
+                ],
+              ),
               const SizedBox(height: 6),
               if (_isLoadingUnits)
                 const Padding(
-                  padding: EdgeInsets.all(12),
+                  padding: EdgeInsets.all(16),
                   child: Center(child: CircularProgressIndicator()),
                 )
               else if (_availableUnits.isEmpty)
@@ -930,45 +1044,170 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.amber.shade50,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.amber.shade300),
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-                      SizedBox(width: 8),
+                      Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 20),
+                      SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Tidak ada unit iPhone yang siap dikirim (semua unit sedang tersewa atau dalam mutasi).',
+                          'Tidak ada unit iPhone yang siap dikirim saat ini (semua unit sedang tersewa atau dalam mutasi).',
                           style: TextStyle(fontSize: 12, color: Colors.brown),
                         ),
                       ),
                     ],
                   ),
                 )
-              else
-                DropdownButtonFormField<IphoneModel>(
-                  initialValue: _selectedUnit,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: 'Pilih unit iPhone',
-                    prefixIcon: Icon(Icons.phone_iphone_rounded),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              else if (_selectedUnit == null)
+                InkWell(
+                  onTap: _openIphonePicker,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.shade300, width: 1.2),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(Icons.phone_iphone_rounded, color: AppTheme.accent, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Pilih Unit iPhone...',
+                                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Cari berdasarkan tipe, nomor seri, atau warna',
+                                style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.search_rounded, size: 14, color: AppTheme.accent),
+                              const SizedBox(width: 4),
+                              Text('Cari', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppTheme.accent)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  items: _availableUnits.map((u) {
-                    return DropdownMenuItem<IphoneModel>(
-                      value: u,
-                      child: Text(
-                        '${u.name} (${u.assetCode}) - ${u.statusLabel}',
-                        style: const TextStyle(fontSize: 13),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                )
+              else
+                // Card Unit Terpilih
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4), width: 1.2),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.phone_iphone_rounded, color: AppTheme.accent, size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _selectedUnit!.name,
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade200,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        _selectedUnit!.assetCode,
+                                        style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '${_selectedUnit!.storage} • ${_selectedUnit!.color}',
+                                      style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _openIphonePicker,
+                            icon: const Icon(Icons.sync_rounded, size: 14),
+                            label: const Text('Ganti', style: TextStyle(fontSize: 11.5)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.accent,
+                              side: BorderSide(color: AppTheme.accent.withValues(alpha: 0.5)),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ],
                       ),
-                    );
-                  }).toList(),
-                  onChanged: (val) => setState(() => _selectedUnit = val),
-                  validator: (val) => val == null ? 'Pilih unit iPhone' : null,
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.place_outlined, size: 13, color: AppTheme.textSecondary),
+                            const SizedBox(width: 4),
+                            Text('Asal Unit: ', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                            Text(
+                              _selectedUnit!.branchName ?? 'Pusat (SkyRent)',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               const SizedBox(height: 14),
 
@@ -984,7 +1223,7 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
                   prefixIcon: Icon(Icons.storefront_rounded),
                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 ),
-                items: widget.affiliates.map((a) {
+                items: eligibleAffiliates.map((a) {
                   return DropdownMenuItem<int>(
                     value: a.id,
                     child: Text(
@@ -998,6 +1237,77 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
                 onChanged: (val) => setState(() => _selectedToAffiliateId = val),
                 validator: (val) => val == null ? 'Pilih cabang tujuan' : null,
               ),
+
+              // Ringkasan Alur Mutasi (Preview Card)
+              if (_selectedUnit != null && targetAffiliate != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded, size: 14, color: Colors.blue.shade800),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Alur Mutasi Pengiriman',
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('ASAL', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.blue.shade700)),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _selectedUnit!.branchName ?? 'Pusat (SkyRent)',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade100,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF1E40AF)),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('TUJUAN', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.blue.shade700)),
+                                const SizedBox(height: 2),
+                                Text(
+                                  targetAffiliate.name,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.end,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 14),
 
               // Catatan / Keterangan Mutasi
@@ -1013,7 +1323,7 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
               ),
               const SizedBox(height: 20),
 
-              // Tombol Submit
+              // Tombol Submit dengan pencegahan double-submit
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -1023,12 +1333,18 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
-                  onPressed: (_isSubmitting || _availableUnits.isEmpty) ? null : _submitTransfer,
+                  onPressed: (_isSubmitting || _isLoadingUnits || _availableUnits.isEmpty)
+                      ? null
+                      : _submitTransfer,
                   icon: _isSubmitting
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
                       : const Icon(Icons.send_rounded),
                   label: Text(
-                    _isSubmitting ? 'Mengirim...' : 'Kirim Sekarang',
+                    _isSubmitting ? 'Mengirim iPhone...' : 'Kirim Sekarang',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ),
@@ -1040,3 +1356,363 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
     );
   }
 }
+
+/// Modal Search & Selector Unit iPhone untuk kemudahan memilih dari puluhan/ratusan unit
+class _IphonePickerModal extends StatefulWidget {
+  final List<IphoneModel> availableUnits;
+  final IphoneModel? selectedUnit;
+
+  const _IphonePickerModal({
+    required this.availableUnits,
+    this.selectedUnit,
+  });
+
+  @override
+  State<_IphonePickerModal> createState() => _IphonePickerModalState();
+}
+
+class _IphonePickerModalState extends State<_IphonePickerModal> {
+  final TextEditingController _searchController = TextEditingController();
+  List<IphoneModel> _filteredUnits = [];
+  String _selectedCategory = 'Semua';
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredUnits = widget.availableUnits;
+    _searchController.addListener(_applyFilter);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<String> get _categories {
+    final cats = <String>{'Semua'};
+    for (final u in widget.availableUnits) {
+      final nameLower = u.name.toLowerCase();
+      if (nameLower.contains('iphone 16')) {
+        cats.add('iPhone 16');
+      } else if (nameLower.contains('iphone 15')) {
+        cats.add('iPhone 15');
+      } else if (nameLower.contains('iphone 14')) {
+        cats.add('iPhone 14');
+      } else if (nameLower.contains('iphone 13')) {
+        cats.add('iPhone 13');
+      } else if (nameLower.contains('iphone 12')) {
+        cats.add('iPhone 12');
+      } else if (nameLower.contains('iphone 11')) {
+        cats.add('iPhone 11');
+      } else if (nameLower.contains('xr')) {
+        cats.add('iPhone XR');
+      }
+    }
+    return cats.toList();
+  }
+
+  void _applyFilter() {
+    final query = _searchController.text.trim().toLowerCase();
+    setState(() {
+      _filteredUnits = widget.availableUnits.where((u) {
+        final matchesQuery = query.isEmpty ||
+            u.name.toLowerCase().contains(query) ||
+            u.assetCode.toLowerCase().contains(query) ||
+            u.serialNumber.toLowerCase().contains(query) ||
+            u.color.toLowerCase().contains(query) ||
+            u.storage.toLowerCase().contains(query) ||
+            (u.branchName ?? '').toLowerCase().contains(query);
+
+        if (!matchesQuery) return false;
+
+        if (_selectedCategory == 'Semua') return true;
+        return u.name.toLowerCase().contains(_selectedCategory.toLowerCase());
+      }).toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final categories = _categories;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Icon(Icons.phone_iphone_rounded, color: AppTheme.accent, size: 22),
+                const SizedBox(width: 8),
+                const Text(
+                  'Pilih Unit iPhone',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${widget.availableUnits.length} Unit',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.accent),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                  tooltip: 'Tutup',
+                ),
+              ],
+            ),
+          ),
+
+          // Kolom Pencarian
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Cari tipe, nomor seri/aset, warna...',
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, size: 18),
+                        onPressed: () => _searchController.clear(),
+                      )
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                filled: true,
+                fillColor: AppTheme.surface,
+              ),
+            ),
+          ),
+
+          // Kategori Filter Cepat (Jika ada lebih dari 1 kategori selain Semua)
+          if (categories.length > 2)
+            SizedBox(
+              height: 40,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                itemCount: categories.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final cat = categories[index];
+                  final isSelected = cat == _selectedCategory;
+                  return ChoiceChip(
+                    label: Text(
+                      cat,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: isSelected ? Colors.white : AppTheme.textPrimary,
+                      ),
+                    ),
+                    selected: isSelected,
+                    selectedColor: AppTheme.accent,
+                    backgroundColor: Colors.grey.shade100,
+                    showCheckmark: false,
+                    onSelected: (selected) {
+                      if (selected) {
+                        setState(() {
+                          _selectedCategory = cat;
+                          _applyFilter();
+                        });
+                      }
+                    },
+                  );
+                },
+              ),
+            ),
+
+          // Info Bar Hasil
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Row(
+              children: [
+                Text(
+                  'Menampilkan ${_filteredUnits.length} unit siap dimutasi',
+                  style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+
+          // Daftar Unit
+          Expanded(
+            child: _filteredUnits.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.search_off_rounded, size: 48, color: Colors.grey.shade400),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Unit iPhone tidak ditemukan',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Tidak ada unit yang cocok dengan kata kunci "${_searchController.text}".',
+                            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _selectedCategory = 'Semua';
+                                _filteredUnits = widget.availableUnits;
+                              });
+                            },
+                            child: const Text('Reset Pencarian'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    itemCount: _filteredUnits.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final unit = _filteredUnits[index];
+                      final isSelected = unit.id == widget.selectedUnit?.id;
+
+                      return InkWell(
+                        onTap: () => Navigator.pop(context, unit),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppTheme.accent.withValues(alpha: 0.08)
+                                : AppTheme.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppTheme.accent
+                                  : Colors.grey.shade200,
+                              width: isSelected ? 1.5 : 1.0,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.accent.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.phone_iphone_rounded,
+                                  color: AppTheme.accent,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      unit.name,
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected
+                                            ? AppTheme.accent
+                                            : AppTheme.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 4,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey.shade200,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            unit.assetCode,
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              fontFamily: 'monospace',
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          '${unit.storage} • ${unit.color}',
+                                          style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                                        ),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.place_outlined, size: 12, color: AppTheme.textSecondary),
+                                            const SizedBox(width: 2),
+                                            Text(
+                                              unit.branchName ?? 'Pusat (SkyRent)',
+                                              style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              if (isSelected)
+                                Icon(Icons.check_circle_rounded, color: AppTheme.accent, size: 22)
+                              else
+                                Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400, size: 20),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

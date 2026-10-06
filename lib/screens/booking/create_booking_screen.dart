@@ -4,8 +4,10 @@ import '../../data/booking_repository.dart';
 import '../../models/booking_model.dart';
 import '../../models/iphone_model.dart';
 import '../../routes/app_routes.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/app_header.dart';
 
 /// Formatter otomatis nomor WhatsApp (8123-4567-8901)
 class _PhoneHyphenFormatter extends TextInputFormatter {
@@ -112,11 +114,24 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   bool _isUnitAvailableForBooking(IphoneModel unit) {
     final s = unit.status.toLowerCase().trim();
     if (!['ready', 'tersedia'].contains(s)) return false;
-    return !widget.repository.isUnitCurrentlyRented(unit.assetCode);
+    return widget.repository.isUnitAvailableForPeriod(unit, _startDateTime, _endDateTime);
   }
 
   void _applyAvailableUnits(Iterable<IphoneModel> units) {
-    final allUnits = units.toList();
+    var allUnits = units.toList();
+
+    // Enforce affiliate scoping: If user belongs to an affiliate, only show iPhones belonging to that affiliate
+    // For super-admin, isAffiliateScoped is false so iPhones from every affiliate are shown
+    final isScoped = AuthService().isAffiliateScoped;
+    final userAffiliateId = AuthService().affiliateId;
+
+    if (isScoped && userAffiliateId != null) {
+      allUnits = allUnits.where((u) {
+        if (u.affiliateId == null) return false;
+        return u.affiliateId == userAffiliateId;
+      }).toList();
+    }
+
     final currentSelected = _selectedUnit;
     IphoneModel? matchedUnit;
 
@@ -140,8 +155,23 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
   Future<void> _fetchAvailableUnits() async {
     try {
+      final isScoped = AuthService().isAffiliateScoped;
+      final userAffiliateId = AuthService().affiliateId;
+      final effectiveAffId = isScoped ? userAffiliateId : null;
+
+      final startH = _startTime.hour.toString().padLeft(2, '0');
+      final startM = _startTime.minute.toString().padLeft(2, '0');
+      final endH = _endDateTime.hour.toString().padLeft(2, '0');
+      final endM = _endDateTime.minute.toString().padLeft(2, '0');
+
       final units = await widget.repository.getAllInventoryUnits(
         query: _searchQuery.isNotEmpty ? _searchQuery : null,
+        affiliateId: effectiveAffId,
+        startDate: _startDate,
+        endDate: _endDateTime,
+        startTime: '$startH:$startM',
+        endTime: '$endH:$endM',
+        duration: _durationHoursToSubmit,
       );
       if (mounted) _applyAvailableUnits(units);
     } catch (_) {
@@ -238,11 +268,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
   double get _depositTotal => 0.0;
   double get _grandTotal => _rentTotal;
-
-  String _getDayName(DateTime dt) {
-    const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
-    return days[dt.weekday - 1];
-  }
 
   String _formatPhoneNumber(String phone) {
     var clean = phone.replaceAll(RegExp(r'\D'), '');
@@ -347,6 +372,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       _showMaintenanceUnitWarningDialog(_selectedUnit!);
       return false;
     }
+    if (!_isUnitAvailableForBooking(_selectedUnit!)) {
+      _showScheduleConflictWarningDialog(_selectedUnit!);
+      return false;
+    }
     if (!_isCustomDurationMode && _selectedDurationOption == null) {
       _showSnackbar('Silakan pilih durasi sewa yang tersedia.', isError: true);
       return false;
@@ -446,6 +475,75 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   void _showRentedUnitWarningDialog(IphoneModel unit) => _showUnitWarningDialog(unit, isRented: true);
   void _showMaintenanceUnitWarningDialog(IphoneModel unit) => _showUnitWarningDialog(unit, isRented: false);
 
+  void _showScheduleConflictWarningDialog(IphoneModel unit) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.warning.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.calendar_month_rounded,
+                color: AppTheme.warning,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Jadwal Sudah Dibooking',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Unit ${unit.modelName} (${unit.color}, SN: ${unit.serialNumber}) telah dibooking oleh pelanggan lain untuk jadwal sewa yang Anda pilih.',
+              style: TextStyle(fontSize: 13, height: 1.4, color: AppTheme.textPrimary),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.cardBorder),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 18, color: AppTheme.secondary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Silakan pilih unit iPhone lain yang masih tersedia atau sesuaikan tanggal dan durasi sewa.',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Mengerti', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primary)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showSnackbar(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -513,12 +611,30 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       firstDate: DateTime(now.year, now.month, now.day),
       lastDate: DateTime(now.year + 1),
     );
-    if (picked != null) setState(() => _startDate = picked);
+    if (picked != null) {
+      setState(() {
+        _startDate = picked;
+        if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
+          _selectedUnit = null;
+          _selectedDurationOption = null;
+        }
+      });
+      _fetchAvailableUnits();
+    }
   }
 
   Future<void> _pickStartTime() async {
     final picked = await showTimePicker(context: context, initialTime: _startTime);
-    if (picked != null) setState(() => _startTime = picked);
+    if (picked != null) {
+      setState(() {
+        _startTime = picked;
+        if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
+          _selectedUnit = null;
+          _selectedDurationOption = null;
+        }
+      });
+      _fetchAvailableUnits();
+    }
   }
 
   Future<void> _submitBooking() async {
@@ -536,6 +652,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     }
     if (['maintenance', 'perawatan'].contains(unitStatus)) {
       _showMaintenanceUnitWarningDialog(_selectedUnit!);
+      return;
+    }
+    if (!_isUnitAvailableForBooking(_selectedUnit!)) {
+      _showScheduleConflictWarningDialog(_selectedUnit!);
       return;
     }
 
@@ -618,136 +738,43 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       resizeToAvoidBottomInset: false,
-        appBar: _buildTabletAppBar(context),
-        body: Column(
-          children: [
-            _buildTabletSubHeader(context),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 66,
-                      child: RepaintBoundary(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.only(bottom: 340),
-                          physics: const ClampingScrollPhysics(),
-                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                          child: Form(key: _formKey, child: _buildTabletLeftColumn(context)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 24),
-                    Expanded(
-                      flex: 34,
-                      child: RepaintBoundary(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.only(bottom: 24),
-                          physics: const ClampingScrollPhysics(),
-                          child: _buildTabletLivePreviewCard(context),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-  }
-
-  PreferredSizeWidget _buildTabletAppBar(BuildContext context) {
-    final now = DateTime.now();
-    final dateFormatted = '${_getDayName(now)}, ${Formatters.date(now)}';
-    final topPadding = MediaQuery.paddingOf(context).top;
-
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(68),
-      child: RepaintBoundary(
-        child: Container(
-          padding: EdgeInsets.only(top: topPadding + 8, bottom: 10, left: 24, right: 24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'SKYRental',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: -0.5),
-              ),
-              Row(
+      appBar: const AppHeader(isTablet: true, title: 'Buat Booking Baru'),
+      body: Column(
+        children: [
+          _buildTabletSubHeader(context),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
-                        const SizedBox(width: 8),
-                        Text(dateFormatted, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
-                      ],
+                  Expanded(
+                    flex: 66,
+                    child: RepaintBoundary(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 340),
+                        physics: const ClampingScrollPhysics(),
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                        child: Form(key: _formKey, child: _buildTabletLeftColumn(context)),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Row(
-                    children: [
-                      Stack(
-                        children: [
-                          const CircleAvatar(
-                            radius: 18,
-                            backgroundColor: Color(0xFFE2E8F0),
-                            child: Icon(Icons.person, size: 20, color: Color(0xFF475569)),
-                          ),
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF10B981),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 1.5),
-                              ),
-                            ),
-                          ),
-                        ],
+                  const SizedBox(width: 24),
+                  Expanded(
+                    flex: 34,
+                    child: RepaintBoundary(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        physics: const ClampingScrollPhysics(),
+                        child: _buildTabletLivePreviewCard(context),
                       ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
-                            children: [
-                              const Text('Budi Santoso', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(4)),
-                                child: const Text('KASIR', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white)),
-                              ),
-                            ],
-                          ),
-                          const Text('Shift Pagi • POS-01', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1252,17 +1279,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(
-        backgroundColor: AppTheme.surface,
-        elevation: 0,
-        leading: IconButton(icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary), onPressed: () => Navigator.pop(context)),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Buat Booking Baru', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-            Text('Outlet Gandaria • Petugas Kasir', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontWeight: FontWeight.normal)),
-          ],
-        ),
+      appBar: AppHeader(
+        title: 'Buat Booking Baru',
+        showBackButton: true,
         actions: [
           IconButton(
             icon: Icon(Icons.refresh_rounded, size: 20, color: AppTheme.textSecondary),
@@ -1270,7 +1289,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
             onPressed: _resetForm,
           ),
           Container(
-            margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(color: AppTheme.surfaceContainerLow, borderRadius: BorderRadius.circular(16)),
             child: Text('Draft #BK-8821', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.secondary)),
@@ -1709,17 +1727,25 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
             final isRented = ['rented', 'disewa'].contains(unitStatus) ||
                 widget.repository.isUnitCurrentlyRented(unit.assetCode);
             final isMaintenance = ['maintenance', 'perawatan'].contains(unitStatus);
-            final isUnavailable = isRented || isMaintenance;
+            final isPeriodAvailable = _isUnitAvailableForBooking(unit);
+            final isScheduleConflict = !isRented && !isMaintenance && !isPeriodAvailable;
+            final isUnavailable = isRented || isMaintenance || isScheduleConflict;
 
             final badgeLabel = isSelected
                 ? 'Terpilih'
-                : (isRented ? 'Sedang Disewa' : (isMaintenance ? 'Perawatan' : 'Tersedia'));
+                : (isRented
+                    ? 'Sedang Disewa'
+                    : (isMaintenance
+                        ? 'Perawatan'
+                        : (isScheduleConflict ? 'Sudah Dibooking' : 'Tersedia')));
 
             final badgeColor = isSelected
                 ? AppTheme.secondary
                 : (isRented
                     ? const Color(0xFFB45309)
-                    : (isMaintenance ? const Color(0xFFDC2626) : const Color(0xFF047857)));
+                    : (isMaintenance
+                        ? const Color(0xFFDC2626)
+                        : (isScheduleConflict ? const Color(0xFFD97706) : const Color(0xFF047857))));
 
             final card = SizedBox(
               width: itemWidth,
@@ -1731,6 +1757,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                   }
                   if (isMaintenance) {
                     _showMaintenanceUnitWarningDialog(unit);
+                    return;
+                  }
+                  if (isScheduleConflict) {
+                    _showScheduleConflictWarningDialog(unit);
                     return;
                   }
                   setState(() {
@@ -1756,12 +1786,22 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: isRented ? const Color(0xFFFEF3C7) : AppTheme.surfaceContainer,
+                          color: isRented
+                              ? const Color(0xFFFEF3C7)
+                              : (isScheduleConflict ? const Color(0xFFFEF3C7) : AppTheme.surfaceContainer),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(
-                          isRented ? Icons.lock_clock_rounded : (isMaintenance ? Icons.build_rounded : Icons.phone_iphone_rounded),
-                          color: isRented ? const Color(0xFFB45309) : AppTheme.primary,
+                          isRented
+                              ? Icons.lock_clock_rounded
+                              : (isMaintenance
+                                  ? Icons.build_rounded
+                                  : (isScheduleConflict ? Icons.calendar_month_rounded : Icons.phone_iphone_rounded)),
+                          color: isRented
+                              ? const Color(0xFFB45309)
+                              : (isMaintenance
+                                  ? const Color(0xFFDC2626)
+                                  : (isScheduleConflict ? const Color(0xFFD97706) : AppTheme.primary)),
                           size: 22,
                         ),
                       ),
@@ -1783,14 +1823,18 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                                         ? AppTheme.secondary.withValues(alpha: 0.12)
                                         : (isRented
                                             ? const Color(0xFFFEF3C7)
-                                            : (isMaintenance ? const Color(0xFFFEE2E2) : const Color(0xFFDCFCE7))),
+                                            : (isMaintenance
+                                                ? const Color(0xFFFEE2E2)
+                                                : (isScheduleConflict ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7)))),
                                     borderRadius: BorderRadius.circular(4),
                                     border: Border.all(
                                       color: isSelected
                                           ? AppTheme.secondary.withValues(alpha: 0.3)
                                           : (isRented
                                               ? const Color(0xFFFDE68A)
-                                              : (isMaintenance ? const Color(0xFFFECACA) : const Color(0xFF86EFAC))),
+                                              : (isMaintenance
+                                                  ? const Color(0xFFFECACA)
+                                                  : (isScheduleConflict ? const Color(0xFFFDE68A) : const Color(0xFF86EFAC)))),
                                       width: 0.8,
                                     ),
                                   ),
@@ -1806,7 +1850,19 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                               ],
                             ),
                             const SizedBox(height: 2),
-                            Text('${unit.color} • Bat. ${unit.batteryHealth}% • SN: ${unit.serialNumber}', style: TextStyle(fontSize: 10, color: AppTheme.textSecondary), overflow: TextOverflow.ellipsis),
+                            Builder(
+                              builder: (context) {
+                                final branchTag = unit.branchName?.trim().isNotEmpty == true
+                                    ? unit.branchName!.trim()
+                                    : (unit.affiliateName?.trim().isNotEmpty == true ? unit.affiliateName!.trim() : '');
+                                final tagPrefix = branchTag.isNotEmpty ? '$branchTag • ' : '';
+                                return Text(
+                                  '$tagPrefix${unit.color} • Bat. ${unit.batteryHealth}% • SN: ${unit.serialNumber}',
+                                  style: TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                                  overflow: TextOverflow.ellipsis,
+                                );
+                              },
+                            ),
                             const SizedBox(height: 2),
                             Text('${Formatters.formatCurrency(unit.dailyRate)} /hari', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.secondary)),
                           ],
@@ -1855,10 +1911,16 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                   final isSelected = !_isCustomDurationMode && _selectedDurationOption?.hours == item.hours;
 
                   return InkWell(
-                    onTap: () => setState(() {
-                      _isCustomDurationMode = false;
-                      _selectedDurationOption = item;
-                    }),
+                    onTap: () {
+                      setState(() {
+                        _isCustomDurationMode = false;
+                        _selectedDurationOption = item;
+                        if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
+                          _selectedUnit = null;
+                        }
+                      });
+                      _fetchAvailableUnits();
+                    },
                     borderRadius: BorderRadius.circular(10),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1883,7 +1945,15 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         const SizedBox(height: 10),
         // Durasi Custom Toggle
         InkWell(
-          onTap: () => setState(() => _isCustomDurationMode = !_isCustomDurationMode),
+          onTap: () {
+            setState(() {
+              _isCustomDurationMode = !_isCustomDurationMode;
+              if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
+                _selectedUnit = null;
+              }
+            });
+            _fetchAvailableUnits();
+          },
           borderRadius: BorderRadius.circular(10),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1924,12 +1994,30 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                   children: [
                     IconButton(
                       icon: const Icon(Icons.remove_circle_outline),
-                      onPressed: _customJumlah > 1 ? () => setState(() => _customJumlah--) : null,
+                      onPressed: _customJumlah > 1
+                          ? () {
+                              setState(() {
+                                _customJumlah--;
+                                if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
+                                  _selectedUnit = null;
+                                }
+                              });
+                              _fetchAvailableUnits();
+                            }
+                          : null,
                     ),
                     Text('$_customJumlah', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     IconButton(
                       icon: const Icon(Icons.add_circle_outline),
-                      onPressed: () => setState(() => _customJumlah++),
+                      onPressed: () {
+                        setState(() {
+                          _customJumlah++;
+                          if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
+                            _selectedUnit = null;
+                          }
+                        });
+                        _fetchAvailableUnits();
+                      },
                     ),
                     const SizedBox(width: 12),
                     DropdownButton<String>(
@@ -1940,7 +2028,15 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                         DropdownMenuItem(value: 'Bulan', child: Text('Bulan')),
                       ],
                       onChanged: (v) {
-                        if (v != null) setState(() => _customUnit = v);
+                        if (v != null) {
+                          setState(() {
+                            _customUnit = v;
+                            if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
+                              _selectedUnit = null;
+                            }
+                          });
+                          _fetchAvailableUnits();
+                        }
                       },
                     ),
                   ],

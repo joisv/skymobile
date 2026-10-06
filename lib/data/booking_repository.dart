@@ -90,9 +90,10 @@ class BookingRepository {
   final List<BookingModel> _bookings = List.from(MockBookingData.items);
   final List<IphoneModel> _inventory = [];
   Map<String, int>? _unitSummaryCache;
+  bool _hasFetchedFromApi = false;
 
   /// Daftar unit iPhone yang saat ini tersimpan dalam cache inventaris
-  List<IphoneModel> get inventory => _inventory.isNotEmpty ? _inventory : MockBookingData.inventory;
+  List<IphoneModel> get inventory => (_hasFetchedFromApi || _inventory.isNotEmpty) ? _inventory : MockBookingData.inventory;
 
   Future<List<BookingModel>> getBookings({
     String? query,
@@ -109,6 +110,7 @@ class BookingRepository {
         paymentStatus: paymentFilter?.name,
       );
       if (apiList != null) {
+        _hasFetchedFromApi = true;
         final parsed = apiList.map((j) => BookingModel.fromJson(j)).toList();
         _bookings.clear();
         _bookings.addAll(parsed);
@@ -341,6 +343,8 @@ class BookingRepository {
     String? query,
     bool onlyAvailable = true,
   }) async {
+    final effectiveAffiliateId = AuthService().isAffiliateScoped ? AuthService().affiliateId : null;
+
     bool isBookable(IphoneModel unit) {
       final status = unit.status.toLowerCase().trim();
       if (!['tersedia', 'ready'].contains(status)) {
@@ -362,6 +366,11 @@ class BookingRepository {
     }
 
     bool matchesFilters(IphoneModel unit) {
+      if (effectiveAffiliateId != null) {
+        if (unit.affiliateId != null && unit.affiliateId != effectiveAffiliateId) {
+          return false;
+        }
+      }
       if (onlyAvailable && !isBookable(unit)) {
         return false;
       }
@@ -387,14 +396,16 @@ class BookingRepository {
     try {
       if (onlyAvailable) {
         // Endpoint /iphones/available — hanya unit tersedia
-        final apiUnits = await ApiService().getAvailableIphones(query: query);
+        final apiUnits = await ApiService().getAvailableIphones(query: query, affiliateId: effectiveAffiliateId);
         if (apiUnits != null) {
+          _hasFetchedFromApi = true;
           return apiUnits.where(matchesFilters).toList();
         }
       } else {
         // Endpoint /iphones — semua unit termasuk rented/maintenance
-        final result = await ApiService().getAllIphonesApi(query: query);
+        final result = await ApiService().getAllIphonesApi(query: query, affiliateId: effectiveAffiliateId);
         if (result != null && result['data'] is List) {
+          _hasFetchedFromApi = true;
           final allUnits = (result['data'] as List)
               .map((item) => IphoneModel.fromJson(item as Map<String, dynamic>))
               .toList();
@@ -403,6 +414,10 @@ class BookingRepository {
       }
     } catch (_) {
       // Fallback aman ke mock inventory jika server offline
+    }
+
+    if (_hasFetchedFromApi) {
+      return [];
     }
 
     await Future.delayed(const Duration(milliseconds: 50));
@@ -428,6 +443,12 @@ class BookingRepository {
     String paymentMethod = 'Tunai',
     String? notes,
   }) async {
+    if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
+      if (iphone.affiliateId != null && iphone.affiliateId != AuthService().affiliateId) {
+        throw Exception('Akses ditolak: Unit iPhone ini tidak terdaftar pada cabang/affiliate Anda.');
+      }
+    }
+
     final normalizedStatus = iphone.status.toLowerCase().trim();
     if (['rented', 'disewa'].contains(normalizedStatus)) {
       throw Exception(
@@ -444,6 +465,12 @@ class BookingRepository {
     if (isUnitCurrentlyRented(normalizedAssetCode)) {
       throw Exception(
         'Unit iPhone ${iphone.name} (${iphone.assetCode}) saat ini sedang disewa dalam transaksi sewa aktif dan belum dikembalikan.',
+      );
+    }
+
+    if (!isUnitAvailableForPeriod(iphone, startDate, endDate)) {
+      throw Exception(
+        'Unit iPhone ${iphone.name} (${iphone.serialNumber}) tidak tersedia untuk jadwal yang dipilih.',
       );
     }
 
@@ -494,7 +521,16 @@ class BookingRepository {
       if (msg.contains('sewa') ||
           msg.contains('rented') ||
           msg.contains('perawatan') ||
-          msg.contains('maintenance')) {
+          msg.contains('maintenance') ||
+          msg.contains('akses ditolak') ||
+          msg.contains('affiliate') ||
+          msg.contains('cabang') ||
+          msg.contains('tidak tersedia') ||
+          msg.contains('jadwal') ||
+          msg.contains('respons server')) {
+        rethrow;
+      }
+      if (!msg.contains('socketexception') && !msg.contains('timeoutexception') && !msg.contains('clientexception')) {
         rethrow;
       }
       // Fallback ke generator kode lokal jika error jaringan / offline
@@ -1260,6 +1296,77 @@ class BookingRepository {
     MockReceiptData.items.insert(0, receipt);
   }
 
+  /// Memeriksa apakah unit fisik iPhone tersedia untuk rentang waktu booking tertentu
+  bool isUnitAvailableForPeriod(IphoneModel unit, DateTime start, DateTime end, {int? excludeBookingId}) {
+    final rawStatus = unit.status.toLowerCase().trim();
+    if (['maintenance', 'perbaikan', 'perawatan', 'lost', 'hilang', 'retired', 'nonaktif', 'in_transit', 'transferred', 'mutasi'].contains(rawStatus)) {
+      return false;
+    }
+
+    DateTime startDt = start;
+    DateTime endDt = end;
+    if (endDt.isBefore(startDt) || endDt.isAtSameMomentAs(startDt)) {
+      endDt = startDt.add(const Duration(hours: 1));
+    }
+
+    final now = DateTime.now();
+    final source = _bookings.isNotEmpty ? _bookings : MockBookingData.items;
+
+    for (final b in source) {
+      if (excludeBookingId != null && b.id == excludeBookingId) {
+        continue;
+      }
+      if (b.iphone.id != unit.id && b.iphone.assetCode.toLowerCase().trim() != unit.assetCode.toLowerCase().trim()) {
+        continue;
+      }
+
+      final bStatus = b.status.name.toLowerCase().trim();
+      if (!['pending', 'confirmed', 'rented', 'disewa'].contains(bStatus)) {
+        continue;
+      }
+
+      // Check if pending has expired (> 30 mins)
+      if (bStatus == 'pending') {
+        final bCreated = b.startDate;
+        if (now.difference(bCreated).inMinutes > 30) {
+          continue;
+        }
+      }
+
+      final bStart = DateTime(
+        b.startDate.year,
+        b.startDate.month,
+        b.startDate.day,
+        int.tryParse(b.startTime?.split(':').firstOrNull ?? '0') ?? 0,
+        int.tryParse(b.startTime?.split(':').elementAtOrNull(1) ?? '0') ?? 0,
+      );
+
+      DateTime bEnd;
+      if (b.endTime != null) {
+        bEnd = DateTime(
+          b.endDate.year,
+          b.endDate.month,
+          b.endDate.day,
+          int.tryParse(b.endTime!.split(':').firstOrNull ?? '23') ?? 23,
+          int.tryParse(b.endTime!.split(':').elementAtOrNull(1) ?? '59') ?? 59,
+        );
+      } else {
+        bEnd = bStart.add(Duration(hours: b.durationDays > 0 ? b.durationDays : 24));
+      }
+
+      if (['rented', 'disewa'].contains(bStatus) && bEnd.isBefore(now)) {
+        bEnd = now;
+      }
+
+      // Check interval overlap: [bStart, bEnd] overlaps with [startDt, endDt]
+      if (bStart.isBefore(endDt) && bEnd.isAfter(startDt)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   /// Memeriksa apakah unit iPhone dengan assetCode tertentu saat ini sedang disewa aktif di antrean transaksi
   bool isUnitCurrentlyRented(String assetCode) {
     final normalized = assetCode.toLowerCase().trim();
@@ -1285,16 +1392,29 @@ class BookingRepository {
     String? branchFilter,
     String? sortBy,
     int? affiliateId,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? startTime,
+    String? endTime,
+    int? duration,
   }) async {
+    final effectiveAffiliateId = AuthService().isAffiliateScoped ? AuthService().affiliateId : affiliateId;
+
     try {
       final res = await ApiService().getAllIphonesApi(
         query: query,
         status: statusFilter,
         model: modelFilter,
         branch: branchFilter,
-        affiliateId: affiliateId,
+        affiliateId: effectiveAffiliateId,
+        startDate: startDate,
+        endDate: endDate,
+        startTime: startTime,
+        endTime: endTime,
+        duration: duration,
       );
       if (res != null && res['data'] is List) {
+        _hasFetchedFromApi = true;
         final raw = res['data'] as List;
         final list = raw.map((j) {
           var u = IphoneModel.fromJson(j as Map<String, dynamic>);
@@ -1313,24 +1433,27 @@ class BookingRepository {
           }
           return u;
         }).toList();
-        if (list.isNotEmpty) {
-          _inventory.clear();
-          _inventory.addAll(list);
-          if (res['summary'] is Map) {
-            final s = res['summary'] as Map<String, dynamic>;
-            _unitSummaryCache = {
-              'total': int.tryParse(s['total']?.toString() ?? '0') ?? list.length,
-              'tersedia': int.tryParse(s['tersedia']?.toString() ?? s['ready']?.toString() ?? '0') ?? 0,
-              'disewa': int.tryParse(s['disewa']?.toString() ?? s['rented']?.toString() ?? '0') ?? 0,
-              'terlambat': int.tryParse(s['terlambat']?.toString() ?? s['overdue']?.toString() ?? '0') ?? 0,
-              'maintenance': int.tryParse(s['maintenance']?.toString() ?? '0') ?? 0,
-              'dibooking': int.tryParse(s['dibooking']?.toString() ?? s['booked']?.toString() ?? '0') ?? 0,
-            };
-          }
-          return list;
+
+        _inventory.clear();
+        _inventory.addAll(list);
+        if (res['summary'] is Map) {
+          final s = res['summary'] as Map<String, dynamic>;
+          _unitSummaryCache = {
+            'total': int.tryParse(s['total']?.toString() ?? '0') ?? list.length,
+            'tersedia': int.tryParse(s['tersedia']?.toString() ?? s['ready']?.toString() ?? '0') ?? 0,
+            'disewa': int.tryParse(s['disewa']?.toString() ?? s['rented']?.toString() ?? '0') ?? 0,
+            'terlambat': int.tryParse(s['terlambat']?.toString() ?? s['overdue']?.toString() ?? '0') ?? 0,
+            'maintenance': int.tryParse(s['maintenance']?.toString() ?? '0') ?? 0,
+            'dibooking': int.tryParse(s['dibooking']?.toString() ?? s['booked']?.toString() ?? '0') ?? 0,
+          };
         }
+        return list;
       }
     } catch (_) {}
+
+    if (_hasFetchedFromApi && _inventory.isEmpty) {
+      return [];
+    }
 
     final rawSource = _inventory.isNotEmpty ? _inventory : MockBookingData.inventory;
     final source = rawSource.map((unit) {
@@ -1382,8 +1505,9 @@ class BookingRepository {
         }
       }
 
-      if (affiliateId != null) {
-        if (unit.affiliateId != null && unit.affiliateId != affiliateId) {
+      final effectiveAff = effectiveAffiliateId ?? affiliateId;
+      if (effectiveAff != null) {
+        if (unit.affiliateId != null && unit.affiliateId != effectiveAff) {
           return false;
         }
       }
@@ -1513,6 +1637,7 @@ class BookingRepository {
     try {
       final res = await ApiService().getAllIphonesApi();
       if (res != null && res['summary'] is Map) {
+        _hasFetchedFromApi = true;
         final s = res['summary'] as Map<String, dynamic>;
         _unitSummaryCache = {
           'total': int.tryParse(s['total']?.toString() ?? '0') ?? 0,
@@ -1525,16 +1650,25 @@ class BookingRepository {
         if (res['data'] is List) {
           final raw = res['data'] as List;
           final list = raw.map((j) => IphoneModel.fromJson(j as Map<String, dynamic>)).toList();
-          if (list.isNotEmpty) {
-            _inventory.clear();
-            _inventory.addAll(list);
-          }
+          _inventory.clear();
+          _inventory.addAll(list);
         }
         return _unitSummaryCache!;
       }
     } catch (_) {}
 
     if (_unitSummaryCache != null) return _unitSummaryCache!;
+
+    if (_hasFetchedFromApi) {
+      return {
+        'total': 0,
+        'tersedia': 0,
+        'disewa': 0,
+        'terlambat': 0,
+        'maintenance': 0,
+        'dibooking': 0,
+      };
+    }
 
     final units = _inventory.isNotEmpty ? _inventory : MockBookingData.inventory;
     int total = units.length;
@@ -1728,19 +1862,21 @@ class BookingRepository {
               .toList();
         }
 
-        // KETIKA DATA DARI DATABASE BERHASIL DIAMBIL:
-        // Bersihkan data dummy mock dan sinkronkan dengan database riil
-        if (apiAllBookings.isNotEmpty) {
+        // KETIKA DATA DARI DATABASE BERHASIL DIAMBIL (termasuk saat antrean di database kosong):
+        if (rawAll is List) {
+          _hasFetchedFromApi = true;
           _bookings.clear();
           _bookings.addAll(apiAllBookings);
         }
 
-        // Antrean transaksi murni dari database (tanpa menyisipkan mock dummy)
-        final allQueue = apiAllBookings.isNotEmpty ? apiAllBookings : List<BookingModel>.from(_bookings);
-        final finalRecent = apiRecentBookings.isNotEmpty
+        // Antrean transaksi murni dari database:
+        final allQueue = (rawAll is List) ? apiAllBookings : List<BookingModel>.from(_bookings);
+        final finalRecent = (rawRecent is List)
             ? apiRecentBookings
-            : allQueue.take(5).toList();
-        final finalActions = apiActionItems;
+            : (allQueue.isNotEmpty ? allQueue.take(5).toList() : <BookingModel>[]);
+        final finalActions = (rawActions is List)
+            ? apiActionItems
+            : <BookingModel>[];
 
         final availableUnitsVal = metrics['availableUnits'] ?? metrics['available_units'] ?? metrics['iphonesAvailable'] ?? 0;
         final unreturnedUnitsVal = metrics['unreturnedUnits'] ?? metrics['unreturned_units'] ?? metrics['returnToday'] ?? metrics['todayReturns'] ?? 0;
@@ -2499,6 +2635,8 @@ class BookingRepository {
         _affiliates = list;
         return List.unmodifiable(_affiliates);
       }
+    } on ApiException catch (e) {
+      if (e.statusCode == 403) rethrow;
     } catch (_) {}
 
 
@@ -2532,6 +2670,8 @@ class BookingRepository {
         }
         return aff;
       }
+    } on ApiException catch (e) {
+      if (e.statusCode == 403) rethrow;
     } catch (_) {}
 
     final match = _affiliates.where((a) => a.id == id);
@@ -2705,20 +2845,32 @@ class BookingRepository {
     int? fromAffiliateId,
     String? notes,
   }) async {
+    // Cari unit di inventaris lokal jika fromAffiliateId tidak dispesifikasikan
+    final matchingUnit = _inventory.where((u) => u.id == iphoneId).firstOrNull;
+    final effectiveFromAffiliateId = fromAffiliateId ??
+        matchingUnit?.affiliateId ??
+        AuthService().affiliateId;
+
     try {
       final res = await _apiService.createIphoneTransferApi(
         iphoneId: iphoneId,
         toAffiliateId: toAffiliateId,
-        fromAffiliateId: fromAffiliateId,
+        fromAffiliateId: effectiveFromAffiliateId,
         notes: notes,
       );
       if (res != null && res['data'] != null) {
         final tr = IphoneTransferModel.fromJson(res['data'] as Map<String, dynamic>);
         _iphoneTransfers.insert(0, tr);
+
+        // Update status unit di inventaris lokal menjadi transferred / in_transit
+        final invIdx = _inventory.indexWhere((u) => u.id == iphoneId);
+        if (invIdx != -1) {
+          _inventory[invIdx] = _inventory[invIdx].copyWith(status: 'transferred');
+        }
         return tr;
       }
     } catch (e) {
-      if (e.toString().contains('Exception:')) rethrow;
+      if (e is ApiException || e.toString().contains('Exception:')) rethrow;
     }
 
     final targetAffiliate = _affiliates.firstWhere(
@@ -2733,15 +2885,15 @@ class BookingRepository {
     final tr = IphoneTransferModel(
       id: localId,
       iphoneId: iphoneId,
-      iphoneName: 'iPhone #$iphoneId',
-      iphoneSerial: 'SN-$iphoneId',
-      fromAffiliateId: fromAffiliateId,
+      iphoneName: matchingUnit?.name ?? 'iPhone #$iphoneId',
+      iphoneSerial: matchingUnit?.serialNumber ?? 'SN-$iphoneId',
+      fromAffiliateId: effectiveFromAffiliateId,
       fromAffiliateName: 'Pusat (SkyRent)',
       fromAffiliateCode: 'PST',
       toAffiliateId: toAffiliateId,
       toAffiliateName: targetAffiliate.name,
       toAffiliateCode: targetAffiliate.code,
-      senderName: 'Admin',
+      senderName: AuthService().currentUser?.name ?? 'Admin',
       status: 'in_transit',
       notes: notes,
       sentAt: DateTime.now(),
@@ -2749,6 +2901,10 @@ class BookingRepository {
     );
 
     _iphoneTransfers.insert(0, tr);
+    final invIdx = _inventory.indexWhere((u) => u.id == iphoneId);
+    if (invIdx != -1) {
+      _inventory[invIdx] = _inventory[invIdx].copyWith(status: 'transferred');
+    }
     return tr;
   }
 
@@ -2776,7 +2932,7 @@ class BookingRepository {
         return tr;
       }
     } catch (e) {
-      if (e.toString().contains('Exception:')) rethrow;
+      if (e is ApiException || e.toString().contains('Exception:')) rethrow;
     }
 
     final index = _iphoneTransfers.indexWhere((t) => t.id == transferId);
@@ -3102,6 +3258,8 @@ class BookingRepository {
         final users = list.map((item) => UserRoleModel.fromJson(item)).toList();
         return List.unmodifiable(users);
       }
+    } on ApiException catch (e) {
+      if (e.statusCode == 403) rethrow;
     } catch (_) {}
 
     // Fallback offline / test
@@ -3124,6 +3282,8 @@ class BookingRepository {
         final roles = list.map((item) => RoleItemModel.fromJson(item)).toList();
         return List.unmodifiable(roles);
       }
+    } on ApiException catch (e) {
+      if (e.statusCode == 403) rethrow;
     } catch (_) {}
 
     return List.unmodifiable(_mockRoles);
@@ -3137,6 +3297,8 @@ class BookingRepository {
         final perms = list.map((item) => PermissionItemModel.fromJson(item)).toList();
         return List.unmodifiable(perms);
       }
+    } on ApiException catch (e) {
+      if (e.statusCode == 403) rethrow;
     } catch (_) {}
 
     return List.unmodifiable(_mockPermissions);

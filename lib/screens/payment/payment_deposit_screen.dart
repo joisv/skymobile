@@ -11,6 +11,7 @@ import '../../services/printer_storage_service.dart';
 import '../../services/thermal_print_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/app_header.dart';
 
 enum PaymentTypeOption {
   pelunasan(
@@ -742,11 +743,6 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
     );
   }
 
-  String _getDayName(DateTime dt) {
-    const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
-    return days[dt.weekday - 1];
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -826,7 +822,7 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
       child: Scaffold(
         backgroundColor: const Color(0xFFF8FAFC),
         resizeToAvoidBottomInset: false,
-        appBar: _buildTabletAppBar(context),
+        appBar: const AppHeader(isTablet: true),
         body: Column(
           children: [
             _buildTabletSubHeader(context),
@@ -863,99 +859,6 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
             ),
             _buildTabletBottomNav(context),
           ],
-        ),
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildTabletAppBar(BuildContext context) {
-    final now = DateTime.now();
-    final dateFormatted = '${_getDayName(now)}, ${Formatters.date(now)}';
-    final topPadding = MediaQuery.paddingOf(context).top;
-    final currentUser = AuthService().currentUser;
-    final cashierName = currentUser?.name ?? 'Budi Santoso';
-    final cashierRole = (currentUser?.role ?? 'KASIR').toUpperCase();
-
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(68),
-      child: RepaintBoundary(
-        child: Container(
-          padding: EdgeInsets.only(top: topPadding + 8, bottom: 10, left: 24, right: 24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('SKYRental', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: -0.5)),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
-                        const SizedBox(width: 8),
-                        Text(dateFormatted, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Row(
-                    children: [
-                      Stack(
-                        children: [
-                          const CircleAvatar(
-                            radius: 18,
-                            backgroundColor: Color(0xFFE2E8F0),
-                            child: Icon(Icons.person, size: 20, color: Color(0xFF475569)),
-                          ),
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF10B981),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 1.5),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
-                            children: [
-                              Text(cashierName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(4)),
-                                child: Text(cashierRole, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white)),
-                              ),
-                            ],
-                          ),
-                          const Text('Shift Pagi • POS-01', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
         ),
       ),
     );

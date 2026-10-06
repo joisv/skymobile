@@ -80,6 +80,7 @@ class AppRoutes {
   static const String affiliateDetail = '/affiliates/detail';
   static const String affiliateForm = '/affiliates/form';
   static const String iphoneTransfer = '/affiliates/transfers';
+  static const String affiliateTransferIphone = '/affiliate/transfer-iphone';
   static const String affiliateRevenue = '/affiliates/revenue';
   static const String themeSettings = '/theme-settings';
 
@@ -92,11 +93,16 @@ class AppRoutes {
 
     // Route Protection Guard:
     // If not authenticated and attempting to access a protected route, redirect to login
-    if (settings.name != login && !auth.canAccessRoute(settings.name ?? '')) {
-      return MaterialPageRoute(
-        builder: (_) => LoginScreen(repository: repository),
-        settings: const RouteSettings(name: login),
-      );
+    if (settings.name != login) {
+      if (!auth.isAuthenticated) {
+        return MaterialPageRoute(
+          builder: (_) => LoginScreen(repository: repository),
+          settings: const RouteSettings(name: login),
+        );
+      }
+      if (!auth.canAccessRoute(settings.name ?? '')) {
+        return _errorRoute('Akses ditolak: Menu ini hanya dapat diakses oleh akun Super Admin.');
+      }
     }
 
     switch (settings.name) {
@@ -630,6 +636,7 @@ class AppRoutes {
         );
 
       case iphoneTransfer:
+      case affiliateTransferIphone:
         final initialAffiliateId = settings.arguments is int ? settings.arguments as int : null;
         return MaterialPageRoute(
           builder: (_) => IphoneTransferListScreen(

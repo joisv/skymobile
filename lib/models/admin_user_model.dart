@@ -9,6 +9,7 @@ class AdminUserModel {
   final String shiftName;
   final bool isActive;
   final int? affiliateId;
+  final List<String> roles;
 
   String get userIdentifier => uuid ?? id.toString();
 
@@ -23,6 +24,7 @@ class AdminUserModel {
     required this.shiftName,
     this.isActive = true,
     this.affiliateId,
+    this.roles = const [],
   });
 
   factory AdminUserModel.defaultAdmin() {
@@ -36,6 +38,7 @@ class AdminUserModel {
       shiftName: 'Shift Pagi (08:00 - 16:00)',
       isActive: true,
       affiliateId: null,
+      roles: ['staff'],
     );
   }
 
@@ -50,6 +53,7 @@ class AdminUserModel {
     String? shiftName,
     bool? isActive,
     int? affiliateId,
+    List<String>? roles,
   }) {
     return AdminUserModel(
       id: id ?? this.id,
@@ -62,6 +66,7 @@ class AdminUserModel {
       shiftName: shiftName ?? this.shiftName,
       isActive: isActive ?? this.isActive,
       affiliateId: affiliateId ?? this.affiliateId,
+      roles: roles ?? this.roles,
     );
   }
 
@@ -73,6 +78,7 @@ class AdminUserModel {
       'email': email,
       'phone': phone,
       'role': role,
+      'roles': roles,
       'outlet_name': outletName,
       'shift_name': shiftName,
       'is_active': isActive,
@@ -97,11 +103,24 @@ class AdminUserModel {
       parsedAffiliateId = int.tryParse(json['affiliate_id'].toString());
     }
 
+    final rolesList = <String>[];
+    if (json['roles'] is List) {
+      for (final r in json['roles'] as List) {
+        if (r is Map && r['name'] != null) {
+          rolesList.add(r['name'].toString());
+        } else if (r != null) {
+          rolesList.add(r.toString());
+        }
+      }
+    }
+
     String roleStr = 'Staff Operasional / Kasir';
-    if (json['role'] != null) {
-      roleStr = json['role'].toString();
-    } else if (json['roles'] is List && (json['roles'] as List).isNotEmpty) {
-      roleStr = (json['roles'] as List).first.toString();
+    if (json['role'] is String && (json['role'] as String).isNotEmpty) {
+      roleStr = json['role'] as String;
+    } else if (json['role'] is Map && (json['role'] as Map)['name'] != null) {
+      roleStr = (json['role'] as Map)['name'].toString();
+    } else if (rolesList.isNotEmpty) {
+      roleStr = rolesList.first;
     }
 
     return AdminUserModel(
@@ -115,6 +134,7 @@ class AdminUserModel {
       shiftName: json['shift_name'] as String? ?? 'Shift Pagi (08:00 - 16:00)',
       isActive: json['is_active'] as bool? ?? true,
       affiliateId: parsedAffiliateId,
+      roles: rolesList,
     );
   }
 }

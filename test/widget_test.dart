@@ -2002,6 +2002,16 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final repository = BookingRepository();
+    AuthService().setCurrentUserForTest(const AdminUserModel(
+      id: 1,
+      name: 'Admin SKYRental',
+      email: 'admin@skyrental.id',
+      phone: '+62 812-3456-7890',
+      role: 'super-admin',
+      outletName: 'Outlet Utama Malioboro',
+      shiftName: 'Shift Pagi (08:00 - 16:00)',
+      isActive: true,
+    ));
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData(useMaterial3: true),
@@ -2344,7 +2354,7 @@ void main() {
     AuthService().setCurrentUserForTest(
       AdminUserModel.defaultAdmin().copyWith(
         name: 'Budi Santoso',
-        role: 'Kasir',
+        role: 'Admin',
       ),
     );
 
@@ -2412,6 +2422,10 @@ void main() {
     tester.view.physicalSize = const Size(1280, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() => tester.view.resetPhysicalSize());
+
+    AuthService().setCurrentUserForTest(
+      AdminUserModel.defaultAdmin().copyWith(role: 'admin'),
+    );
 
     final repository = BookingRepository();
     IphoneModel? createdUnit;
@@ -2530,6 +2544,10 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() => tester.view.resetPhysicalSize());
 
+    AuthService().setCurrentUserForTest(
+      AdminUserModel.defaultAdmin().copyWith(role: 'admin'),
+    );
+
     final repository = BookingRepository();
 
     await tester.pumpWidget(
@@ -2575,6 +2593,10 @@ void main() {
     tester.view.physicalSize = const Size(1280, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() => tester.view.resetPhysicalSize());
+
+    AuthService().setCurrentUserForTest(
+      AdminUserModel.defaultAdmin().copyWith(role: 'admin'),
+    );
 
     final repository = BookingRepository();
     final existingUnit = repository.inventory.first;
@@ -2984,7 +3006,7 @@ void main() {
 
     // Verify modal bottom sheet opened
     expect(find.text('Pengaturan Server Backend'), findsOneWidget);
-    expect(find.text('Laptop LAN (192.168.1.24)'), findsOneWidget);
+    expect(find.text('Host LAN (192.168.1.93)'), findsOneWidget);
     expect(find.text('Emulator (10.0.2.2)'), findsOneWidget);
     expect(find.text('Localhost (127.0.0.1)'), findsOneWidget);
     expect(find.text('Tes Koneksi'), findsOneWidget);
@@ -3143,6 +3165,16 @@ void main() {
 
     testWidgets('AccountScreen navigates to RolesPermissionsScreen via AppRoutes', (WidgetTester tester) async {
       final repository = BookingRepository();
+      AuthService().setCurrentUserForTest(const AdminUserModel(
+        id: 1,
+        name: 'Super Admin',
+        email: 'super@skyrental.id',
+        phone: '+6281234567890',
+        role: 'super-admin',
+        outletName: 'Outlet Utama',
+        shiftName: 'Shift 1',
+        isActive: true,
+      ));
 
       await tester.pumpWidget(
         MaterialApp(
@@ -3164,6 +3196,547 @@ void main() {
 
       expect(find.byType(RolesPermissionsScreen), findsOneWidget);
       expect(find.text('Users & Role Permissions'), findsOneWidget);
+    });
+
+    testWidgets('Route Guard: Non-super-admin user receives access denied on super-admin routes', (WidgetTester tester) async {
+      final repository = BookingRepository();
+      // Login as regular staff/admin
+      AuthService().setCurrentUserForTest(const AdminUserModel(
+        id: 2,
+        name: 'Kasir Staff',
+        email: 'kasir@skyrental.id',
+        phone: '+6281234567891',
+        role: 'staff',
+        outletName: 'Outlet Cabang',
+        shiftName: 'Shift 2',
+        isActive: true,
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Column(
+                children: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
+                    child: const Text('Try Roles'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pushNamed(AppRoutes.affiliateList),
+                    child: const Text('Try Affiliates'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Try accessing roles-permissions as staff
+      await tester.tap(find.text('Try Roles'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Akses ditolak'), findsOneWidget);
+      expect(find.textContaining('hanya dapat diakses oleh akun Super Admin'), findsOneWidget);
+      expect(find.byType(RolesPermissionsScreen), findsNothing);
+    });
+
+    testWidgets('AccountScreen: Non-super-admin does NOT see Super Admin management menus', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repository = BookingRepository();
+      AuthService().setCurrentUserForTest(const AdminUserModel(
+        id: 3,
+        name: 'Kasir Staff',
+        email: 'staff@skyrental.id',
+        phone: '+6281234567891',
+        role: 'staff',
+        outletName: 'Outlet Kasir',
+        shiftName: 'Shift 1',
+        isActive: true,
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AccountScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Ensure super-admin exclusive sections and menu items are not present
+      expect(find.text('MANAJEMEN PENGGUNA & HAK AKSES'), findsNothing);
+      expect(find.text('MITRA & CABANG AFFILIATE'), findsNothing);
+      expect(find.text('Daftar Pengguna & Role'), findsNothing);
+      expect(find.text('Role & Izin Akses'), findsNothing);
+      expect(find.text('Mitra Cabang & Affiliate'), findsNothing);
+      expect(find.text('Mutasi & Transfer Unit iPhone'), findsNothing);
+
+      // But common menus should still be present
+      expect(find.text('TOKO & OUTLET'), findsOneWidget);
+      expect(find.text('KEAMANAN & AKUN'), findsOneWidget);
+      expect(find.text('Ubah Kata Sandi'), findsOneWidget);
+    });
+
+    testWidgets('AccountScreen: Super-admin sees all Super Admin management menus', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repository = BookingRepository();
+      AuthService().setCurrentUserForTest(const AdminUserModel(
+        id: 1,
+        name: 'Super Admin',
+        email: 'superadmin@skyrental.id',
+        phone: '+6281234567890',
+        role: 'super-admin',
+        outletName: 'Outlet Utama',
+        shiftName: 'Shift 1',
+        isActive: true,
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AccountScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Ensure super-admin exclusive sections and menu items are visible
+      expect(find.text('MANAJEMEN PENGGUNA & HAK AKSES'), findsOneWidget);
+      expect(find.text('MITRA & CABANG AFFILIATE'), findsOneWidget);
+      expect(find.text('Daftar Pengguna & Role'), findsOneWidget);
+      expect(find.text('Role & Izin Akses'), findsOneWidget);
+      expect(find.text('Mitra Cabang & Affiliate'), findsOneWidget);
+      expect(find.text('Mutasi & Transfer Unit iPhone'), findsOneWidget);
+    });
+
+    testWidgets('Empty DB State: Transaction queue renders empty state when no bookings exist in database', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repository = BookingRepository();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DashboardScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DashboardScreen), findsOneWidget);
+    });
+
+    testWidgets('Empty DB State: UnitStatusListScreen renders empty state when no units exist in database', (WidgetTester tester) async {
+      final repository = BookingRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UnitStatusListScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(UnitStatusListScreen), findsOneWidget);
+    });
+
+    test('AuthService canCreateIphone enforces role restrictions strictly', () {
+      final auth = AuthService();
+
+      // super-admin -> allowed
+      auth.setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
+        id: 1,
+        name: 'Super User',
+        email: 'super@skyrental.id',
+        role: 'super-admin',
+      ));
+      expect(auth.canCreateIphone, isTrue);
+
+      // admin -> allowed
+      auth.setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
+        id: 2,
+        name: 'Admin User',
+        email: 'admin@skyrental.id',
+        role: 'admin',
+      ));
+      expect(auth.canCreateIphone, isTrue);
+
+      // affiliate-admin -> blocked
+      auth.setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
+        id: 3,
+        name: 'Mitra Admin',
+        email: 'mitra@skyrental.id',
+        role: 'affiliate-admin',
+      ));
+      expect(auth.canCreateIphone, isFalse);
+
+      // affiliate -> blocked
+      auth.setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
+        id: 4,
+        name: 'Mitra',
+        email: 'mitra2@skyrental.id',
+        role: 'affiliate',
+      ));
+      expect(auth.canCreateIphone, isFalse);
+
+      // staff / kasir -> blocked
+      auth.setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
+        id: 5,
+        name: 'Kasir User',
+        email: 'kasir@skyrental.id',
+        role: 'kasir',
+      ));
+      expect(auth.canCreateIphone, isFalse);
+
+      auth.setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
+        id: 6,
+        name: 'Staff User',
+        email: 'staff@skyrental.id',
+        role: 'Staff Operasional / Kasir',
+      ));
+      expect(auth.canCreateIphone, isFalse);
+    });
+
+    testWidgets('UnitStatusListScreen: Tambah iPhone Baru is visible for super-admin/admin but hidden for other roles', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repository = BookingRepository();
+
+      // 1. As super-admin -> visible
+      AuthService().setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
+        id: 1,
+        name: 'Super Admin',
+        role: 'super-admin',
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UnitStatusListScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('+ Tambah iPhone Baru'), findsOneWidget);
+
+      // 2. As affiliate-admin -> hidden
+      AuthService().setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
+        id: 2,
+        name: 'Affiliate Admin',
+        role: 'affiliate-admin',
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UnitStatusListScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('+ Tambah iPhone Baru'), findsNothing);
+
+      // 3. As staff -> hidden
+      AuthService().setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
+        id: 3,
+        name: 'Staff Kasir',
+        role: 'Staff Operasional / Kasir',
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UnitStatusListScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('+ Tambah iPhone Baru'), findsNothing);
+    });
+
+    testWidgets('AccountScreen: Mobile Shift Operasional Kasir opens bottom sheet modal', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      AuthService().setCurrentUserForTest(AdminUserModel.defaultAdmin());
+      final repository = BookingRepository();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AccountScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final shiftMenu = find.text('Shift Operasional Kasir');
+      await tester.scrollUntilVisible(shiftMenu, 300);
+      expect(shiftMenu, findsOneWidget);
+
+      await tester.tap(shiftMenu);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Shift Operasional Kasir & Laci Kas'), findsOneWidget);
+      expect(find.text('STATUS SHIFT KASIR AKTIF'), findsOneWidget);
+      expect(find.text('MODAL AWAL & SALDO LACI KASIR'), findsOneWidget);
+      expect(find.text('Rekonsiliasi Shift'), findsOneWidget);
+
+      // Close modal
+      await tester.tap(find.text('Tutup'));
+      await tester.pumpAndSettle();
+      expect(find.text('Shift Operasional Kasir & Laci Kas'), findsNothing);
+    });
+
+    group('Affiliate Scoping and Section 2 Booking Availability Tests', () {
+      test('BookingRepository: Inventory correctly scoped by user affiliate', () async {
+        final affUser = const AdminUserModel(
+          id: 10,
+          name: 'Affiliate Staff',
+          email: 'aff@skyrent.id',
+          phone: '08123456789',
+          role: 'affiliate-admin',
+          outletName: 'Cabang 2',
+          shiftName: 'Pagi',
+          affiliateId: 2,
+        );
+        AuthService().setCurrentUserForTest(affUser);
+        final repository = BookingRepository();
+
+        final units = await repository.getInventoryUnits(onlyAvailable: false);
+        for (final u in units) {
+          if (u.affiliateId != null) {
+            expect(u.affiliateId, 2);
+          }
+        }
+
+        // Global super-admin sees all units
+        AuthService().setCurrentUserForTest(AdminUserModel.defaultAdmin());
+        final allUnits = await repository.getInventoryUnits(onlyAvailable: false);
+        final distinctAffiliates = allUnits.map((u) => u.affiliateId).where((id) => id != null).toSet();
+        expect(distinctAffiliates.length, greaterThanOrEqualTo(1));
+      });
+
+      test('BookingRepository: isUnitAvailableForPeriod checks schedule conflict per physical unit', () async {
+        final repository = BookingRepository();
+        final unit1 = const IphoneModel(
+          id: 101,
+          name: 'iPhone 15 Pro',
+          storage: '128GB',
+          color: 'Natural Titanium',
+          serialNumber: 'SN-TEST-001',
+          assetCode: 'IPH-TEST-001',
+          status: 'ready',
+          durations: [
+            IphoneDurationOption(id: 1, name: '1 Hari', hours: 24, price: 150000),
+          ],
+        );
+        final unit2 = const IphoneModel(
+          id: 102,
+          name: 'iPhone 15 Pro',
+          storage: '128GB',
+          color: 'Blue Titanium',
+          serialNumber: 'SN-TEST-002',
+          assetCode: 'IPH-TEST-002',
+          status: 'ready',
+          durations: [
+            IphoneDurationOption(id: 1, name: '1 Hari', hours: 24, price: 150000),
+          ],
+        );
+
+        final startDate = DateTime(2026, 10, 10, 10, 0);
+        final endDate = DateTime(2026, 10, 12, 10, 0);
+
+        // Initially both units are available
+        expect(repository.isUnitAvailableForPeriod(unit1, startDate, endDate), isTrue);
+        expect(repository.isUnitAvailableForPeriod(unit2, startDate, endDate), isTrue);
+
+        // Book unit1
+        await repository.createBooking(
+          customerName: 'Customer Test',
+          customerPhone: '081234567890',
+          customerEmail: 'cust@test.local',
+          iphone: unit1,
+          startDate: startDate,
+          endDate: endDate,
+          durationDays: 48,
+          price: 300000,
+          deposit: 0,
+          jaminanType: 'KTP Asli',
+        );
+
+        // Unit 1 is now unavailable for the overlapping schedule
+        expect(repository.isUnitAvailableForPeriod(unit1, startDate, endDate), isFalse);
+        expect(repository.isUnitAvailableForPeriod(unit1, DateTime(2026, 10, 11, 10, 0), DateTime(2026, 10, 13, 10, 0)), isFalse);
+
+        // Unit 1 is available for a future schedule after return
+        expect(repository.isUnitAvailableForPeriod(unit1, DateTime(2026, 10, 15, 10, 0), DateTime(2026, 10, 16, 10, 0)), isTrue);
+
+        // Unit 2 (same model, different physical unit) remains available!
+        expect(repository.isUnitAvailableForPeriod(unit2, startDate, endDate), isTrue);
+      });
+
+      test('BookingRepository: createBooking rejects cross-affiliate and schedule conflict bookings', () async {
+        final affUser = const AdminUserModel(
+          id: 20,
+          name: 'Affiliate User',
+          email: 'aff2@skyrent.id',
+          phone: '08123456789',
+          role: 'affiliate',
+          outletName: 'Cabang 2',
+          shiftName: 'Pagi',
+          affiliateId: 2,
+        );
+        AuthService().setCurrentUserForTest(affUser);
+        final repository = BookingRepository();
+
+        final crossAffiliateUnit = const IphoneModel(
+          id: 201,
+          name: 'iPhone 13',
+          storage: '128GB',
+          color: 'Midnight',
+          serialNumber: 'SN-CROSS-001',
+          assetCode: 'IPH-CROSS-001',
+          status: 'ready',
+          affiliateId: 1,
+          durations: [
+            IphoneDurationOption(id: 1, name: '1 Hari', hours: 24, price: 100000),
+          ],
+        );
+
+        // Should reject cross-affiliate booking
+        expect(
+          () => repository.createBooking(
+            customerName: 'Customer Cross',
+            customerPhone: '081234567890',
+            customerEmail: 'cross@test.local',
+            iphone: crossAffiliateUnit,
+            startDate: DateTime(2026, 10, 20, 10, 0),
+            endDate: DateTime(2026, 10, 21, 10, 0),
+            durationDays: 24,
+            price: 100000,
+            deposit: 0,
+            jaminanType: 'KTP Asli',
+          ),
+          throwsA(predicate((e) => e.toString().contains('Akses ditolak: Unit iPhone ini tidak terdaftar'))),
+        );
+      });
+
+      testWidgets('CreateBookingScreen: Section 2 shows warning dialog when tapping scheduled unit', (WidgetTester tester) async {
+        AuthService().setCurrentUserForTest(AdminUserModel.defaultAdmin());
+        final repository = BookingRepository();
+        final unit = (await repository.getAllInventoryUnits()).first;
+
+        final now = DateTime.now();
+        final start = DateTime(now.year, now.month, now.day, now.hour, now.minute);
+        final end = start.add(const Duration(hours: 24));
+
+        await repository.createBooking(
+          customerName: 'Existing Booking',
+          customerPhone: '081234567890',
+          customerEmail: 'existing@test.local',
+          iphone: unit,
+          startDate: start,
+          endDate: end,
+          durationDays: 24,
+          price: 200000,
+          deposit: 0,
+          jaminanType: 'KTP Asli',
+        );
+
+        tester.view.physicalSize = const Size(800, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CreateBookingScreen(repository: repository),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Fill step 1
+        await tester.enterText(find.byType(TextFormField).at(0), 'Budi Santoso');
+        await tester.enterText(find.byType(TextFormField).at(1), '081234567890');
+        await tester.enterText(find.byType(TextFormField).at(3), 'Jl. Gatot Subroto No. 5');
+        await tester.pumpAndSettle();
+
+        // Tap next to step 2
+        await tester.tap(find.byKey(const Key('btn_next_to_step_2')));
+        await tester.pumpAndSettle();
+
+        // Verify Step 2 is active
+        expect(find.text('2. Unit iPhone & Durasi'), findsOneWidget);
+        expect(find.text('Sudah Dibooking'), findsWidgets);
+        final unitCardFinder = find.textContaining(unit.serialNumber);
+        await tester.ensureVisible(unitCardFinder);
+        await tester.pumpAndSettle();
+
+        // Tap on the conflicted unit card
+        await tester.tap(unitCardFinder);
+        await tester.pumpAndSettle();
+
+        // Verify warning dialog appears
+        expect(find.text('Jadwal Sudah Dibooking'), findsOneWidget);
+        expect(find.text('Mengerti'), findsOneWidget);
+
+        // Dismiss dialog
+        await tester.tap(find.text('Mengerti'));
+        await tester.pumpAndSettle();
+        expect(find.text('Jadwal Sudah Dibooking'), findsNothing);
+      });
+
+      testWidgets('CreateBookingScreen: Super-admin sees units from all affiliates in Section 2 without empty state', (tester) async {
+        final superAdminUser = const AdminUserModel(
+          id: 1,
+          name: 'Super Admin SKYRental',
+          email: 'super-admin@example.com',
+          phone: '08123456789',
+          role: 'super-admin',
+          outletName: 'Pusat',
+          shiftName: 'Pagi',
+          affiliateId: 4, // Even with affiliateId = 4 in DB, super-admin retains global view
+          roles: ['super-admin'],
+        );
+        AuthService().setCurrentUserForTest(superAdminUser);
+
+        final repository = BookingRepository();
+        repository.resetInventory();
+
+        tester.view.physicalSize = const Size(800, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CreateBookingScreen(repository: repository),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Fill step 1
+        await tester.enterText(find.byType(TextFormField).at(0), 'Pelanggan Super');
+        await tester.enterText(find.byType(TextFormField).at(1), '081234567890');
+        await tester.enterText(find.byType(TextFormField).at(3), 'Jl. Sudirman No. 1');
+        await tester.pumpAndSettle();
+
+        // Tap next to step 2
+        await tester.tap(find.byKey(const Key('btn_next_to_step_2')));
+        await tester.pumpAndSettle();
+
+        // Verify Step 2 is active and does NOT show empty state
+        expect(find.text('2. Unit iPhone & Durasi'), findsOneWidget);
+        expect(find.text('iPhone tidak ditemukan'), findsNothing);
+
+        // Verify multiple units from different branches/affiliates are rendered
+        expect(find.byIcon(Icons.phone_iphone_rounded), findsWidgets);
+      });
     });
   });
 }

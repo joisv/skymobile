@@ -12,7 +12,6 @@ import '../../services/printer_storage_service.dart';
 import '../../services/thermal_print_service.dart';
 import '../../services/theme_service.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/formatters.dart';
 import '../affiliate/affiliate_list_screen.dart';
 import '../affiliate/iphone_transfer_list_screen.dart';
 import '../dashboard/notification_list_screen.dart';
@@ -21,6 +20,7 @@ import '../receipt/receipt_format_settings_screen.dart';
 import '../receipt/reprint_receipt_list_screen.dart';
 import 'roles_permissions_screen.dart';
 import 'theme_settings_screen.dart';
+import '../../widgets/app_header.dart';
 
 class AccountScreen extends StatefulWidget {
   final BookingRepository repository;
@@ -140,9 +140,17 @@ class _AccountScreenState extends State<AccountScreen> {
   Future<void> _initData() async {
     try {
       await _printerStorageService.init();
-      final printer = await ThermalPrintService().ensurePrimaryConnected();
-      final shop = await widget.repository.getShopSettings();
-      final prefs = await SharedPreferences.getInstance();
+
+      // Parallelize local storage & settings fetches without blocking on Bluetooth connect!
+      final futures = await Future.wait([
+        _printerStorageService.getPrimaryPrinter(),
+        widget.repository.getShopSettings(),
+        SharedPreferences.getInstance(),
+      ]);
+
+      final printer = futures[0] as PrinterDeviceModel;
+      final shop = futures[1] as ShopSettingsModel;
+      final prefs = futures[2] as SharedPreferences;
 
       if (mounted) {
         setState(() {
@@ -168,6 +176,15 @@ class _AccountScreenState extends State<AccountScreen> {
           _isLoading = false;
         });
       }
+
+      // Run Bluetooth auto-connect non-blockingly in the background
+      ThermalPrintService().ensurePrimaryConnected().then((updatedPrinter) {
+        if (mounted && updatedPrinter.isConnected != _primaryPrinter.isConnected) {
+          setState(() {
+            _primaryPrinter = updatedPrinter;
+          });
+        }
+      }).catchError((_) {});
     } catch (_) {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -314,6 +331,146 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
+  void _showShiftDetailModal() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.access_time_filled_rounded, color: Colors.blueAccent, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Shift Operasional Kasir & Laci Kas',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'Status shift kerja aktif & ringkasan laci kasir',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('STATUS SHIFT KASIR AKTIF',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.6, color: Color(0xFF475569))),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _buildMetricBox('Kasir Bertugas', _user.name, Icons.person_outline, const Color(0xFF2563EB)),
+                      const SizedBox(width: 8),
+                      _buildMetricBox('Shift Operasional', _user.shiftName, Icons.schedule, const Color(0xFF059669)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('MODAL AWAL & SALDO LACI KASIR',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.6, color: Color(0xFF475569))),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _buildMetricBox('Modal Awal Laci', 'Rp 500.000', Icons.account_balance_wallet_outlined, const Color(0xFFD97706)),
+                      const SizedBox(width: 8),
+                      _buildMetricBox('Total Transaksi Tunai', 'Rp 1.450.000', Icons.payments_outlined, const Color(0xFF059669)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Status shift saat ini aktif. Penutupan kasir dapat dilakukan akhir jam shift.')),
+                      );
+                    },
+                    icon: const Icon(Icons.lock_clock_outlined, size: 16),
+                    label: const Text('Rekonsiliasi Shift', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F172A),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Tutup', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showAboutDialogModal() {
     showModalBottomSheet(
       context: context,
@@ -448,7 +605,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 controller: controller,
                 decoration: InputDecoration(
                   labelText: 'Base URL Server / API',
-                  hintText: 'https://skyrental.id atau http://192.168.1.24:8000',
+                  hintText: 'https://skyrental.id atau http://192.168.1.93:8000',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   prefixIcon: const Icon(Icons.link_rounded),
                 ),
@@ -465,8 +622,8 @@ class _AccountScreenState extends State<AccountScreen> {
                 runSpacing: 6,
                 children: [
                   ActionChip(
-                    label: const Text('192.168.1.24:8000 (IP Baru)', style: TextStyle(fontSize: 11)),
-                    onPressed: () => setModalState(() => controller.text = 'http://192.168.1.24:8000'),
+                    label: const Text('192.168.1.93:8000 (IP Host)', style: TextStyle(fontSize: 11)),
+                    onPressed: () => setModalState(() => controller.text = 'http://192.168.1.93:8000'),
                   ),
                   ActionChip(
                     label: const Text('localhost:8000 (Lokal)', style: TextStyle(fontSize: 11)),
@@ -591,7 +748,7 @@ class _AccountScreenState extends State<AccountScreen> {
   Widget _buildTabletLayout(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: _buildTabletAppBar(context),
+      appBar: const AppHeader(isTablet: true),
       body: SafeArea(
         top: false,
         child: Padding(
@@ -629,242 +786,6 @@ class _AccountScreenState extends State<AccountScreen> {
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _getDayName(DateTime date) {
-    const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
-    return days[date.weekday - 1];
-  }
-
-  String _getRoleBadgeText(String? role) {
-    if (role == null) return 'STAFF';
-    final r = role.toLowerCase().trim();
-    if (r.contains('admin') || r.contains('super')) return 'SUPER-ADMIN';
-    if (r.contains('supervisor')) return 'SUPERVISOR';
-    if (r.contains('kasir')) return 'KASIR';
-    return role.toUpperCase();
-  }
-
-  /// Badge status printer reaktif (konsisten dengan DashboardScreen)
-  Widget _buildPrinterStatusBadge({bool isTablet = false}) {
-    final printService = ThermalPrintService();
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        printService.activePrinterNotifier,
-        printService.isConnectedNotifier,
-      ]),
-      builder: (context, _) {
-        final activePrinter = printService.activePrinterNotifier.value;
-        final isConnected = printService.isConnectedNotifier.value;
-
-        String printerName = activePrinter?.name.trim() ?? '';
-        if (printerName.isEmpty || printerName == 'Belum Ada Printer Dipilih') {
-          printerName = 'Printer Thermal';
-        }
-
-        final statusText = isConnected ? 'Terhubung' : 'Belum Terhubung';
-
-        return GestureDetector(
-          onTap: () async {
-            if (isTablet) {
-              _selectMenu('printerSettings');
-            } else {
-              await Navigator.pushNamed(context, AppRoutes.printerSettings);
-              if (mounted) setState(() {});
-            }
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: isConnected
-                  ? const Color(0xFFECFDF5)
-                  : const Color(0xFFFEF2F2),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isConnected
-                    ? const Color(0xFFA7F3D0)
-                    : const Color(0xFFFECACA),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: isConnected ? AppTheme.success : AppTheme.error,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 5),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 105),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        printerName,
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.bold,
-                          color: isConnected
-                              ? const Color(0xFF065F46)
-                              : const Color(0xFF991B1B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        statusText,
-                        style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w600,
-                          color: isConnected
-                              ? const Color(0xFF047857)
-                              : const Color(0xFFB91C1C),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  PreferredSizeWidget _buildTabletAppBar(BuildContext context) {
-    final user = AuthService().currentUser ?? _user;
-    final now = DateTime.now();
-    final dateFormatted = '${_getDayName(now)}, ${Formatters.date(now)}';
-    final topPadding = MediaQuery.paddingOf(context).top;
-    final cashierName = user.name.trim().isNotEmpty ? user.name : 'Budi Santoso';
-    final cashierRole = (user.role.trim().isNotEmpty ? user.role : 'KASIR').toUpperCase();
-
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(68),
-      child: RepaintBoundary(
-        child: Container(
-          padding: EdgeInsets.only(top: topPadding + 8, bottom: 10, left: 24, right: 24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'SKYRental',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF0F172A),
-                  letterSpacing: -0.5,
-                ),
-              ),
-              Row(
-                children: [
-                  _buildPrinterStatusBadge(isTablet: true),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
-                        const SizedBox(width: 8),
-                        Text(
-                          dateFormatted,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF334155),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Row(
-                    children: [
-                      Stack(
-                        children: [
-                          const CircleAvatar(
-                            radius: 18,
-                            backgroundColor: Color(0xFFE2E8F0),
-                            child: Icon(Icons.person, size: 20, color: Color(0xFF475569)),
-                          ),
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF10B981),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 1.5),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                cashierName,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0F172A),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  cashierRole,
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Text('Shift Pagi • POS-01', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
               ),
             ],
           ),
@@ -1084,41 +1005,58 @@ class _AccountScreenState extends State<AccountScreen> {
             ),
             const SizedBox(height: 14),
 
-            // Category 2: MITRA & CABANG AFFILIATE
-            _buildTabletCategorySection(
-              title: 'MITRA & CABANG AFFILIATE',
-              children: [
-                _buildTabletSidebarItem(
-                  key: 'affiliateList',
-                  icon: Icons.store_mall_directory_rounded,
-                  title: 'Mitra Cabang & Affiliate',
-                  subtitle: 'Kelola outlet cabang & komisi',
-                ),
-                _buildTabletSidebarItem(
-                  key: 'iphoneTransfer',
-                  icon: Icons.swap_horiz_rounded,
-                  title: 'Mutasi & Transfer Unit iPhone',
-                  subtitle: 'Riwayat pengiriman antar cabang',
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
+            if (AuthService().isSuperAdmin) ...[
+              // Category 2: MITRA & CABANG AFFILIATE
+              _buildTabletCategorySection(
+                title: 'MITRA & CABANG AFFILIATE',
+                children: [
+                  _buildTabletSidebarItem(
+                    key: 'affiliateList',
+                    icon: Icons.store_mall_directory_rounded,
+                    title: 'Mitra Cabang & Affiliate',
+                    subtitle: 'Kelola outlet cabang & komisi',
+                  ),
+                  _buildTabletSidebarItem(
+                    key: 'iphoneTransfer',
+                    icon: Icons.swap_horiz_rounded,
+                    title: 'Mutasi & Transfer Unit iPhone',
+                    subtitle: 'Riwayat pengiriman antar cabang',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
 
-            // Category: PENGGUNA & HAK AKSES
-            _buildTabletCategorySection(
-              title: 'PENGGUNA & HAK AKSES',
-              children: [
-                _buildTabletSidebarItem(
-                  key: 'rolePermissions',
-                  icon: Icons.manage_accounts_rounded,
-                  title: 'Manajemen Pengguna & Role',
-                  subtitle: 'Daftar user, tambah akun & assign hak akses',
-                  trailingBadge: 'Kelola Akses',
-                  trailingBadgeColor: const Color(0xFFEA580C),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
+              // Category: PENGGUNA & HAK AKSES
+              _buildTabletCategorySection(
+                title: 'PENGGUNA & HAK AKSES',
+                children: [
+                  _buildTabletSidebarItem(
+                    key: 'rolePermissions',
+                    icon: Icons.manage_accounts_rounded,
+                    title: 'Manajemen Pengguna & Role',
+                    subtitle: 'Daftar user, tambah akun & assign hak akses',
+                    trailingBadge: 'Kelola Akses',
+                    trailingBadgeColor: const Color(0xFFEA580C),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+            ],
+
+            if (AuthService().isAffiliate || AuthService().isAffiliateAdmin) ...[
+              _buildTabletCategorySection(
+                title: 'TRANSFER UNIT CABANG',
+                children: [
+                  _buildTabletSidebarItem(
+                    key: 'iphoneTransfer',
+                    icon: Icons.swap_horiz_rounded,
+                    title: 'Transfer iPhone Masuk',
+                    subtitle: 'Terima unit iPhone yang dikirim ke cabang',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+            ],
 
             // Category 3: HARDWARE & RESI
             _buildTabletCategorySection(
@@ -1449,6 +1387,44 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
+  Widget _buildUnauthorizedDetail([String? featureName]) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.gpp_bad_rounded, size: 64, color: Colors.red.shade600),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Akses Ditolak',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.red.shade800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              featureName != null
+                  ? 'Fitur $featureName hanya dapat diakses oleh akun Super Admin.'
+                  : 'Menu ini hanya dapat diakses oleh akun dengan role Super Admin.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // =========================================================================
   // DETAIL CONTENT DISPATCHER
   // =========================================================================
@@ -1460,8 +1436,14 @@ class _AccountScreenState extends State<AccountScreen> {
       case 'shiftOperasional':
         return _buildShiftOperasionalDetail();
       case 'affiliateList':
+        if (!AuthService().isSuperAdmin) {
+          return _buildUnauthorizedDetail('Mitra Cabang & Affiliate');
+        }
         return _buildAffiliateListDetail();
       case 'iphoneTransfer':
+        if (!AuthService().isSuperAdmin && !AuthService().isAdmin && !AuthService().isAffiliate && !AuthService().isAffiliateAdmin) {
+          return _buildUnauthorizedDetail('Mutasi & Transfer Unit iPhone');
+        }
         return _buildIphoneTransferDetail();
       case 'printerSettings':
         return _buildPrinterSettingsDetail();
@@ -1478,6 +1460,9 @@ class _AccountScreenState extends State<AccountScreen> {
       case 'changePassword':
         return _buildChangePasswordDetail();
       case 'rolePermissions':
+        if (!AuthService().isSuperAdmin) {
+          return _buildUnauthorizedDetail('Manajemen Pengguna & Role');
+        }
         return _buildRolePermissionsDetail();
       case 'themeSettings':
         return _buildThemeSettingsDetail();
@@ -2477,136 +2462,10 @@ class _AccountScreenState extends State<AccountScreen> {
   // MOBILE LAYOUT (PRESERVES EXISTING DESIGN FOR PHONES)
   // =========================================================================
 
-  PreferredSizeWidget _buildMobileAppBar(BuildContext context) {
-    final user = AuthService().currentUser ?? _user;
-    final userName = user.name.trim().isNotEmpty ? user.name : 'Admin SKYRental';
-    final userRole = user.role.trim().isNotEmpty ? user.role : 'Staff Operasional';
-    final roleBadge = _getRoleBadgeText(user.role);
-
-    return PreferredSize(
-      preferredSize: const Size.fromHeight(68),
-      child: Container(
-        padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top + 8,
-          bottom: 10,
-          left: 16,
-          right: 16,
-        ),
-        decoration: BoxDecoration(
-          color: AppTheme.surface.withValues(alpha: 0.95),
-          border: Border(
-            bottom: BorderSide(color: AppTheme.cardBorder, width: 1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // User yang sedang login
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          userName,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
-                            letterSpacing: -0.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceContainer,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          roleBadge,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    userRole,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppTheme.textSecondary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-
-            // Hardware Printer & Profile Avatar
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildPrinterStatusBadge(isTablet: false),
-                const SizedBox(width: 8),
-
-                // Staff Avatar with online dot
-                GestureDetector(
-                  onTap: () {},
-                  child: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 17,
-                        backgroundColor: AppTheme.surfaceContainer,
-                        child: Icon(Icons.person, size: 20, color: AppTheme.primary),
-                      ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 9,
-                          height: 9,
-                          decoration: BoxDecoration(
-                            color: AppTheme.success,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: AppTheme.surface, width: 1.5),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildMobileLayout(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: _buildMobileAppBar(context),
+      appBar: const AppHeader(isTablet: false),
       body: RefreshIndicator(
         onRefresh: _initData,
         child: ListView(
@@ -2617,29 +2476,31 @@ class _AccountScreenState extends State<AccountScreen> {
             _buildOperationalStatusCard(),
             const SizedBox(height: 20),
 
-            _buildSectionHeader('MANAJEMEN PENGGUNA & HAK AKSES'),
-            _buildMenuContainer([
-              _buildMenuItem(
-                icon: Icons.manage_accounts_rounded,
-                iconColor: const Color(0xFFEA580C),
-                title: 'Daftar Pengguna & Role',
-                subtitle: 'Kelola akun pengguna, tambah user baru & hapus akun',
-                trailingBadge: 'Kelola User',
-                trailingBadgeColor: const Color(0xFFEA580C),
-                onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
-              ),
-              const Divider(height: 1, indent: 56),
-              _buildMenuItem(
-                icon: Icons.security_rounded,
-                iconColor: const Color(0xFF4F46E5),
-                title: 'Assign Role & Permission',
-                subtitle: 'Tetapkan role utama & hak akses izin pengguna',
-                trailingBadge: 'Assign Role',
-                trailingBadgeColor: const Color(0xFF4F46E5),
-                onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
-              ),
-            ]),
-            const SizedBox(height: 20),
+            if (AuthService().isSuperAdmin) ...[
+              _buildSectionHeader('MANAJEMEN PENGGUNA & HAK AKSES'),
+              _buildMenuContainer([
+                _buildMenuItem(
+                  icon: Icons.manage_accounts_rounded,
+                  iconColor: const Color(0xFFEA580C),
+                  title: 'Daftar Pengguna & Role',
+                  subtitle: 'Kelola akun pengguna, tambah user baru & hapus akun',
+                  trailingBadge: 'Kelola User',
+                  trailingBadgeColor: const Color(0xFFEA580C),
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
+                ),
+                const Divider(height: 1, indent: 56),
+                _buildMenuItem(
+                  icon: Icons.security_rounded,
+                  iconColor: const Color(0xFF4F46E5),
+                  title: 'Assign Role & Permission',
+                  subtitle: 'Tetapkan role utama & hak akses izin pengguna',
+                  trailingBadge: 'Assign Role',
+                  trailingBadgeColor: const Color(0xFF4F46E5),
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
+                ),
+              ]),
+              const SizedBox(height: 20),
+            ],
 
             _buildSectionHeader('TOKO & OUTLET'),
             _buildMenuContainer([
@@ -2658,30 +2519,46 @@ class _AccountScreenState extends State<AccountScreen> {
                 subtitle: _user.shiftName,
                 trailingBadge: 'Aktif',
                 trailingBadgeColor: Colors.green,
-                onTap: () {},
+                onTap: () => _showShiftDetailModal(),
               ),
             ]),
             const SizedBox(height: 20),
 
-            _buildSectionHeader('MITRA & CABANG AFFILIATE'),
-            _buildMenuContainer([
-              _buildMenuItem(
-                icon: Icons.store_mall_directory_rounded,
-                iconColor: Colors.indigo,
-                title: 'Mitra Cabang & Affiliate',
-                subtitle: 'Kelola outlet cabang, komisi & inventaris unit',
-                onTap: () => Navigator.of(context).pushNamed(AppRoutes.affiliateList),
-              ),
-              const Divider(height: 1, indent: 56),
-              _buildMenuItem(
-                icon: Icons.swap_horiz_rounded,
-                iconColor: Colors.orange.shade800,
-                title: 'Mutasi & Transfer Unit iPhone',
-                subtitle: 'Riwayat & pengiriman unit antar cabang mitra',
-                onTap: () => Navigator.of(context).pushNamed(AppRoutes.iphoneTransfer),
-              ),
-            ]),
-            const SizedBox(height: 20),
+            if (AuthService().isSuperAdmin) ...[
+              _buildSectionHeader('MITRA & CABANG AFFILIATE'),
+              _buildMenuContainer([
+                _buildMenuItem(
+                  icon: Icons.store_mall_directory_rounded,
+                  iconColor: Colors.indigo,
+                  title: 'Mitra Cabang & Affiliate',
+                  subtitle: 'Kelola outlet cabang, komisi & inventaris unit',
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.affiliateList),
+                ),
+                const Divider(height: 1, indent: 56),
+                _buildMenuItem(
+                  icon: Icons.swap_horiz_rounded,
+                  iconColor: Colors.orange.shade800,
+                  title: 'Mutasi & Transfer Unit iPhone',
+                  subtitle: 'Riwayat & pengiriman unit antar cabang mitra',
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.iphoneTransfer),
+                ),
+              ]),
+              const SizedBox(height: 20),
+            ],
+
+            if (AuthService().isAffiliate || AuthService().isAffiliateAdmin) ...[
+              _buildSectionHeader('TRANSFER UNIT CABANG'),
+              _buildMenuContainer([
+                _buildMenuItem(
+                  icon: Icons.swap_horiz_rounded,
+                  iconColor: Colors.orange.shade800,
+                  title: 'Transfer iPhone Masuk',
+                  subtitle: 'Terima & cek pengiriman unit iPhone ke cabang Anda',
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.affiliateTransferIphone),
+                ),
+              ]),
+              const SizedBox(height: 20),
+            ],
 
             _buildSectionHeader('KEAMANAN & AKUN'),
             _buildMenuContainer([
@@ -2700,16 +2577,18 @@ class _AccountScreenState extends State<AccountScreen> {
                 subtitle: 'Perbarui kata sandi akun admin kasir',
                 onTap: () => Navigator.of(context).pushNamed(AppRoutes.changePassword),
               ),
-              const Divider(height: 1, indent: 56),
-              _buildMenuItem(
-                icon: Icons.badge_rounded,
-                iconColor: Colors.indigo,
-                title: 'Role & Izin Akses',
-                subtitle: _user.role,
-                trailingBadge: 'Kelola Role',
-                trailingBadgeColor: Colors.indigo,
-                onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
-              ),
+              if (AuthService().isSuperAdmin) ...[
+                const Divider(height: 1, indent: 56),
+                _buildMenuItem(
+                  icon: Icons.badge_rounded,
+                  iconColor: Colors.indigo,
+                  title: 'Role & Izin Akses',
+                  subtitle: _user.role,
+                  trailingBadge: 'Kelola Role',
+                  trailingBadgeColor: Colors.indigo,
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
+                ),
+              ],
             ]),
             const SizedBox(height: 20),
 
@@ -2905,22 +2784,29 @@ class _AccountScreenState extends State<AccountScreen> {
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textPrimary,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: Colors.green.shade300),
-                      ),
-                      child: Text(
-                        _user.role.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.green.shade700,
-                          letterSpacing: 0.5,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.green.shade300),
+                        ),
+                        child: Text(
+                          _user.role.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.green.shade700,
+                            letterSpacing: 0.5,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),

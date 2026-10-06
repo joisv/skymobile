@@ -96,12 +96,13 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         }
       }
 
-      if (AuthService().isAffiliateAdmin) {
-        final myAffId = AuthService().currentUser?.affiliateId;
+      final isAffiliateUser = AuthService().isAffiliate || AuthService().isAffiliateAdmin || (AuthService().affiliateId != null && !AuthService().isSuperAdmin);
+      if (isAffiliateUser) {
+        final myAffId = AuthService().currentUser?.affiliateId ?? AuthService().affiliateId;
         if (myAffId != null) {
           affiliates = affiliates.where((a) => a.id == myAffId).toList();
         }
-        if (affiliates.isNotEmpty && _selectedAffiliate == 'Semua Cabang') {
+        if (affiliates.isNotEmpty && (_selectedAffiliate == 'Semua Cabang' || !affiliates.any((a) => a.name == _selectedAffiliate))) {
           _selectedAffiliate = affiliates.first.name;
         }
       }
@@ -118,8 +119,8 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
       }
 
       int? filterAffiliateId;
-      if (AuthService().isAffiliateAdmin) {
-        filterAffiliateId = AuthService().currentUser?.affiliateId;
+      if (isAffiliateUser) {
+        filterAffiliateId = AuthService().currentUser?.affiliateId ?? AuthService().affiliateId;
       } else if (_selectedAffiliate != 'Semua Cabang') {
         final match = affiliates.where((a) => a.name.toLowerCase() == _selectedAffiliate.toLowerCase()).firstOrNull;
         filterAffiliateId = match?.id;
@@ -616,6 +617,15 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   void _showAddUnitDialog() {
+    if (!AuthService().canCreateIphone) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Akses ditolak: Hanya Super Admin dan Admin yang dapat menambah iPhone baru.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1046,24 +1056,25 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-
-              // + Tambah iPhone Baru button
-              ElevatedButton.icon(
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text(
-                  '+ Tambah iPhone Baru',
-                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+              // + Tambah iPhone Baru button (Hanya super-admin dan admin)
+              if (AuthService().canCreateIphone) ...[
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text(
+                    '+ Tambah iPhone Baru',
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F172A),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+                    elevation: 0,
+                  ),
+                  onPressed: _showAddUnitDialog,
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-                  elevation: 0,
-                ),
-                onPressed: _showAddUnitDialog,
-              ),
+              ],
             ],
           ),
         ],
@@ -2156,27 +2167,29 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Container(
-                height: 46,
-                width: 46,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
+              if (AuthService().canCreateIphone) ...[
+                const SizedBox(width: 10),
+                Container(
+                  height: 46,
+                  width: 46,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.add_rounded, size: 22, color: Colors.white),
+                    tooltip: 'Tambah iPhone',
+                    onPressed: _showAddUnitDialog,
+                  ),
                 ),
-                child: IconButton(
-                  icon: const Icon(Icons.add_rounded, size: 22, color: Colors.white),
-                  tooltip: 'Tambah iPhone',
-                  onPressed: _showAddUnitDialog,
-                ),
-              ),
+              ],
             ],
           ),
         ),
@@ -2288,7 +2301,8 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   _searchController.clear();
                   _selectedStatus = 'Semua';
                   _selectedModel = 'Semua';
-                  _selectedAffiliate = (AuthService().isAffiliateAdmin && _affiliates.isNotEmpty)
+                  final isAffUser = AuthService().isAffiliate || AuthService().isAffiliateAdmin || (AuthService().affiliateId != null && !AuthService().isSuperAdmin);
+                  _selectedAffiliate = (isAffUser && _affiliates.isNotEmpty)
                       ? _affiliates.first.name
                       : 'Semua Cabang';
                 });
@@ -2308,7 +2322,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
 
   Widget _buildBranchDropdown({bool isCompact = false}) {
     final totalUnits = _summary['total'] ?? _units.length;
-    final isAffAdmin = AuthService().isAffiliateAdmin;
+    final isAffAdmin = AuthService().isAffiliate || AuthService().isAffiliateAdmin || (AuthService().affiliateId != null && !AuthService().isSuperAdmin);
 
     final items = <DropdownMenuItem<String>>[
       if (!isAffAdmin)

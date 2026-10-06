@@ -5,6 +5,7 @@ import '../../../data/booking_repository.dart';
 import '../../../models/affiliate_model.dart';
 import '../../../models/iphone_model.dart';
 import '../../../services/api_service.dart';
+import '../../../services/auth_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/formatters.dart';
 
@@ -673,6 +674,14 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
             behavior: SnackBarBehavior.floating,
           ),
         );
+        return;
+      }
+
+      if (!isEditMode && !AuthService().canCreateIphone) {
+        setState(() {
+          _isSubmitting = false;
+          _errorMessage = 'Akses ditolak: Hanya Super Admin dan Admin yang memiliki izin untuk menambah unit iPhone baru.';
+        });
         return;
       }
 
