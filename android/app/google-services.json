@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "516557052175",
+    "project_id": "sky-push-notification-b7c72",
+    "storage_bucket": "sky-push-notification-b7c72.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:516557052175:android:9487c4ae010699fcc3c67a",
+        "android_client_info": {
+          "package_name": "com.example.skyrental_admin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAIOZcHGydKqaWJm_95qHlYj4S8nZc9myQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

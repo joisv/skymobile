@@ -49,3 +49,6 @@ app.*.map.json
 
 # Local device/printer preferences
 .printer_preferences.json
+
+# Temporary screenshots
+screen*.png

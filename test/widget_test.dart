@@ -105,9 +105,15 @@ void main() {
 
     // Verify Section 2 is rendered
     expect(find.text('2. Unit iPhone & Durasi'), findsOneWidget);
-    // Unit disewa (X9M456KL8N) tetap muncul di daftar tapi dengan badge "Sedang Disewa"
+    // Tampilkan filter 'Semua' untuk memverifikasi unit disewa (X9M456KL8N) muncul dengan badge "Sedang Disewa"
+    await tester.tap(find.text('Semua'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('X9M456KL8N'), findsOneWidget);
     expect(find.textContaining('Sedang Disewa'), findsWidgets);
+
+    // Beralih kembali ke filter 'Tersedia' (default)
+    await tester.tap(find.byKey(const Key('filter_chip_tersedia')));
+    await tester.pumpAndSettle();
 
     // Tap to select an available unit (since units are unselected by default)
     await tester.tap(find.text('Tersedia').first);
@@ -3624,6 +3630,33 @@ void main() {
           ),
           throwsA(predicate((e) => e.toString().contains('Akses ditolak: Unit iPhone ini tidak terdaftar'))),
         );
+
+        // Super-admin should be rejected when attempting to book branch-owned unit
+        AuthService().setCurrentUserForTest(const AdminUserModel(
+          id: 1,
+          name: 'Super Admin',
+          email: 'super-admin@example.com',
+          phone: '08123456789',
+          role: 'super-admin',
+          outletName: 'Pusat',
+          shiftName: 'Pagi',
+          roles: ['super-admin'],
+        ));
+        expect(
+          () => repository.createBooking(
+            customerName: 'Customer Super Branch',
+            customerPhone: '081234567890',
+            customerEmail: 'super@test.local',
+            iphone: crossAffiliateUnit,
+            startDate: DateTime(2026, 10, 20, 10, 0),
+            endDate: DateTime(2026, 10, 21, 10, 0),
+            durationDays: 24,
+            price: 100000,
+            deposit: 0,
+            jaminanType: 'KTP Asli',
+          ),
+          throwsA(predicate((e) => e.toString().contains('Akses ditolak: Super Admin hanya dapat membuat booking'))),
+        );
       });
 
       testWidgets('CreateBookingScreen: Section 2 shows warning dialog when tapping scheduled unit', (WidgetTester tester) async {
@@ -3672,6 +3705,9 @@ void main() {
 
         // Verify Step 2 is active
         expect(find.text('2. Unit iPhone & Durasi'), findsOneWidget);
+        // Tampilkan filter 'Semua' agar unit yang sudah dibooking terlihat
+        await tester.tap(find.text('Semua'));
+        await tester.pumpAndSettle();
         expect(find.text('Sudah Dibooking'), findsWidgets);
         final unitCardFinder = find.textContaining(unit.serialNumber);
         await tester.ensureVisible(unitCardFinder);
@@ -3691,7 +3727,7 @@ void main() {
         expect(find.text('Jadwal Sudah Dibooking'), findsNothing);
       });
 
-      testWidgets('CreateBookingScreen: Super-admin sees units from all affiliates in Section 2 without empty state', (tester) async {
+      testWidgets('CreateBookingScreen: Super-admin sees ONLY units where affiliate_id IS NULL in Section 2', (tester) async {
         final superAdminUser = const AdminUserModel(
           id: 1,
           name: 'Super Admin SKYRental',
@@ -3700,7 +3736,6 @@ void main() {
           role: 'super-admin',
           outletName: 'Pusat',
           shiftName: 'Pagi',
-          affiliateId: 4, // Even with affiliateId = 4 in DB, super-admin retains global view
           roles: ['super-admin'],
         );
         AuthService().setCurrentUserForTest(superAdminUser);
@@ -3734,8 +3769,65 @@ void main() {
         expect(find.text('2. Unit iPhone & Durasi'), findsOneWidget);
         expect(find.text('iPhone tidak ditemukan'), findsNothing);
 
-        // Verify multiple units from different branches/affiliates are rendered
-        expect(find.byIcon(Icons.phone_iphone_rounded), findsWidgets);
+        // Verify global/unassigned units (affiliateId == null) are rendered
+        expect(find.textContaining('P9ZX44MN67'), findsOneWidget);
+        expect(find.textContaining('F2LY32SJLKJH'), findsOneWidget);
+
+        // Verify branch/affiliate-owned units (affiliateId != null) are strictly EXCLUDED
+        expect(find.textContaining('F2LNK98XK0G'), findsNothing); // affiliateId == 1
+        expect(find.textContaining('X9M456KL8N'), findsNothing); // affiliateId == 1
+        expect(find.textContaining('K7T890PL2M'), findsNothing); // affiliateId == 2
+      });
+
+      testWidgets('CreateBookingScreen: Affiliate Admin sees ONLY units belonging to their own affiliate in Section 2', (tester) async {
+        final affiliateAdminUser = const AdminUserModel(
+          id: 2,
+          name: 'Admin Affiliate 1',
+          email: 'affiliate1@example.com',
+          phone: '08123456789',
+          role: 'affiliate-admin',
+          outletName: 'Cabang 1',
+          shiftName: 'Pagi',
+          affiliateId: 1,
+          roles: ['affiliate-admin'],
+        );
+        AuthService().setCurrentUserForTest(affiliateAdminUser);
+
+        final repository = BookingRepository();
+        repository.resetInventory();
+
+        tester.view.physicalSize = const Size(800, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CreateBookingScreen(repository: repository),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Fill step 1
+        await tester.enterText(find.byType(TextFormField).at(0), 'Pelanggan Cabang');
+        await tester.enterText(find.byType(TextFormField).at(1), '081234567890');
+        await tester.enterText(find.byType(TextFormField).at(3), 'Jl. Cabang No. 1');
+        await tester.pumpAndSettle();
+
+        // Tap next to step 2
+        await tester.tap(find.byKey(const Key('btn_next_to_step_2')));
+        await tester.pumpAndSettle();
+
+        // Verify Step 2 is active
+        expect(find.text('2. Unit iPhone & Durasi'), findsOneWidget);
+
+        // Verify units belonging to Affiliate 1 (affiliateId == 1) are rendered
+        expect(find.textContaining('F2LNK98XK0G'), findsOneWidget);
+
+        // Verify global units and other affiliates units are strictly EXCLUDED
+        expect(find.textContaining('P9ZX44MN67'), findsNothing); // global
+        expect(find.textContaining('K7T890PL2M'), findsNothing); // affiliateId == 2
+        expect(find.textContaining('F2LNK92YK2J'), findsNothing); // affiliateId == 3
       });
     });
   });

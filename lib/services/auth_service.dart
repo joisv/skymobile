@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/admin_user_model.dart';
 import 'api_service.dart';
+import 'fcm_service.dart';
 
 class AuthException implements Exception {
   final String message;
@@ -163,6 +165,10 @@ class AuthService implements Listenable {
           _currentUser = AdminUserModel.fromJson(response['data'] as Map<String, dynamic>);
           _token = apiService.authToken;
           notifyListeners();
+          final fcmToken = FcmService().fcmToken;
+          if (fcmToken != null && fcmToken.isNotEmpty) {
+            unawaited(apiService.registerDeviceTokenApi(fcmToken, platform: 'android'));
+          }
         } else {
           apiService.saveAuthToken(null);
         }
@@ -232,6 +238,10 @@ class AuthService implements Listenable {
         _token = apiResult['token']?.toString() ?? 'sanctum-token';
         _rememberMe = rememberMe;
         notifyListeners();
+        final fcmToken = FcmService().fcmToken;
+        if (fcmToken != null && fcmToken.isNotEmpty) {
+          unawaited(ApiService().registerDeviceTokenApi(fcmToken, platform: 'android'));
+        }
         return user;
       }
       throw const AuthException('Respon data pengguna tidak lengkap dari server database.');
@@ -246,6 +256,10 @@ class AuthService implements Listenable {
   Future<void> logout() async {
     try {
       final apiService = ApiService();
+      final fcmToken = FcmService().fcmToken;
+      if (fcmToken != null && fcmToken.isNotEmpty) {
+        await apiService.removeDeviceTokenApi(fcmToken);
+      }
       if (apiService.authToken != null) {
         // Logout lokal saja sudah cukup untuk membersihkan sesi mobile
         apiService.saveAuthToken(null);

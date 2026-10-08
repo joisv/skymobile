@@ -82,6 +82,11 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   IphoneModel? _selectedUnit;
   IphoneDurationOption? _selectedDurationOption;
   bool _isLoadingUnits = true;
+  String _selectedAvailabilityFilter = 'tersedia'; // 'tersedia' (default), 'semua', 'disewa'
+  int _currentPage = 1;
+  int _lastPage = 1;
+  int _totalUnits = 0;
+  bool _isLoadingMoreUnits = false;
 
   DateTime _startDate = DateTime.now();
   TimeOfDay _startTime = TimeOfDay.now();
@@ -117,30 +122,47 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     return widget.repository.isUnitAvailableForPeriod(unit, _startDateTime, _endDateTime);
   }
 
-  void _applyAvailableUnits(Iterable<IphoneModel> units) {
-    var allUnits = units.toList();
+  void _applyPaginatedUnits(PaginatedIphonesResult result, {required bool append}) {
+    var incomingUnits = result.units;
 
-    // Enforce affiliate scoping: If user belongs to an affiliate, only show iPhones belonging to that affiliate
-    // For super-admin, isAffiliateScoped is false so iPhones from every affiliate are shown
-    final isScoped = AuthService().isAffiliateScoped;
-    final userAffiliateId = AuthService().affiliateId;
-
-    if (isScoped && userAffiliateId != null) {
-      allUnits = allUnits.where((u) {
+    // Enforce affiliate scoping for Section 2:
+    // 1. Affiliate / Affiliate Admin: only show iPhones where iphone.affiliate_id matches user's affiliate_id
+    // 2. Super Admin: show ONLY iPhones where affiliate_id IS NULL (unassigned/global iPhones)
+    if (AuthService().isSuperAdmin) {
+      incomingUnits = incomingUnits.where((u) => u.affiliateId == null).toList();
+    } else if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
+      incomingUnits = incomingUnits.where((u) {
         if (u.affiliateId == null) return false;
-        return u.affiliateId == userAffiliateId;
+        return u.affiliateId == AuthService().affiliateId;
       }).toList();
+    }
+
+    final List<IphoneModel> updatedList;
+    if (append) {
+      final existingIds = _availableUnits.map((u) => u.id).toSet();
+      updatedList = List.from(_availableUnits)
+        ..addAll(incomingUnits.where((u) => !existingIds.contains(u.id)));
+    } else {
+      updatedList = incomingUnits;
     }
 
     final currentSelected = _selectedUnit;
     IphoneModel? matchedUnit;
 
     if (currentSelected != null) {
-      matchedUnit = allUnits.where((u) => u.id == currentSelected.id && _isUnitAvailableForBooking(u)).firstOrNull;
+      final found = updatedList.where((u) => u.id == currentSelected.id).firstOrNull;
+      if (found != null) {
+        matchedUnit = _isUnitAvailableForBooking(found) ? found : null;
+      } else {
+        matchedUnit = _isUnitAvailableForBooking(currentSelected) ? currentSelected : null;
+      }
     }
 
     setState(() {
-      _availableUnits = allUnits;
+      _availableUnits = updatedList;
+      _currentPage = result.currentPage;
+      _lastPage = result.lastPage;
+      _totalUnits = result.total;
       _selectedUnit = matchedUnit;
       if (_selectedDurationOption != null && matchedUnit != null) {
         _selectedDurationOption = matchedUnit.availableDurations
@@ -150,10 +172,18 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         _selectedDurationOption = matchedUnit?.availableDurations.firstOrNull;
       }
       _isLoadingUnits = false;
+      _isLoadingMoreUnits = false;
     });
   }
 
-  Future<void> _fetchAvailableUnits() async {
+  Future<void> _fetchAvailableUnits({bool reset = true}) async {
+    if (reset) {
+      setState(() {
+        _isLoadingUnits = true;
+        _currentPage = 1;
+      });
+    }
+
     try {
       final isScoped = AuthService().isAffiliateScoped;
       final userAffiliateId = AuthService().affiliateId;
@@ -164,25 +194,37 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       final endH = _endDateTime.hour.toString().padLeft(2, '0');
       final endM = _endDateTime.minute.toString().padLeft(2, '0');
 
-      final units = await widget.repository.getAllInventoryUnits(
+      final result = await widget.repository.getInventoryUnitsPaginated(
         query: _searchQuery.isNotEmpty ? _searchQuery : null,
+        statusFilter: _selectedAvailabilityFilter,
         affiliateId: effectiveAffId,
         startDate: _startDate,
         endDate: _endDateTime,
         startTime: '$startH:$startM',
         endTime: '$endH:$endM',
         duration: _durationHoursToSubmit,
+        forBooking: true,
+        page: _currentPage,
+        perPage: 10,
       );
-      if (mounted) _applyAvailableUnits(units);
+      if (mounted) _applyPaginatedUnits(result, append: !reset);
     } catch (_) {
       if (mounted) {
-        final fallbackUnits = await widget.repository.getInventoryUnits(
-          query: _searchQuery.isNotEmpty ? _searchQuery : null,
-          onlyAvailable: false,
-        );
-        _applyAvailableUnits(fallbackUnits);
+        setState(() {
+          _isLoadingUnits = false;
+          _isLoadingMoreUnits = false;
+        });
       }
     }
+  }
+
+  Future<void> _loadMoreUnits() async {
+    if (_isLoadingMoreUnits || _currentPage >= _lastPage) return;
+    setState(() {
+      _isLoadingMoreUnits = true;
+      _currentPage++;
+    });
+    await _fetchAvailableUnits(reset: false);
   }
 
   void _resetForm() {
@@ -195,6 +237,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     setState(() {
       _currentStep = 1;
       _searchQuery = '';
+      _selectedAvailabilityFilter = 'tersedia';
+      _currentPage = 1;
+      _lastPage = 1;
+      _totalUnits = 0;
       _isCustomDurationMode = false;
       _customJumlah = 1;
       _customUnit = 'Hari';
@@ -202,7 +248,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       _startTime = TimeOfDay.now();
       _phoneErrorText = null;
     });
-    _fetchAvailableUnits();
+    _fetchAvailableUnits(reset: true);
   }
 
   // Calculations & Getters
@@ -766,7 +812,14 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.only(bottom: 24),
                         physics: const ClampingScrollPhysics(),
-                        child: _buildTabletLivePreviewCard(context),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildTabletTopRightNavButtons(context),
+                            const SizedBox(height: 16),
+                            _buildTabletLivePreviewCard(context),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -786,52 +839,59 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    InkWell(
-                      onTap: () => Navigator.pop(context),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.arrow_back, size: 14, color: Color(0xFF475569)),
-                          SizedBox(width: 4),
-                          Text('Antrean Booking', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
-                        ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      InkWell(
+                        onTap: () => Navigator.pop(context),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.arrow_back, size: 14, color: Color(0xFF475569)),
+                            SizedBox(width: 4),
+                            Text('Antrean Booking', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
+                          ],
+                        ),
                       ),
-                    ),
-                    const Text('  /  Formulir Booking Baru', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Text(
-                      'Buat Booking Baru',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), letterSpacing: -0.3),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
-                        borderRadius: BorderRadius.circular(16),
+                      const Text('  /  Formulir Booking Baru', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 10,
+                    runSpacing: 4,
+                    children: [
+                      const Text(
+                        'Buat Booking Baru',
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), letterSpacing: -0.3),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF2563EB), shape: BoxShape.circle)),
-                          const SizedBox(width: 6),
-                          const Text('DRAFT #BK-8821', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8))),
-                        ],
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          border: Border.all(color: const Color(0xFFBFDBFE)),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF2563EB), shape: BoxShape.circle)),
+                            const SizedBox(width: 6),
+                            const Text('DRAFT #BK-8821', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8))),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 16),
             _buildTabletStepperPills(),
           ],
         ),
@@ -913,6 +973,96 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     );
   }
 
+  Widget _buildTabletTopRightNavButtons(BuildContext context) {
+    final String nextLabel = _currentStep < 3 ? 'Lanjut' : 'Konfirmasi';
+    return RepaintBoundary(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            if (_currentStep > 1) ...[
+              OutlinedButton(
+                key: _currentStep == 2
+                    ? const Key('btn_prev_to_step_1')
+                    : const Key('btn_prev_to_step_2'),
+                onPressed: _prevStep,
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.arrow_back_rounded, size: 15, color: Color(0xFF334155)),
+                    SizedBox(width: 4),
+                    Text('Kembali', style: TextStyle(color: Color(0xFF334155), fontWeight: FontWeight.w600, fontSize: 12.5)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: SizedBox(
+                height: 42,
+                child: ElevatedButton(
+                  key: _currentStep == 1
+                      ? const Key('btn_next_to_step_2')
+                      : (_currentStep == 2
+                          ? const Key('btn_next_to_step_3')
+                          : const Key('btn_confirm_booking')),
+                  onPressed: _isSubmitting || _isValidatingPhone
+                      ? null
+                      : (_currentStep == 1
+                          ? _handleNextFromStep1
+                          : (_currentStep == 2 ? _nextStep : _submitBooking)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _currentStep == 3 ? const Color(0xFF047857) : const Color(0xFF0F172A),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  child: (_isSubmitting || _isValidatingPhone)
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                nextLabel,
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Icon(
+                              _currentStep == 3 ? Icons.check_circle_rounded : Icons.arrow_forward_rounded,
+                              size: 15,
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTabletLeftColumn(BuildContext context) {
     switch (_currentStep) {
       case 1:
@@ -930,38 +1080,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(
-                child: Text('1. Data & Jaminan Customer', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                height: 40,
-                child: ElevatedButton(
-                  key: const Key('btn_next_to_step_2'),
-                  onPressed: _isValidatingPhone ? null : _handleNextFromStep1,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F172A),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                  ),
-                  child: _isValidatingPhone
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('Lanjut ke Unit & Durasi', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
-                            SizedBox(width: 6),
-                            Icon(Icons.arrow_forward_rounded, size: 15),
-                          ],
-                        ),
-                ),
-              ),
-            ],
-          ),
+          const Text('1. Data & Jaminan Customer', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
           const SizedBox(height: 18),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -999,48 +1118,15 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         children: [
           const Text('2. Unit iPhone & Durasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
           const SizedBox(height: 4),
-          const Text('Pilih Unit iPhone Tersedia (Cabang Gandaria)', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+          const Text('Pilih Unit iPhone Tersedia', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+          const SizedBox(height: 16),
+          _buildUnitSearchAndFilterBar(),
           const SizedBox(height: 16),
           _buildUnitListWrap(isTablet: true),
           const SizedBox(height: 20),
           _buildDurationSelectionSection(),
           const SizedBox(height: 20),
           _buildSchedulePickerSection(),
-          const SizedBox(height: 24),
-          const Divider(color: Color(0xFFE2E8F0)),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              OutlinedButton(
-                key: const Key('btn_prev_to_step_1'),
-                onPressed: _prevStep,
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: const Text('Kembali ke Step 1', style: TextStyle(color: Color(0xFF334155), fontWeight: FontWeight.w600)),
-              ),
-              ElevatedButton(
-                key: const Key('btn_next_to_step_3'),
-                onPressed: _nextStep,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: const Row(
-                  children: [
-                    Text('Lanjut ke Konfirmasi', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward_rounded, size: 16),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -1082,43 +1168,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
             ),
-          ),
-          const SizedBox(height: 24),
-          const Divider(color: Color(0xFFE2E8F0)),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              OutlinedButton(
-                key: const Key('btn_prev_to_step_2'),
-                onPressed: _prevStep,
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: const Text('Kembali ke Step 2', style: TextStyle(color: Color(0xFF334155), fontWeight: FontWeight.w600)),
-              ),
-              ElevatedButton(
-                key: const Key('btn_confirm_booking'),
-                onPressed: _isSubmitting ? null : _submitBooking,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF047857),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: _isSubmitting
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Row(
-                        children: [
-                          Icon(Icons.check_circle_rounded, size: 18),
-                          SizedBox(width: 8),
-                          Text('Konfirmasi & Buat Booking', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-              ),
-            ],
           ),
         ],
       ),
@@ -1165,7 +1214,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('DATA CUSTOMER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
-                      Text(_getJaminanLabel(_jaminanType), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF15803D))),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(_getJaminanLabel(_jaminanType), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF15803D)), overflow: TextOverflow.ellipsis),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -1333,11 +1385,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           child: Column(
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildStepItem(step: '1', label: '1. Data Tamu', isCompleted: _currentStep > 1, isActive: _currentStep == 1, onTap: () => _goToStep(1)),
-                  _buildStepItem(step: '2', label: '2. Unit & Durasi', isCompleted: _currentStep > 2, isActive: _currentStep == 2, onTap: () => _goToStep(2)),
-                  _buildStepItem(step: '3', label: '3. Konfirmasi', isCompleted: false, isActive: _currentStep == 3, onTap: () => _goToStep(3)),
+                  Expanded(child: _buildStepItem(step: '1', label: '1. Data Tamu', isCompleted: _currentStep > 1, isActive: _currentStep == 1, onTap: () => _goToStep(1))),
+                  Expanded(child: _buildStepItem(step: '2', label: '2. Unit & Durasi', isCompleted: _currentStep > 2, isActive: _currentStep == 2, onTap: () => _goToStep(2))),
+                  Expanded(child: _buildStepItem(step: '3', label: '3. Konfirmasi', isCompleted: false, isActive: _currentStep == 3, onTap: () => _goToStep(3))),
                 ],
               ),
               const SizedBox(height: 10),
@@ -1369,7 +1420,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Column(
           children: [
             Container(
@@ -1386,7 +1437,13 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
               ),
             ),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 10, fontWeight: isActive || isCompleted ? FontWeight.bold : FontWeight.normal, color: color)),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 10, fontWeight: isActive || isCompleted ? FontWeight.bold : FontWeight.normal, color: color),
+            ),
           ],
         ),
       ),
@@ -1453,7 +1510,14 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(_selectedUnit?.modelName ?? 'iPhone', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              Expanded(
+                child: Text(
+                  _selectedUnit?.modelName ?? 'iPhone',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
               Text(
                 !_isCustomDurationMode && _selectedDurationOption != null ? _selectedDurationOption!.displayName : '$_customJumlah $_customUnit',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.secondary),
@@ -1659,6 +1723,126 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     );
   }
 
+  Widget _buildUnitSearchAndFilterBar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            isDense: true,
+            prefixIcon: Icon(Icons.search, size: 18, color: AppTheme.textSecondary),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                      _fetchAvailableUnits(reset: true);
+                    },
+                  )
+                : null,
+            hintText: 'Cari Tipe iPhone',
+            helperText: 'Gunakan serial number atau nama iphone',
+            filled: true,
+            fillColor: AppTheme.surfaceContainerLow,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: AppTheme.cardBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: AppTheme.cardBorder),
+            ),
+          ),
+          onChanged: (val) {
+            setState(() => _searchQuery = val);
+            _fetchAvailableUnits(reset: true);
+          },
+        ),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _buildAvailabilityFilterChip(
+                key: const Key('filter_chip_tersedia'),
+                label: 'Tersedia (Default)',
+                value: 'tersedia',
+                icon: Icons.check_circle_outline_rounded,
+              ),
+              const SizedBox(width: 8),
+              _buildAvailabilityFilterChip(
+                key: const Key('filter_chip_semua'),
+                label: 'Semua',
+                value: 'semua',
+                icon: Icons.grid_view_rounded,
+              ),
+              const SizedBox(width: 8),
+              _buildAvailabilityFilterChip(
+                key: const Key('filter_chip_disewa'),
+                label: 'Sedang Disewa',
+                value: 'disewa',
+                icon: Icons.lock_clock_rounded,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAvailabilityFilterChip({
+    Key? key,
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    final isSelected = _selectedAvailabilityFilter == value;
+    return InkWell(
+      key: key,
+      onTap: () {
+        if (_selectedAvailabilityFilter != value) {
+          setState(() {
+            _selectedAvailabilityFilter = value;
+          });
+          _fetchAvailableUnits(reset: true);
+        }
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primary : AppTheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppTheme.primary : AppTheme.cardBorder,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: isSelected ? Colors.white : AppTheme.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? Colors.white : AppTheme.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildUnitSection() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1668,21 +1852,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         children: [
           const Text('2. Unit iPhone & Durasi', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search, size: 18, color: AppTheme.textSecondary),
-              hintText: 'Cari Tipe iPhone',
-              helperText: 'Gunakan serial number atau nama iphone',
-              filled: true,
-              fillColor: AppTheme.surfaceContainerLow,
-            ),
-            onChanged: (val) {
-              setState(() => _searchQuery = val);
-              _fetchAvailableUnits();
-            },
-          ),
+          _buildUnitSearchAndFilterBar(),
           const SizedBox(height: 12),
           _buildUnitListWrap(isTablet: false),
           const SizedBox(height: 16),
@@ -1696,13 +1866,36 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
   Widget _buildUnitListWrap({required bool isTablet}) {
     if (_isLoadingUnits) {
-      return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
+      return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
     }
     if (_availableUnits.isEmpty) {
       return Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
         alignment: Alignment.center,
-        child: Text('iPhone tidak ditemukan', style: TextStyle(color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
+        child: Column(
+          children: [
+            Icon(Icons.phone_iphone_outlined, size: 36, color: AppTheme.textSecondary.withValues(alpha: 0.5)),
+            const SizedBox(height: 8),
+            Text('iPhone tidak ditemukan', style: TextStyle(color: AppTheme.textSecondary, fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 4),
+            Text('Tidak ada unit yang sesuai dengan pencarian atau filter.', style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+            if (_selectedAvailabilityFilter != 'semua' || _searchQuery.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.refresh, size: 14),
+                label: const Text('Tampilkan Semua Unit', style: TextStyle(fontSize: 11)),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {
+                    _searchQuery = '';
+                    _selectedAvailabilityFilter = 'semua';
+                  });
+                  _fetchAvailableUnits(reset: true);
+                },
+              ),
+            ],
+          ],
+        ),
       );
     }
 
@@ -1713,12 +1906,12 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         return aAvail.compareTo(bAvail);
       });
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = isTablet ? (constraints.maxWidth >= 700 ? 2 : 1) : (constraints.maxWidth >= 560 ? 2 : 1);
-        final itemWidth = columns == 2 ? (constraints.maxWidth - 10) / 2 : constraints.maxWidth;
+    final wrapWidget = LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = isTablet ? (constraints.maxWidth >= 500 ? 2 : 1) : 1;
+            final itemWidth = columns == 2 ? (constraints.maxWidth - 10) / 2 : constraints.maxWidth;
 
-        return Wrap(
+            return Wrap(
           spacing: 10,
           runSpacing: 10,
           children: sortedUnits.map((unit) {
@@ -1879,6 +2072,64 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         );
       },
     );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        wrapWidget,
+        if (_currentPage < _lastPage) ...[
+          const SizedBox(height: 12),
+          InkWell(
+            key: const Key('btn_load_more_units'),
+            onTap: _isLoadingMoreUnits ? null : _loadMoreUnits,
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.cardBorder),
+              ),
+              child: Center(
+                child: _isLoadingMoreUnits
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.expand_more_rounded, size: 20, color: AppTheme.secondary),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'Muat Lebih Banyak (${_availableUnits.length} dari $_totalUnits unit)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.secondary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+        ] else if (_totalUnits > 0) ...[
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              'Menampilkan seluruh $_totalUnits unit iPhone',
+              style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _buildDurationSelectionSection() {
@@ -1966,15 +2217,20 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.tune_rounded, size: 16, color: _isCustomDurationMode ? Colors.white : AppTheme.textPrimary),
                     const SizedBox(width: 8),
                     Text('Durasi Custom', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _isCustomDurationMode ? Colors.white : AppTheme.textPrimary)),
                   ],
                 ),
-                Text(
-                  _isCustomDurationMode ? '$_customJumlah $_customUnit Aktif' : 'Atur durasi bebas',
-                  style: TextStyle(fontSize: 11, color: _isCustomDurationMode ? Colors.white70 : AppTheme.textSecondary),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    _isCustomDurationMode ? '$_customJumlah $_customUnit Aktif' : 'Atur durasi bebas',
+                    style: TextStyle(fontSize: 11, color: _isCustomDurationMode ? Colors.white70 : AppTheme.textSecondary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),

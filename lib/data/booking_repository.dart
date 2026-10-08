@@ -85,6 +85,20 @@ class BookingFilterParams {
   }
 }
 
+class PaginatedIphonesResult {
+  final List<IphoneModel> units;
+  final int total;
+  final int currentPage;
+  final int lastPage;
+
+  const PaginatedIphonesResult({
+    required this.units,
+    required this.total,
+    required this.currentPage,
+    required this.lastPage,
+  });
+}
+
 class BookingRepository {
   final ApiService _apiService = ApiService();
   final List<BookingModel> _bookings = List.from(MockBookingData.items);
@@ -342,6 +356,7 @@ class BookingRepository {
     String? modelName,
     String? query,
     bool onlyAvailable = true,
+    bool forBooking = false,
   }) async {
     final effectiveAffiliateId = AuthService().isAffiliateScoped ? AuthService().affiliateId : null;
 
@@ -366,7 +381,13 @@ class BookingRepository {
     }
 
     bool matchesFilters(IphoneModel unit) {
-      if (effectiveAffiliateId != null) {
+      if (forBooking) {
+        if (AuthService().isSuperAdmin) {
+          if (unit.affiliateId != null) return false;
+        } else if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
+          if (unit.affiliateId != AuthService().affiliateId) return false;
+        }
+      } else if (effectiveAffiliateId != null) {
         if (unit.affiliateId != null && unit.affiliateId != effectiveAffiliateId) {
           return false;
         }
@@ -394,16 +415,27 @@ class BookingRepository {
 
     // 1. Ambil unit dari REST API Skyrent backend jika server tersedia
     try {
+      final unassignedOnly = forBooking && AuthService().isSuperAdmin;
       if (onlyAvailable) {
         // Endpoint /iphones/available — hanya unit tersedia
-        final apiUnits = await ApiService().getAvailableIphones(query: query, affiliateId: effectiveAffiliateId);
+        final apiUnits = await ApiService().getAvailableIphones(
+          query: query,
+          affiliateId: effectiveAffiliateId,
+          forBooking: forBooking,
+          unassignedOnly: unassignedOnly,
+        );
         if (apiUnits != null) {
           _hasFetchedFromApi = true;
           return apiUnits.where(matchesFilters).toList();
         }
       } else {
         // Endpoint /iphones — semua unit termasuk rented/maintenance
-        final result = await ApiService().getAllIphonesApi(query: query, affiliateId: effectiveAffiliateId);
+        final result = await ApiService().getAllIphonesApi(
+          query: query,
+          affiliateId: effectiveAffiliateId,
+          forBooking: forBooking,
+          unassignedOnly: unassignedOnly,
+        );
         if (result != null && result['data'] is List) {
           _hasFetchedFromApi = true;
           final allUnits = (result['data'] as List)
@@ -443,7 +475,11 @@ class BookingRepository {
     String paymentMethod = 'Tunai',
     String? notes,
   }) async {
-    if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
+    if (AuthService().isSuperAdmin) {
+      if (iphone.affiliateId != null) {
+        throw Exception('Akses ditolak: Super Admin hanya dapat membuat booking untuk unit iPhone pusat (tanpa affiliate/cabang).');
+      }
+    } else if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
       if (iphone.affiliateId != null && iphone.affiliateId != AuthService().affiliateId) {
         throw Exception('Akses ditolak: Unit iPhone ini tidak terdaftar pada cabang/affiliate Anda.');
       }
@@ -1397,10 +1433,12 @@ class BookingRepository {
     String? startTime,
     String? endTime,
     int? duration,
+    bool forBooking = false,
   }) async {
     final effectiveAffiliateId = AuthService().isAffiliateScoped ? AuthService().affiliateId : affiliateId;
 
     try {
+      final unassignedOnly = forBooking && AuthService().isSuperAdmin;
       final res = await ApiService().getAllIphonesApi(
         query: query,
         status: statusFilter,
@@ -1412,6 +1450,8 @@ class BookingRepository {
         startTime: startTime,
         endTime: endTime,
         duration: duration,
+        forBooking: forBooking,
+        unassignedOnly: unassignedOnly,
       );
       if (res != null && res['data'] is List) {
         _hasFetchedFromApi = true;
@@ -1474,10 +1514,16 @@ class BookingRepository {
       if (statusFilter != null && statusFilter.isNotEmpty && statusFilter.toLowerCase() != 'semua') {
         final normStatus = unit.status.toLowerCase();
         final normFilter = statusFilter.toLowerCase();
-        if (normFilter == 'tersedia' && normStatus != 'tersedia' && normStatus != 'ready') {
-          return false;
-        } else if (normFilter == 'disewa' && normStatus != 'disewa' && normStatus != 'rented') {
-          return false;
+        if (normFilter == 'tersedia') {
+          if (normStatus != 'tersedia' && normStatus != 'ready') return false;
+          if (forBooking && startDate != null && endDate != null && !isUnitAvailableForPeriod(unit, startDate, endDate)) {
+            return false;
+          }
+        } else if (normFilter == 'disewa') {
+          final isConflicted = forBooking && startDate != null && endDate != null && !isUnitAvailableForPeriod(unit, startDate, endDate);
+          if (normStatus != 'disewa' && normStatus != 'rented' && !isConflicted) {
+            return false;
+          }
         } else if ((normFilter == 'terlambat' || normFilter == 'overdue') &&
             normStatus != 'terlambat' && normStatus != 'overdue') {
           return false;
@@ -1505,10 +1551,18 @@ class BookingRepository {
         }
       }
 
-      final effectiveAff = effectiveAffiliateId ?? affiliateId;
-      if (effectiveAff != null) {
-        if (unit.affiliateId != null && unit.affiliateId != effectiveAff) {
-          return false;
+      if (forBooking) {
+        if (AuthService().isSuperAdmin) {
+          if (unit.affiliateId != null) return false;
+        } else if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
+          if (unit.affiliateId != AuthService().affiliateId) return false;
+        }
+      } else {
+        final effectiveAff = effectiveAffiliateId ?? affiliateId;
+        if (effectiveAff != null) {
+          if (unit.affiliateId != null && unit.affiliateId != effectiveAff) {
+            return false;
+          }
         }
       }
 
@@ -1553,6 +1607,106 @@ class BookingRepository {
     }
 
     return filtered;
+  }
+
+  /// Mengambil daftar unit inventaris iPhone dengan pagination server-side atau fallback mock
+  Future<PaginatedIphonesResult> getInventoryUnitsPaginated({
+    String? query,
+    String? statusFilter,
+    String? modelFilter,
+    String? branchFilter,
+    String? sortBy,
+    int? affiliateId,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? startTime,
+    String? endTime,
+    int? duration,
+    bool forBooking = false,
+    int page = 1,
+    int perPage = 10,
+  }) async {
+    final effectiveAffiliateId = AuthService().isAffiliateScoped ? AuthService().affiliateId : affiliateId;
+
+    try {
+      final unassignedOnly = forBooking && AuthService().isSuperAdmin;
+      final res = await ApiService().getAllIphonesApi(
+        query: query,
+        status: statusFilter,
+        model: modelFilter,
+        branch: branchFilter,
+        affiliateId: effectiveAffiliateId,
+        startDate: startDate,
+        endDate: endDate,
+        startTime: startTime,
+        endTime: endTime,
+        duration: duration,
+        forBooking: forBooking,
+        unassignedOnly: unassignedOnly,
+        page: page,
+        perPage: perPage,
+      );
+      if (res != null && res['data'] is List) {
+        _hasFetchedFromApi = true;
+        final raw = res['data'] as List;
+        final list = raw.map((j) {
+          var u = IphoneModel.fromJson(j as Map<String, dynamic>);
+          final isAlreadyLate = u.status.toLowerCase() == 'terlambat' || u.status.toLowerCase() == 'overdue' || u.status.toLowerCase() == 'late';
+          if (!isAlreadyLate && (u.status.toLowerCase() == 'disewa' || u.status.toLowerCase() == 'rented' || isUnitCurrentlyRented(u.assetCode)) &&
+              (u.customerName == null || u.customerName!.isEmpty)) {
+            final b = getActiveBookingForUnitSync(u.assetCode);
+            if (b != null) {
+              u = u.copyWith(
+                status: 'disewa',
+                customerName: b.customerName,
+                bookingCode: '#${b.bookingCode}',
+                returnScheduleText: 'Kembali: ${Formatters.date(b.endDate)} • ${b.endTime ?? "18:00 WIB"}${b.jaminanType.isNotEmpty ? " (${b.jaminanType})" : ""}',
+              );
+            }
+          }
+          return u;
+        }).toList();
+
+        final meta = res['meta'] is Map ? res['meta'] as Map<String, dynamic> : null;
+        final total = int.tryParse(meta?['total']?.toString() ?? '') ?? (res['total'] != null ? int.tryParse(res['total'].toString()) ?? list.length : list.length);
+        final currentPage = int.tryParse(meta?['current_page']?.toString() ?? '') ?? page;
+        final lastPage = int.tryParse(meta?['last_page']?.toString() ?? '') ?? ((total / perPage).ceil().clamp(1, 999999));
+
+        return PaginatedIphonesResult(
+          units: list,
+          total: total,
+          currentPage: currentPage,
+          lastPage: lastPage,
+        );
+      }
+    } catch (_) {}
+
+    final allUnits = await getAllInventoryUnits(
+      query: query,
+      statusFilter: statusFilter,
+      modelFilter: modelFilter,
+      branchFilter: branchFilter,
+      sortBy: sortBy,
+      affiliateId: affiliateId,
+      startDate: startDate,
+      endDate: endDate,
+      startTime: startTime,
+      endTime: endTime,
+      duration: duration,
+      forBooking: forBooking,
+    );
+
+    final total = allUnits.length;
+    final lastPage = (total / perPage).ceil().clamp(1, 999999);
+    final startIndex = (page - 1) * perPage;
+    final pageUnits = startIndex >= total ? <IphoneModel>[] : allUnits.skip(startIndex).take(perPage).toList();
+
+    return PaginatedIphonesResult(
+      units: pageUnits,
+      total: total,
+      currentPage: page,
+      lastPage: lastPage,
+    );
   }
 
   /// Reset inventaris kembali ke data awal

@@ -417,31 +417,18 @@ class ApiService {
     String? endTime,
     int? duration,
     int? affiliateId,
+    bool forBooking = false,
+    bool unassignedOnly = false,
   }) async {
     for (final base in candidateUrls) {
       try {
         final qParams = <String, String>{};
-        if (query != null && query.trim().isNotEmpty) {
-          qParams['q'] = query.trim();
+        if (forBooking) {
+          qParams['for_booking'] = '1';
         }
-        if (startDate != null) {
-          qParams['start_date'] =
-              "${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}";
-        }
-        if (endDate != null) {
-          qParams['end_date'] =
-              "${endDate.year.toString().padLeft(4, '0')}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}";
-        }
-        if (startTime != null && startTime.trim().isNotEmpty) {
-          qParams['start_time'] = startTime.trim();
-        }
-        if (endTime != null && endTime.trim().isNotEmpty) {
-          qParams['end_time'] = endTime.trim();
-        }
-        if (duration != null && duration > 0) {
-          qParams['duration'] = duration.toString();
-        }
-        if (affiliateId != null) {
+        if (unassignedOnly) {
+          qParams['affiliate_id'] = 'none';
+        } else if (affiliateId != null) {
           qParams['affiliate_id'] = affiliateId.toString();
         }
 
@@ -848,21 +835,32 @@ class ApiService {
     String? endTime,
     int? duration,
     bool? availableOnly,
+    bool forBooking = false,
+    bool unassignedOnly = false,
+    int? page,
+    int? perPage,
   }) async {
     for (final base in candidateUrls) {
       try {
         final qParams = <String, String>{};
-        if (query != null && query.trim().isNotEmpty) qParams['q'] = query.trim();
-        if (status != null && status.isNotEmpty && status.toLowerCase() != 'semua' && status.toLowerCase() != 'all') {
-          qParams['status'] = status;
+        if (query != null && query.trim().isNotEmpty) {
+          qParams['q'] = query.trim();
         }
-        if (model != null && model.isNotEmpty && model.toLowerCase() != 'semua' && model.toLowerCase() != 'all') {
-          qParams['model'] = model;
+        if (status != null && status.trim().isNotEmpty) {
+          qParams['status'] = status.trim();
         }
-        if (branch != null && branch.isNotEmpty && !branch.toLowerCase().contains('semua')) {
-          qParams['branch'] = branch.replaceAll('•', '').trim();
+        if (model != null && model.trim().isNotEmpty) {
+          qParams['model'] = model.trim();
         }
-        if (affiliateId != null) {
+        if (branch != null && branch.trim().isNotEmpty) {
+          qParams['branch'] = branch.trim();
+        }
+        if (forBooking) {
+          qParams['for_booking'] = '1';
+        }
+        if (unassignedOnly) {
+          qParams['affiliate_id'] = 'none';
+        } else if (affiliateId != null) {
           qParams['affiliate_id'] = affiliateId.toString();
         }
         if (startDate != null) {
@@ -884,6 +882,12 @@ class ApiService {
         }
         if (availableOnly == true) {
           qParams['available_only'] = '1';
+        }
+        if (page != null && page > 0) {
+          qParams['page'] = page.toString();
+        }
+        if (perPage != null && perPage > 0) {
+          qParams['per_page'] = perPage.toString();
         }
 
         final uri = Uri.parse('$base/iphones').replace(
@@ -1823,6 +1827,65 @@ class ApiService {
       } catch (e) {
         if (e is ApiException) rethrow;
       }
+    }
+    return false;
+  }
+
+  /// Mendaftarkan atau memperbarui FCM Device Token pengguna ke backend
+  /// POST /api/v1/device-tokens
+  Future<bool> registerDeviceTokenApi(
+    String token, {
+    String? platform = 'android',
+    String? deviceName,
+    String? oldToken,
+  }) async {
+    if (token.isEmpty) return false;
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/device-tokens');
+        final payload = {
+          'token': token,
+          'platform': platform ?? 'android',
+          if (deviceName != null) 'device_name': deviceName,
+          if (oldToken != null && oldToken.isNotEmpty) 'old_token': oldToken,
+        };
+        final response = await http.post(
+          uri,
+          headers: _buildHeaders(isJson: true),
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 6));
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          _saveWorkingUrl(base);
+          return true;
+        } else if (response.statusCode == 401) {
+          return false;
+        }
+      } catch (e) {
+        // Abaikan kegagalan jaringan saat background sync
+      }
+    }
+    return false;
+  }
+
+  /// Menghapus FCM Device Token saat logout atau unregister
+  /// DELETE /api/v1/device-tokens
+  Future<bool> removeDeviceTokenApi(String token) async {
+    if (token.isEmpty) return false;
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/device-tokens');
+        final response = await http.delete(
+          uri,
+          headers: _buildHeaders(isJson: true),
+          body: jsonEncode({'token': token}),
+        ).timeout(const Duration(seconds: 6));
+
+        if (response.statusCode == 200) {
+          _saveWorkingUrl(base);
+          return true;
+        }
+      } catch (_) {}
     }
     return false;
   }
