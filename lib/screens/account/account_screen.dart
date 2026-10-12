@@ -374,57 +374,280 @@ class _AccountScreenState extends State<AccountScreen> {
   void _showAboutDialogModal() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        padding: const EdgeInsets.all(24),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
+            // Handle bar
+            const SizedBox(height: 12),
             Container(
               width: 44,
-              height: 4,
+              height: 4.5,
               decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
+                color: const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(3),
               ),
             ),
-            const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.accentLight,
-                shape: BoxShape.circle,
+            const SizedBox(height: 12),
+
+            // Header Row with Title and Close button
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Tentang SKYRental POS',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Spesifikasi Resmi PRD & Terminal Kasir',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 22, color: Color(0xFF64748B)),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
               ),
-              child: Icon(Icons.phone_iphone_rounded, color: AppTheme.accent, size: 36),
             ),
-            const SizedBox(height: 14),
-            Text(
-              'SKYRental POS Admin',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-            ),
-            Text(
-              'Versi 1.0.0 (Build 2026.09.09)',
-              style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Aplikasi manajemen operasional rental iPhone, pengambilan unit, pengembalian, kasir deposit, dan cetak resi thermal 58mm.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.4),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            const Divider(height: 1, color: Color(0xFFE2E8F0)),
+
+            // Scrollable Content
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Brand Card
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF0F172A),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.phone_iphone_rounded, color: Color(0xFF38BDF8), size: 32),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'SKYRental POS Admin',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'SkyOps Mobile Utility — Terminal Kasir & Operasional Rental iPhone',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFA7F3D0)),
+                            ),
+                            child: const Text(
+                              'PRODUKSI RESMI (HTTPS) • v1.0.0',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF047857),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Quick Specs Grid
+                    const Text(
+                      'INFORMASI RINGKAS SISTEM',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.6,
+                        color: Color(0xFF475569),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _buildMetricBox('Versi Aplikasi', 'v1.0.0 (Build 2026.10.12)', Icons.verified_outlined, const Color(0xFF2563EB)),
+                        const SizedBox(width: 10),
+                        _buildMetricBox('Format Resi', 'Thermal 58mm ESC/POS', Icons.receipt_long_rounded, const Color(0xFF059669)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _buildMetricBox('Hardware Target', 'VSC MP-58C Bluetooth', Icons.print_rounded, const Color(0xFF0F172A)),
+                        const SizedBox(width: 10),
+                        _buildMetricBox('Backend API', 'https://skyrental.id', Icons.cloud_done_rounded, const Color(0xFF0284C7)),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+
+                    // 5 Modul Utama PRD
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          '5 MODUL UTAMA SESUAI PRD',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.6,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'PRD SPECS',
+                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    _buildPrdModuleItem(
+                      number: 'MODUL 1',
+                      title: 'Dashboard Operasional',
+                      subtitle: 'Metrik KPI, Action Required & Quick Actions',
+                      description: 'Monitoring unit aktif berjalan, jadwal pickup/kembali, utilisasi unit, antrean tindakan kasir mendesak, dan ringkasan kas masuk & deposit.',
+                      icon: Icons.dashboard_customize_rounded,
+                      color: const Color(0xFF2563EB),
+                      chips: const ['KPI Real-time', 'Action Required', 'Quick Handover', 'Utilisasi Stok'],
+                    ),
+
+                    _buildPrdModuleItem(
+                      number: 'MODUL 2',
+                      title: 'Scan & Verifikasi Booking',
+                      subtitle: 'Pemindai Kamera QR Overlay & Validasi Jaminan',
+                      description: 'Scanner kamera barcode/QR resi berkecepatan tinggi, pencarian instan kode booking SKY..., dan verifikasi jaminan (KTP/SIM/KIA/STNK).',
+                      icon: Icons.qr_code_scanner_rounded,
+                      color: const Color(0xFF0EA5E9),
+                      chips: ['QR Overlay Scanner', 'Verifikasi Booking', 'Validasi Jaminan KIA/KTP', 'Kode SKY...'],
+                    ),
+
+                    _buildPrdModuleItem(
+                      number: 'MODUL 3',
+                      title: 'Serah Terima Unit (Pickup Flow)',
+                      subtitle: 'Validasi Pembayaran, Unit Fisik & Slip Resi',
+                      description: 'Pengecekan pembayaran (Lunas/DP), verifikasi unit fisik via serial number & kode aset AST-..., dan cetak slip serah terima kasir.',
+                      icon: Icons.handshake_rounded,
+                      color: const Color(0xFF059669),
+                      chips: const ['Validasi DP/Lunas', 'Cocokkan Serial Number', 'Pratinjau Thermal', 'Slip Pelanggan'],
+                    ),
+
+                    _buildPrdModuleItem(
+                      number: 'MODUL 4',
+                      title: 'Pengembalian & Inspeksi Fisik',
+                      subtitle: 'Checklist Multi-Titik, Denda & Refund Deposit',
+                      description: 'Inspeksi LCD, body casing, Battery Health (BH), kelengkapan kabel/adaptor, kalkulasi denda otomatis, dan eksekusi pengembalian deposit.',
+                      icon: Icons.assignment_turned_in_rounded,
+                      color: const Color(0xFFD97706),
+                      chips: const ['Inspeksi LCD & BH', 'Denda Otomatis', 'Refund Deposit', 'Unit Siap Sewa'],
+                    ),
+
+                    _buildPrdModuleItem(
+                      number: 'MODUL 5',
+                      title: 'Thermal Printer & ESC/POS',
+                      subtitle: 'Integrasi Hardware Printer Bluetooth VSC MP-58C',
+                      description: 'Konektivitas Bluetooth nirkabel printer VSC MP-58C, format standar ESC/POS 32-kolom, densitas cetak, dan arsip riwayat cetak ulang struk.',
+                      icon: Icons.print_rounded,
+                      color: const Color(0xFF0F172A),
+                      chips: const ['VSC MP-58C Bluetooth', 'ESC/POS 58mm (32 Kolom)', 'Densitas Pemanas', 'Riwayat Reprint'],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Technical Specifications Section
+                    const Text(
+                      'SPESIFIKASI TEKNIS & INTEGRASI',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.6,
+                        color: Color(0xFF475569),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildTechSpecRow('Hardware Printer', 'VSC MP-58C Bluetooth', icon: Icons.print_outlined),
+                          _buildTechSpecRow('Standar Kertas', 'Thermal 58mm (Lebar Cetak 48mm)', icon: Icons.receipt_outlined),
+                          _buildTechSpecRow('Kapasitas Karakter', '32 Kolom (Monospaced)', icon: Icons.format_align_left_rounded),
+                          _buildTechSpecRow('Protokol Cetak', 'ESC/POS Standard Command Set', icon: Icons.code_rounded),
+                          _buildTechSpecRow('Backend API', 'Laravel 11 (skyrental.id/api/v1)', icon: Icons.cloud_outlined),
+                          _buildTechSpecRow('Keamanan Jaringan', 'HTTPS Strict TLS (UsesCleartext=false)', icon: Icons.lock_outline, isHighlighted: true),
+                          _buildTechSpecRow('Otentikasi', 'Laravel Sanctum Bearer Token', icon: Icons.key_outlined),
+                          _buildTechSpecRow('Hak Akses (RBAC)', 'Super Admin, Admin Cabang, Staff Kasir', icon: Icons.admin_panel_settings_outlined),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Close Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F172A),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('Tutup', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Tutup'),
               ),
             ),
           ],
@@ -1104,7 +1327,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   key: 'aboutApp',
                   icon: Icons.info_outline_rounded,
                   title: 'Tentang SKYRental POS',
-                  subtitle: 'Sistem operasional kasir tablet',
+                  subtitle: 'Spesifikasi PRD & sistem terminal kasir',
                   trailingBadge: 'Versi 1.0.0',
                   trailingBadgeColor: const Color(0xFF64748B),
                 ),
@@ -1938,28 +2161,420 @@ class _AccountScreenState extends State<AccountScreen> {
       children: [
         _buildDetailHeader(
           title: 'Tentang Aplikasi SKYRental POS',
-          subtitle: 'Informasi sistem operasional, build version, dan spesifikasi terminal kasir.',
+          subtitle: 'Spesifikasi resmi sistem operasional, modul PRD, perangkat thermal, dan arsitektur backend.',
         ),
         const SizedBox(height: 16),
+
+        // 1. Hero Card: Brand & Status Produksi
         _buildDetailCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('INFORMASI SISTEM & SPESIFIKASI', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.6, color: Color(0xFF475569))),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF0F172A).withValues(alpha: 0.18),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.phone_iphone_rounded, color: Color(0xFF38BDF8), size: 30),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'SKYRental POS',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFECFDF5),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFA7F3D0)),
+                              ),
+                              child: const Text(
+                                'PRODUKSI RESMI (HTTPS)',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF047857),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'SkyOps Mobile Utility — Sistem Manajemen Operasional Kasir & Terminal Rental iPhone',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Divider(height: 1, color: Color(0xFFE2E8F0)),
               const SizedBox(height: 14),
               Row(
                 children: [
-                  _buildMetricBox('Versi Aplikasi', 'v1.0.0 (Build 2026.09.09)', Icons.info_outline, const Color(0xFF2563EB)),
+                  _buildMetricBox('Versi Aplikasi', 'v1.0.0 (Build 2026.10.12)', Icons.verified_outlined, const Color(0xFF2563EB)),
                   const SizedBox(width: 12),
-                  _buildMetricBox('Format Resi', 'Thermal 58mm ESC/POS', Icons.receipt_outlined, const Color(0xFF059669)),
+                  _buildMetricBox('Format Resi', 'Thermal 58mm ESC/POS', Icons.receipt_long_rounded, const Color(0xFF059669)),
                   const SizedBox(width: 12),
-                  _buildMetricBox('Platform', 'Flutter Tablet Edition', Icons.tablet_android_rounded, const Color(0xFF7C3AED)),
+                  _buildMetricBox('Hardware Target', 'VSC MP-58C Bluetooth', Icons.print_rounded, const Color(0xFF0F172A)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _buildMetricBox('Backend API', 'https://skyrental.id/api/v1', Icons.cloud_done_rounded, const Color(0xFF0284C7)),
+                  const SizedBox(width: 12),
+                  _buildMetricBox('Protokol Transport', 'HTTPS / Strict TLS', Icons.security_rounded, const Color(0xFF7C3AED)),
+                  const SizedBox(width: 12),
+                  _buildMetricBox('Hak Cipta', '© 2026 SKYRental ID', Icons.copyright_rounded, const Color(0xFF475569)),
                 ],
               ),
             ],
           ),
         ),
+        const SizedBox(height: 16),
+
+        // 2. Card: 5 Modul Utama Sesuai Spesifikasi PRD
+        _buildDetailCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    '5 MODUL UTAMA SESUAI SPESIFIKASI PRD',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.6,
+                      color: Color(0xFF475569),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: const Text(
+                      'PRD SPECS VERIFIED',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1D4ED8),
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Arsitektur fungsional aplikasi dirancang khusus untuk staf operasional, kasir, teknisi, dan supervisor cabang rental.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 14),
+
+              _buildPrdModuleItem(
+                number: 'MODUL 1',
+                title: 'Dashboard Operasional',
+                subtitle: 'Metrik KPI Real-time, Action Required, dan Quick Actions',
+                description: 'Memantau metrik operasional harian secara real-time: unit aktif berjalan, jadwal pickup hari ini, jadwal pengembalian, tingkat utilisasi unit fisik, serta ringkasan kas sewa dan deposit kasir yang tersimpan. Dilengkapi antrean tindakan mendesak (Action Required) dan pintasan aksi cepat.',
+                icon: Icons.dashboard_customize_rounded,
+                color: const Color(0xFF2563EB),
+                chips: const [
+                  'KPI Unit & Utilisasi',
+                  'Antrean Tindakan Kasir',
+                  'Aksi Cepat Handover',
+                  'Ringkasan Keuangan Harian',
+                ],
+              ),
+
+              _buildPrdModuleItem(
+                number: 'MODUL 2',
+                title: 'Scan & Verifikasi Booking',
+                subtitle: 'Pemindai Kamera QR Overlay & Verifikasi Jaminan Identitas',
+                description: 'Pemindai barcode dan QR code resi berkecepatan tinggi dengan bidikan fokus overlay. Mendukung pencarian instan kode booking (format SKY...), pencocokan data pelanggan, dan verifikasi jaminan resmi (KTP Asli, SIM, Kartu Identitas Anak [KIA], dan STNK Motor).',
+                icon: Icons.qr_code_scanner_rounded,
+                color: const Color(0xFF0EA5E9),
+                chips: const [
+                  'Auto-focus QR Scanner',
+                  'Verifikasi Booking Instan',
+                  'Validasi Jaminan KTP/KIA/SIM',
+                  'Pencarian Kode SKY...',
+                ],
+              ),
+
+              _buildPrdModuleItem(
+                number: 'MODUL 3',
+                title: 'Serah Terima Unit (Pickup Flow)',
+                subtitle: 'Validasi Pembayaran, Unit Fisik & Cetak Resi Serah Terima',
+                description: 'Validasi status pelunasan sewa dan uang muka (DP), verifikasi penyerahan unit iPhone fisik berdasarkan Serial Number (SN) dan Kode Aset (AST-...), pencatatan identitas staf kasir yang melayani, serta pratinjau dan pencetakan slip serah terima thermal.',
+                icon: Icons.handshake_rounded,
+                color: const Color(0xFF059669),
+                chips: const [
+                  'Validasi Lunas / DP 50%',
+                  'Pencocokan Serial Number Unit',
+                  'Pratinjau Thermal ESC/POS',
+                  'Slip Tanda Terima Pelanggan',
+                ],
+              ),
+
+              _buildPrdModuleItem(
+                number: 'MODUL 4',
+                title: 'Pengembalian & Inspeksi Fisik (Return Flow)',
+                subtitle: 'Checklist Multi-Titik, Kalkulasi Denda & Refund Deposit',
+                description: 'Prosedur pengembalian unit dengan checklist inspeksi fisik multi-titik (layar LCD, bodi casing, persentase Battery Health, dan kelengkapan aksesoris kabel/adaptor). Sistem secara otomatis menghitung hari keterlambatan dan denda, melakukan pemotongan deposit, serta memproses pengembalian sisa deposit.',
+                icon: Icons.assignment_turned_in_rounded,
+                color: const Color(0xFFD97706),
+                chips: const [
+                  'Inspeksi LCD & Battery Health',
+                  'Kalkulasi Denda Otomatis',
+                  'Pemotongan & Refund Deposit',
+                  'Restorasi Unit ke Status Tersedia',
+                ],
+              ),
+
+              _buildPrdModuleItem(
+                number: 'MODUL 5',
+                title: 'Thermal Printer Management & ESC/POS',
+                subtitle: 'Integrasi Hardware Printer Bluetooth VSC MP-58C (58mm / 32 Kolom)',
+                description: 'Integrasi penuh dengan perangkat printer thermal portabel Bluetooth VSC MP-58C. Mendukung pemformatan standar ESC/POS 32-kolom, pengaturan densitas pemanasan thermal, feed baris otomatis, fungsi tes cetak, serta penyimpanan riwayat resi untuk cetak ulang (reprint) tanpa koneksi internet.',
+                icon: Icons.print_rounded,
+                color: const Color(0xFF0F172A),
+                chips: const [
+                  'Hardware VSC MP-58C Support',
+                  'Format ESC/POS 58mm (32 Kolom)',
+                  'Densitas Pemanas Thermal',
+                  'Riwayat Cetak Ulang (Reprint)',
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // 3. Card: Spesifikasi Teknis & Integrasi Perangkat Keras
+        _buildDetailCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'SPESIFIKASI TEKNIS & INTEGRASI PERANGKAT KERAS',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.6,
+                  color: Color(0xFF475569),
+                ),
+              ),
+              const SizedBox(height: 14),
+              _buildTechSpecRow('Hardware Printer Resmi', 'VSC MP-58C Portable Bluetooth Thermal Printer', icon: Icons.print_outlined),
+              _buildTechSpecRow('Standar Kertas Struk', 'Roll Kertas Thermal 58mm (Lebar Cetak 48mm / 384 dots)', icon: Icons.receipt_outlined),
+              _buildTechSpecRow('Kapasitas Karakter Baris', '32 Kolom (Monospaced font standard)', icon: Icons.format_align_left_rounded),
+              _buildTechSpecRow('Protokol Cetak Struk', 'ESC/POS Standard Command Set', icon: Icons.code_rounded),
+              _buildTechSpecRow('Format Dokumen Kasir', 'Slip Serah Terima, Slip Pengembalian, Pelunasan, & Rekap Closing', icon: Icons.description_outlined),
+              _buildTechSpecRow('Framework Mobile POS', 'Flutter SDK (Mobile & Tablet Adaptive Master-Detail)', icon: Icons.devices_rounded),
+              _buildTechSpecRow('Backend API Host', 'Laravel 11 REST API (https://skyrental.id/api/v1)', icon: Icons.cloud_outlined),
+              _buildTechSpecRow('Keamanan Jaringan', 'HTTPS / Strict TLS Transport (Cleartext Disabled)', icon: Icons.lock_outline, isHighlighted: true),
+              _buildTechSpecRow('Manajemen Sesi Kasir', 'Laravel Sanctum Bearer Token dengan Restorasi Sesi Otomatis', icon: Icons.key_outlined),
+              _buildTechSpecRow('Role-Based Access Control', 'Super Admin, Admin Cabang (Affiliate), dan Staff Kasir', icon: Icons.admin_panel_settings_outlined),
+              _buildTechSpecRow('Layanan Push Notifikasi', 'Firebase Cloud Messaging (FCM Device Token Sync)', icon: Icons.notifications_none_rounded),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+  Widget _buildPrdModuleItem({
+    required String number,
+    required String title,
+    required String subtitle,
+    required String description,
+    required IconData icon,
+    required Color color,
+    required List<String> chips,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: color.withValues(alpha: 0.25)),
+                ),
+                child: Center(
+                  child: Icon(icon, size: 20, color: color),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            number,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            description,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF475569),
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: chips.map((chip) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFCBD5E1)),
+              ),
+              child: Text(
+                chip,
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF334155),
+                ),
+              ),
+            )).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTechSpecRow(String label, String value, {IconData? icon, bool isHighlighted = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 16, color: isHighlighted ? const Color(0xFF059669) : const Color(0xFF64748B)),
+            const SizedBox(width: 8),
+          ],
+          SizedBox(
+            width: 170,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isHighlighted ? FontWeight.bold : FontWeight.w600,
+                color: isHighlighted ? const Color(0xFF059669) : const Color(0xFF0F172A),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2322,7 +2937,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 icon: Icons.info_outline_rounded,
                 iconColor: AppTheme.textSecondary,
                 title: 'Tentang SKYRental POS',
-                subtitle: 'Versi 1.0.0 (Build 2026.09.09)',
+                subtitle: 'Versi 1.0.0 (Spesifikasi PRD Resmi)',
                 onTap: _showAboutDialogModal,
               ),
             ]),
