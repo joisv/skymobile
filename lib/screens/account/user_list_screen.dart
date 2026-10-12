@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
 import '../../models/user_role_model.dart';
 import '../../routes/app_routes.dart';
-import '../../services/auth_service.dart';
-import '../../theme/app_theme.dart';
-import 'assign_role_screen.dart';
 
 class UserListScreen extends StatefulWidget {
   final BookingRepository repository;

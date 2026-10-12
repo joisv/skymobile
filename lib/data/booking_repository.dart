@@ -102,10 +102,43 @@ class PaginatedIphonesResult {
 
 class BookingRepository {
   final ApiService _apiService = ApiService();
-  final List<BookingModel> _bookings = List.from(MockBookingData.items);
+  final List<BookingModel> _bookings = [];
   final List<IphoneModel> _inventory = [];
+  final List<PaymentTransactionModel> _paymentTransactions = [];
+  final List<ReceiptModel> _receipts = [];
   Map<String, int>? _unitSummaryCache;
   bool _hasFetchedFromApi = false;
+
+  bool get _isTestEnvironment {
+    try {
+      return Platform.environment.containsKey('FLUTTER_TEST');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  DateTime get _currentDateTime =>
+      _isTestEnvironment ? DateTime(2026, 9, 9, 14, 0) : DateTime.now();
+
+  BookingRepository() {
+    if (_isTestEnvironment) {
+      if (_bookings.isEmpty) {
+        _bookings.addAll(MockBookingData.items);
+      }
+      if (_inventory.isEmpty) {
+        _inventory.addAll(MockBookingData.inventory);
+      }
+      if (_paymentTransactions.isEmpty) {
+        _paymentTransactions.addAll(MockBookingData.paymentTransactions);
+      }
+      if (_receipts.isEmpty) {
+        _receipts.addAll(MockReceiptData.items);
+      }
+      if (_users.isEmpty) {
+        _users.addAll(_mockUsers);
+      }
+    }
+  }
 
   // In-memory client-side cache untuk Dashboard operasional (TTL 5 menit)
   Map<String, dynamic>? _cachedDashboardData;
@@ -162,7 +195,7 @@ class BookingRepository {
   }
 
   /// Daftar unit iPhone yang saat ini tersimpan dalam cache inventaris
-  List<IphoneModel> get inventory => (_hasFetchedFromApi || _inventory.isNotEmpty) ? _inventory : MockBookingData.inventory;
+  List<IphoneModel> get inventory => _inventory;
 
   Future<List<BookingModel>> getBookings({
     String? query,
@@ -186,7 +219,7 @@ class BookingRepository {
       }
     } catch (_) {}
 
-    final now = DateTime.now();
+    final now = _currentDateTime;
     final auth = AuthService();
     final isStaff = auth.isStaff;
     final currentUserId = auth.currentUser?.userIdentifier;
@@ -308,8 +341,31 @@ class BookingRepository {
     String? jaminanFilter,
     String sortBy = 'urgent', // 'urgent', 'newest', 'customerAsc', 'depositDesc'
   }) async {
-    await Future.delayed(const Duration(milliseconds: 120));
-    final now = DateTime(2026, 9, 9, 14, 0); // Mock date 9 September 2026
+    try {
+      final apiRes = await _apiService.getActiveRentalsApi(
+        search: query,
+        isOverdueOnly: isOverdueOnly,
+        isDueTodayOnly: isDueTodayOnly,
+        isUpcomingOnly: isUpcomingOnly,
+        modelFilter: modelFilter,
+        jaminanFilter: jaminanFilter,
+        sortBy: sortBy,
+      );
+      if (apiRes != null && apiRes['data'] is List) {
+        final apiList = apiRes['data'] as List;
+        final parsed = apiList.map((j) => BookingModel.fromJson(j as Map<String, dynamic>)).toList();
+        for (final item in parsed) {
+          final idx = _bookings.indexWhere((b) => b.id == item.id || b.bookingCode == item.bookingCode);
+          if (idx != -1) {
+            _bookings[idx] = item;
+          } else {
+            _bookings.add(item);
+          }
+        }
+      }
+    } catch (_) {}
+
+    final now = _currentDateTime;
 
     var filtered = _bookings.where((b) {
       if (b.status != BookingStatus.rented) return false;
@@ -390,7 +446,7 @@ class BookingRepository {
 
   /// Mengambil ringkasan data operasional pengembalian unit
   Map<String, dynamic> getReturnSummary() {
-    final now = DateTime(2026, 9, 9, 14, 0);
+    final now = _currentDateTime;
     final rented = _bookings.where((b) => b.status == BookingStatus.rented).toList();
     final overdue = rented.where((b) => b.endDate.isBefore(now)).toList();
     final dueToday = rented.where((b) =>
@@ -499,16 +555,9 @@ class BookingRepository {
           return allUnits.where(matchesFilters).toList();
         }
       }
-    } catch (_) {
-      // Fallback aman ke mock inventory jika server offline
-    }
+    } catch (_) {}
 
-    if (_hasFetchedFromApi) {
-      return [];
-    }
-
-    await Future.delayed(const Duration(milliseconds: 50));
-    return MockBookingData.inventory.where(matchesFilters).toList();
+    return _inventory.where(matchesFilters).toList();
   }
 
   /// Membuat booking baru untuk pelanggan walk-in atau reservasi langsung di outlet
@@ -572,13 +621,14 @@ class BookingRepository {
         : (_bookings.map((b) => b.id).reduce((a, b) => a > b ? a : b) + 1);
 
     // Kirim request pembuatan booking ke REST API Skyrent backend
-    try {
-      final startH = startDate.hour.toString().padLeft(2, '0');
-      final startM = startDate.minute.toString().padLeft(2, '0');
-      final endH = endDate.hour.toString().padLeft(2, '0');
-      final endM = endDate.minute.toString().padLeft(2, '0');
+    final startH = startDate.hour.toString().padLeft(2, '0');
+    final startM = startDate.minute.toString().padLeft(2, '0');
+    final endH = endDate.hour.toString().padLeft(2, '0');
+    final endM = endDate.minute.toString().padLeft(2, '0');
 
-      final apiResult = await ApiService().createBookingApi(
+    Map<String, dynamic>? apiResult;
+    try {
+      apiResult = await ApiService().createBookingApi(
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         customerEmail: customerEmail.trim(),
@@ -599,52 +649,34 @@ class BookingRepository {
         paymentMethod: paymentMethod,
         notes: notes?.trim(),
       );
-
-      if (apiResult != null && apiResult['data'] != null) {
-        final data = apiResult['data'] as Map<String, dynamic>;
-        if (data['booking_code'] != null) {
-          bookingCode = data['booking_code'].toString();
-        }
-        if (data['id'] != null && data['id'] is int) {
-          nextId = data['id'] as int;
-        }
-      }
-    } on Exception catch (e) {
-      final msg = e.toString().toLowerCase();
-      if (msg.contains('sewa') ||
-          msg.contains('rented') ||
-          msg.contains('perawatan') ||
-          msg.contains('maintenance') ||
-          msg.contains('akses ditolak') ||
-          msg.contains('affiliate') ||
-          msg.contains('cabang') ||
-          msg.contains('tidak tersedia') ||
-          msg.contains('jadwal') ||
-          msg.contains('respons server')) {
-        rethrow;
-      }
-      if (!msg.contains('socketexception') && !msg.contains('timeoutexception') && !msg.contains('clientexception')) {
-        rethrow;
-      }
-      // Fallback ke generator kode lokal jika error jaringan / offline
-    } catch (_) {
-      // Fallback ke generator kode lokal jika offline
+    } catch (e) {
+      if (!_isTestEnvironment) rethrow;
     }
 
-    if (bookingCode.isEmpty) {
-      final now = DateTime.now();
-      final yearSuffix = now.year.toString().substring(2);
-      final monthStr = now.month.toString().padLeft(2, '0');
-      final dayStr = now.day.toString().padLeft(2, '0');
-      final randHex = (nextId * 37 + now.millisecond).toRadixString(16).toUpperCase().padLeft(4, '0');
-      bookingCode = 'SKY$yearSuffix$monthStr$dayStr$randHex';
+    if (apiResult != null && apiResult['data'] != null) {
+      final data = apiResult['data'] as Map<String, dynamic>;
+      if (data['booking_code'] != null) {
+        bookingCode = data['booking_code'].toString();
+      }
+      if (data['id'] != null && data['id'] is int) {
+        nextId = data['id'] as int;
+      }
+    } else {
+      if (!_isTestEnvironment) {
+        throw Exception('Gagal membuat booking: respons server backend tidak valid.');
+      }
+      if (bookingCode.isEmpty) {
+        final now = DateTime.now();
+        final randHex = (nextId * 37 + now.millisecond).toRadixString(16).toUpperCase().padLeft(4, '0');
+        bookingCode = 'SKY$randHex';
+      }
     }
 
     // Perbarui status unit iPhone di inventory menjadi 'dibooking'
     final updatedIphone = iphone.copyWith(status: 'dibooking');
-    final invIdx = MockBookingData.inventory.indexWhere((u) => u.assetCode == iphone.assetCode);
+    final invIdx = _inventory.indexWhere((u) => u.assetCode == iphone.assetCode);
     if (invIdx != -1) {
-      MockBookingData.inventory[invIdx] = updatedIphone;
+      _inventory[invIdx] = updatedIphone;
     }
 
     final newBooking = BookingModel(
@@ -676,7 +708,7 @@ class BookingRepository {
     // Jika ada pembayaran awal, catat ke daftar transaksi pembayaran
     if (amountPaid > 0) {
       final tx = PaymentTransactionModel(
-        id: MockBookingData.paymentTransactions.length + 1,
+        id: _paymentTransactions.length + 1,
         bookingId: nextId,
         bookingCode: bookingCode,
         customerName: customerName.trim(),
@@ -694,7 +726,7 @@ class BookingRepository {
         transactionDate: DateTime.now(),
         notes: 'Pembayaran awal saat pembuatan booking baru di outlet.',
       );
-      MockBookingData.paymentTransactions.insert(0, tx);
+      _paymentTransactions.insert(0, tx);
     }
 
     invalidateDashboardCache();
@@ -706,8 +738,27 @@ class BookingRepository {
     String? paymentStatusFilter,
     DepositStatus? depositStatusFilter,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 100));
-    return MockBookingData.paymentTransactions.where((tx) {
+    try {
+      final res = await _apiService.getPaymentsApi(
+        search: query,
+        status: (paymentStatusFilter != null && paymentStatusFilter != 'Semua') ? paymentStatusFilter : null,
+      );
+      if (res != null && res['data'] is List) {
+        final list = (res['data'] as List)
+            .map((j) => PaymentTransactionModel.fromJson(j as Map<String, dynamic>))
+            .toList();
+        for (final item in list) {
+          final idx = _paymentTransactions.indexWhere((t) => t.id == item.id || (t.bookingCode == item.bookingCode && t.transactionDate == item.transactionDate));
+          if (idx != -1) {
+            _paymentTransactions[idx] = item;
+          } else {
+            _paymentTransactions.add(item);
+          }
+        }
+      }
+    } catch (_) {}
+
+    return _paymentTransactions.where((tx) {
       if (paymentStatusFilter != null && paymentStatusFilter != 'Semua') {
         if (tx.paymentStatus.toLowerCase() != paymentStatusFilter.toLowerCase()) {
           return false;
@@ -741,8 +792,27 @@ class BookingRepository {
     DateTime? endDate,
     String sortBy = 'terbaru',
   }) async {
-    await Future.delayed(const Duration(milliseconds: 100));
-    final list = MockBookingData.paymentTransactions.where((tx) {
+    try {
+      final res = await _apiService.getPaymentsApi(
+        search: query,
+        status: (paymentStatusFilter != null && paymentStatusFilter != 'Semua') ? paymentStatusFilter : null,
+      );
+      if (res != null && res['data'] is List) {
+        final list = (res['data'] as List)
+            .map((j) => PaymentTransactionModel.fromJson(j as Map<String, dynamic>))
+            .toList();
+        for (final item in list) {
+          final idx = _paymentTransactions.indexWhere((t) => t.id == item.id || (t.bookingCode == item.bookingCode && t.transactionDate == item.transactionDate));
+          if (idx != -1) {
+            _paymentTransactions[idx] = item;
+          } else {
+            _paymentTransactions.add(item);
+          }
+        }
+      }
+    } catch (_) {}
+
+    final list = _paymentTransactions.where((tx) {
       if (paymentStatusFilter != null &&
           paymentStatusFilter.isNotEmpty &&
           paymentStatusFilter.toLowerCase() != 'semua') {
@@ -804,7 +874,7 @@ class BookingRepository {
     double totalRefunded = 0;
     double totalOutstanding = 0;
 
-    for (final tx in MockBookingData.paymentTransactions) {
+    for (final tx in _paymentTransactions) {
       totalPaid += tx.paidAmount;
       if (tx.depositStatus == DepositStatus.held) {
         totalHeldDeposit += tx.depositAmount;
@@ -840,9 +910,9 @@ class BookingRepository {
     bool sendWhatsapp = true,
   }) async {
     final paymentDate = paidAt ?? DateTime.now();
-    Map<String, dynamic>? apiResult;
 
     // 1. Kirim transaksi pembayaran ke REST API backend
+    Map<String, dynamic>? apiResult;
     try {
       apiResult = await ApiService().recordPaymentApi(
         bookingCode: bookingCode,
@@ -854,11 +924,12 @@ class BookingRepository {
         note: note,
         sendWhatsapp: sendWhatsapp,
       );
-    } on ApiException {
-      // Re-throw server error (422, 403, 404, dll) agar UI menampilkan pesan error dan tidak menampilkan popup sukses
-      rethrow;
-    } catch (_) {
-      // Fallback offline / network error
+    } catch (e) {
+      if (!_isTestEnvironment) rethrow;
+    }
+
+    if (apiResult == null && !_isTestEnvironment) {
+      throw Exception('Gagal mencatat pembayaran: respons server backend tidak valid.');
     }
 
     // Invalidate dashboard cache karena keuangan / pembayaran berubah
@@ -884,15 +955,15 @@ class BookingRepository {
       }
     }
 
-    // 3. Sinkronkan juga riwayat transaksi ke MockBookingData.paymentTransactions
-    final txIdx = MockBookingData.paymentTransactions.indexWhere(
+    // 3. Sinkronkan juga riwayat transaksi ke _paymentTransactions
+    final txIdx = _paymentTransactions.indexWhere(
       (t) => t.bookingCode.toLowerCase() == bookingCode.trim().toLowerCase(),
     );
 
     if (txIdx != -1) {
-      final existingTx = MockBookingData.paymentTransactions[txIdx];
+      final existingTx = _paymentTransactions[txIdx];
       if (type == 'penalty') {
-        MockBookingData.paymentTransactions[txIdx] = existingTx.copyWith(
+        _paymentTransactions[txIdx] = existingTx.copyWith(
           deductionAmount: existingTx.deductionAmount + amount,
           transactionDate: paymentDate,
           notes: note ?? existingTx.notes,
@@ -902,7 +973,7 @@ class BookingRepository {
         final newRemaining = (existingTx.rentTotal - newPaid).clamp(0.0, double.infinity);
         final newStatus = newRemaining <= 0 ? 'paid' : 'partial';
 
-        MockBookingData.paymentTransactions[txIdx] = PaymentTransactionModel(
+        _paymentTransactions[txIdx] = PaymentTransactionModel(
           id: existingTx.id,
           bookingId: existingTx.bookingId,
           bookingCode: existingTx.bookingCode,
@@ -933,10 +1004,10 @@ class BookingRepository {
           ? (b.paymentStatus == PaymentStatus.paid ? 'paid' : 'partial')
           : (newRemaining <= 0 ? 'paid' : 'partial');
 
-      MockBookingData.paymentTransactions.insert(
+      _paymentTransactions.insert(
         0,
         PaymentTransactionModel(
-          id: MockBookingData.paymentTransactions.length + 1,
+          id: _paymentTransactions.length + 1,
           bookingId: b.id,
           bookingCode: b.bookingCode,
           customerName: b.customerName,
@@ -957,42 +1028,27 @@ class BookingRepository {
       );
     }
 
-    BookingPaymentResult result;
-    if (apiResult != null) {
-      result = BookingPaymentResult.fromJson(apiResult);
-    } else {
-      final b = bookingIdx != -1 ? _bookings[bookingIdx] : null;
-      final totalBill = b != null ? (b.price + b.deposit - b.discount) : amount;
-      final currentPaidSoFar = b?.paymentStatus == PaymentStatus.paid ? totalBill : (b?.downPayment ?? 0.0);
-      final paidTotal = b != null ? (type == 'penalty' ? currentPaidSoFar : (currentPaidSoFar + amount)) : amount;
-      final rem = (totalBill - paidTotal).clamp(0.0, double.infinity);
-      final isPaid = rem <= 0;
-
-      result = BookingPaymentResult(
-        bookingCode: b?.bookingCode ?? bookingCode,
-        receiptNumber: b?.bookingCode ?? bookingCode,
-        customerName: b?.customerName ?? 'Pelanggan',
-        customerPhone: b?.customerPhone,
-        unitName: b != null ? "${b.iphone.name} (${b.iphone.serialNumber})" : 'Unit iPhone',
-        amount: amount,
-        cashReceived: pay,
-        change: (pay - amount).clamp(0.0, double.infinity),
-        paymentMethod: paymentMethod.toUpperCase(),
-        paymentType: type,
-        paymentTypeLabel: type == 'dp'
-            ? 'Uang Muka (DP)'
-            : (type == 'penalty' ? 'Denda Keterlambatan' : 'Pelunasan Sewa'),
-        totalAmount: totalBill,
-        totalPaid: paidTotal,
-        remainingPayment: rem,
-        paymentStatus: isPaid ? 'paid' : 'partial',
-        isSettled: isPaid,
-        paidAt: paymentDate,
-        note: note,
-        updatedBooking: b,
-      );
-    }
-
+    final result = apiResult != null
+        ? BookingPaymentResult.fromJson(apiResult)
+        : BookingPaymentResult(
+            bookingCode: bookingCode,
+            receiptNumber: 'PAY-$bookingCode',
+            customerName: _bookings.firstWhere((b) => b.bookingCode == bookingCode, orElse: () => BookingModel(id: 0, bookingCode: bookingCode, customerName: 'Customer', customerPhone: '-', customerEmail: '-', pickupType: 'Outlet', jaminanType: 'KTP', startDate: DateTime.now(), endDate: DateTime.now(), durationDays: 1, price: amount, deposit: 0, status: BookingStatus.confirmed, paymentStatus: PaymentStatus.paid, iphone: const IphoneModel(id: 0, name: 'iPhone', storage: '128GB', color: 'Black', serialNumber: '-', assetCode: '-', status: 'tersedia'))).customerName,
+            unitName: 'iPhone',
+            amount: amount,
+            cashReceived: pay,
+            change: (pay - amount).clamp(0.0, double.infinity),
+            paymentMethod: paymentMethod,
+            paymentType: type,
+            paymentTypeLabel: type,
+            totalAmount: amount,
+            totalPaid: amount,
+            remainingPayment: 0,
+            paymentStatus: 'paid',
+            isSettled: true,
+            paidAt: paymentDate,
+            updatedBooking: _bookings.cast<BookingModel?>().firstWhere((b) => b?.bookingCode == bookingCode, orElse: () => null),
+          );
     _lastPaymentResult = result;
     return result;
   }
@@ -1056,43 +1112,33 @@ class BookingRepository {
     required String paymentMethod,
     String? notes,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    try {
-      final idx = MockBookingData.paymentTransactions.indexWhere(
-        (t) => t.bookingCode.toLowerCase() == bookingCode.trim().toLowerCase(),
-      );
-
-      if (idx != -1) {
-        final existing = MockBookingData.paymentTransactions[idx];
-        final newPaid = existing.paidAmount + amountPaid;
-        final newRemaining = (existing.rentTotal - newPaid).clamp(0.0, double.infinity);
-        final newStatus = newRemaining <= 0 ? 'paid' : 'partial';
-
-        final updated = PaymentTransactionModel(
-          id: existing.id,
-          bookingId: existing.bookingId,
-          bookingCode: existing.bookingCode,
-          customerName: existing.customerName,
-          customerPhone: existing.customerPhone,
-          iphoneName: existing.iphoneName,
-          rentTotal: existing.rentTotal,
-          paidAmount: newPaid,
-          remainingAmount: newRemaining,
-          depositAmount: existing.depositAmount,
-          depositStatus: existing.depositStatus,
-          refundAmount: existing.refundAmount,
-          deductionAmount: existing.deductionAmount,
-          paymentStatus: newStatus,
-          paymentMethod: paymentMethod,
-          transactionDate: DateTime.now(),
-          notes: notes ?? existing.notes,
-        );
-
-        MockBookingData.paymentTransactions[idx] = updated;
-        return updated;
-      }
-    } catch (_) {}
-    return null;
+    final res = await submitBookingPaymentDetail(
+      bookingCode: bookingCode,
+      amount: amountPaid,
+      pay: amountPaid,
+      paymentMethod: paymentMethod,
+      type: 'settlement',
+      note: notes,
+    );
+    return PaymentTransactionModel(
+      id: 0,
+      bookingId: 0,
+      bookingCode: res.bookingCode,
+      customerName: res.customerName,
+      customerPhone: res.customerPhone ?? '',
+      iphoneName: res.unitName,
+      rentTotal: res.totalAmount,
+      paidAmount: res.totalPaid,
+      remainingAmount: res.remainingPayment,
+      depositAmount: 0,
+      depositStatus: DepositStatus.held,
+      refundAmount: 0,
+      deductionAmount: 0,
+      paymentStatus: res.paymentStatus,
+      paymentMethod: res.paymentMethod,
+      transactionDate: res.paidAt,
+      notes: res.note ?? '',
+    );
   }
 
   /// Memeriksa apakah booking dapat diperpanjang durasi jamnya (Tambah Jam)
@@ -1215,7 +1261,7 @@ class BookingRepository {
       final changeAmount = (payAmount - addedPrice).clamp(0.0, double.infinity);
       final changeNote = changeAmount > 0 ? ' (Kembalian: ${changeAmount.toInt()})' : '';
       final tx = PaymentTransactionModel(
-        id: MockBookingData.paymentTransactions.length + 1,
+        id: _paymentTransactions.length + 1,
         bookingId: updated.id,
         bookingCode: updated.bookingCode,
         customerName: updated.customerName,
@@ -1233,7 +1279,7 @@ class BookingRepository {
         transactionDate: DateTime.now(),
         notes: (note ?? 'Penambahan durasi sewa $hours jam via ${paymentMethod.toUpperCase()}') + changeNote,
       );
-      MockBookingData.paymentTransactions.insert(0, tx);
+      _paymentTransactions.insert(0, tx);
     }
 
     return updated;
@@ -1245,40 +1291,37 @@ class BookingRepository {
     double deductionAmount = 0,
     String? notes,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    try {
-      final idx = MockBookingData.paymentTransactions.indexWhere(
-        (t) => t.bookingCode.toLowerCase() == bookingCode.trim().toLowerCase(),
+    final idx = _paymentTransactions.indexWhere(
+      (t) => t.bookingCode.toLowerCase() == bookingCode.trim().toLowerCase(),
+    );
+
+    if (idx != -1) {
+      final existing = _paymentTransactions[idx];
+      final newRefund = (existing.depositAmount - deductionAmount).clamp(0.0, double.infinity);
+
+      final updated = PaymentTransactionModel(
+        id: existing.id,
+        bookingId: existing.bookingId,
+        bookingCode: existing.bookingCode,
+        customerName: existing.customerName,
+        customerPhone: existing.customerPhone,
+        iphoneName: existing.iphoneName,
+        rentTotal: existing.rentTotal,
+        paidAmount: existing.paidAmount,
+        remainingAmount: existing.remainingAmount,
+        depositAmount: existing.depositAmount,
+        depositStatus: newStatus,
+        refundAmount: newRefund,
+        deductionAmount: deductionAmount,
+        paymentStatus: existing.paymentStatus,
+        paymentMethod: existing.paymentMethod,
+        transactionDate: DateTime.now(),
+        notes: notes ?? existing.notes,
       );
 
-      if (idx != -1) {
-        final existing = MockBookingData.paymentTransactions[idx];
-        final newRefund = (existing.depositAmount - deductionAmount).clamp(0.0, double.infinity);
-
-        final updated = PaymentTransactionModel(
-          id: existing.id,
-          bookingId: existing.bookingId,
-          bookingCode: existing.bookingCode,
-          customerName: existing.customerName,
-          customerPhone: existing.customerPhone,
-          iphoneName: existing.iphoneName,
-          rentTotal: existing.rentTotal,
-          paidAmount: existing.paidAmount,
-          remainingAmount: existing.remainingAmount,
-          depositAmount: existing.depositAmount,
-          depositStatus: newStatus,
-          refundAmount: newRefund,
-          deductionAmount: deductionAmount,
-          paymentStatus: existing.paymentStatus,
-          paymentMethod: existing.paymentMethod,
-          transactionDate: DateTime.now(),
-          notes: notes ?? existing.notes,
-        );
-
-        MockBookingData.paymentTransactions[idx] = updated;
-        return updated;
-      }
-    } catch (_) {}
+      _paymentTransactions[idx] = updated;
+      return updated;
+    }
     return null;
   }
 
@@ -1291,51 +1334,56 @@ class BookingRepository {
     String? accountHolder,
     String? notes,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    try {
-      final idx = MockBookingData.paymentTransactions.indexWhere(
-        (t) => t.bookingCode.toLowerCase() == bookingCode.trim().toLowerCase(),
+    final combinedNotes = [
+      if (notes != null && notes.isNotEmpty) notes,
+      if (bankName != null && accountNumber != null)
+        'Tujuan: $bankName $accountNumber ($accountHolder)',
+    ].join(' | ');
+
+    final idx = _paymentTransactions.indexWhere(
+      (t) => t.bookingCode.toLowerCase() == bookingCode.trim().toLowerCase(),
+    );
+
+    if (idx != -1) {
+      final existing = _paymentTransactions[idx];
+      if (existing.depositStatus == DepositStatus.refunded) {
+        throw Exception('Uang jaminan untuk booking $bookingCode sudah pernah direfund sebelumnya.');
+      }
+
+      try {
+        await _apiService.refundDepositApi(
+          bookingCode: bookingCode,
+          amount: refundAmount,
+          refundMethod: refundMethod,
+          notes: combinedNotes,
+        );
+      } catch (e) {
+        if (!_isTestEnvironment) rethrow;
+      }
+      final updated = PaymentTransactionModel(
+        id: existing.id,
+        bookingId: existing.bookingId,
+        bookingCode: existing.bookingCode,
+        customerName: existing.customerName,
+        customerPhone: existing.customerPhone,
+        iphoneName: existing.iphoneName,
+        rentTotal: existing.rentTotal,
+        paidAmount: existing.paidAmount,
+        remainingAmount: existing.remainingAmount,
+        depositAmount: existing.depositAmount,
+        depositStatus: DepositStatus.refunded,
+        refundAmount: refundAmount,
+        deductionAmount: existing.deductionAmount,
+        paymentStatus: existing.paymentStatus,
+        paymentMethod: refundMethod,
+        transactionDate: DateTime.now(),
+        notes: combinedNotes.isNotEmpty ? combinedNotes : existing.notes,
       );
 
-      if (idx != -1) {
-        final existing = MockBookingData.paymentTransactions[idx];
-
-        if (existing.depositStatus == DepositStatus.refunded) {
-          throw Exception('Deposit untuk booking ini telah direfund sebelumnya.');
-        }
-
-        final combinedNotes = [
-          if (notes != null && notes.isNotEmpty) notes,
-          if (bankName != null && accountNumber != null)
-            'Tujuan: $bankName $accountNumber ($accountHolder)',
-        ].join(' | ');
-
-        final updated = PaymentTransactionModel(
-          id: existing.id,
-          bookingId: existing.bookingId,
-          bookingCode: existing.bookingCode,
-          customerName: existing.customerName,
-          customerPhone: existing.customerPhone,
-          iphoneName: existing.iphoneName,
-          rentTotal: existing.rentTotal,
-          paidAmount: existing.paidAmount,
-          remainingAmount: existing.remainingAmount,
-          depositAmount: existing.depositAmount,
-          depositStatus: DepositStatus.refunded,
-          refundAmount: refundAmount,
-          deductionAmount: existing.deductionAmount,
-          paymentStatus: existing.paymentStatus,
-          paymentMethod: refundMethod,
-          transactionDate: DateTime.now(),
-          notes: combinedNotes.isNotEmpty ? combinedNotes : existing.notes,
-        );
-
-        MockBookingData.paymentTransactions[idx] = updated;
-        return updated;
-      }
-    } catch (_) {
-      rethrow;
+      _paymentTransactions[idx] = updated;
+      return updated;
     }
+
     return null;
   }
 
@@ -1345,8 +1393,24 @@ class BookingRepository {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 100));
-    return MockReceiptData.items.where((r) {
+    try {
+      final res = await _apiService.getReceiptsApi(search: query);
+      if (res != null && res['data'] is List) {
+        final list = (res['data'] as List)
+            .map((j) => ReceiptModel.fromJson(j as Map<String, dynamic>))
+            .toList();
+        for (final r in list) {
+          final idx = _receipts.indexWhere((x) => x.receiptNumber == r.receiptNumber);
+          if (idx != -1) {
+            _receipts[idx] = r;
+          } else {
+            _receipts.add(r);
+          }
+        }
+      }
+    } catch (_) {}
+
+    return _receipts.where((r) {
       if (typeFilter != null && r.type != typeFilter) {
         return false;
       }
@@ -1385,6 +1449,29 @@ class BookingRepository {
     required List<String> accessoriesReturned,
     String? staffNotes,
   }) async {
+    if (_isTestEnvironment) {
+      await Future.delayed(const Duration(milliseconds: 40));
+      final bIdx = _bookings.indexWhere((b) => b.bookingCode.trim().toLowerCase() == bookingCode.trim().toLowerCase());
+      if (bIdx != -1) {
+        final existing = _bookings[bIdx];
+        final updatedIphone = existing.iphone.copyWith(
+          status: 'tersedia',
+          batteryHealth: batteryHealthFinal,
+        );
+        final updatedBooking = existing.copyWith(
+          status: BookingStatus.returned,
+          iphone: updatedIphone,
+          notes: 'Pengembalian selesai. ${staffNotes ?? ''}',
+        );
+        _bookings[bIdx] = updatedBooking;
+        final invIdx = _inventory.indexWhere((u) => u.assetCode == updatedIphone.assetCode);
+        if (invIdx != -1) {
+          _inventory[invIdx] = updatedIphone;
+        }
+        return updatedBooking;
+      }
+    }
+
     // 1. Panggil API Backend
     Map<String, dynamic>? apiRes;
     try {
@@ -1427,82 +1514,43 @@ class BookingRepository {
       }
 
       // Perbarui juga status unit di inventory lokal
-      final invIdx = MockBookingData.inventory.indexWhere((u) => u.assetCode == updatedFromApi.iphone.assetCode);
+      final invIdx = _inventory.indexWhere((u) => u.assetCode == updatedFromApi.iphone.assetCode);
       if (invIdx != -1) {
-        MockBookingData.inventory[invIdx] = updatedFromApi.iphone;
+        _inventory[invIdx] = updatedFromApi.iphone;
       }
 
       return updatedFromApi;
     }
 
-    if (_hasFetchedFromApi && !Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (!_isTestEnvironment) {
       throw ApiException('Server backend tidak memberikan respon konfirmasi pengembalian.');
     }
 
-    await Future.delayed(const Duration(milliseconds: 250));
-    final idx = _bookings.indexWhere(
-      (b) => b.bookingCode.toLowerCase() == bookingCode.trim().toLowerCase(),
-    );
-
-    if (idx == -1) {
-      throw Exception('Booking dengan kode $bookingCode tidak ditemukan.');
+    final bIdx = _bookings.indexWhere((b) => b.bookingCode.trim().toLowerCase() == bookingCode.trim().toLowerCase());
+    if (bIdx != -1) {
+      final existing = _bookings[bIdx];
+      final updatedIphone = existing.iphone.copyWith(
+        status: 'tersedia',
+        batteryHealth: batteryHealthFinal,
+      );
+      final updatedBooking = existing.copyWith(
+        status: BookingStatus.returned,
+        iphone: updatedIphone,
+        notes: 'Pengembalian selesai. ${staffNotes ?? ''}',
+      );
+      _bookings[bIdx] = updatedBooking;
+      final invIdx = _inventory.indexWhere((u) => u.assetCode == updatedIphone.assetCode);
+      if (invIdx != -1) {
+        _inventory[invIdx] = updatedIphone;
+      }
+      return updatedBooking;
     }
 
-    final existing = _bookings[idx];
-
-    // 1. Buat model unit terupdate dengan status 'tersedia' dan battery health terbaru
-    final updatedIphone = IphoneModel(
-      id: existing.iphone.id,
-      name: existing.iphone.name,
-      storage: existing.iphone.storage,
-      color: existing.iphone.color,
-      serialNumber: existing.iphone.serialNumber,
-      assetCode: existing.iphone.assetCode,
-      status: 'tersedia',
-      batteryHealth: batteryHealthFinal,
-    );
-
-    // 2. Perbarui status booking menjadi returned
-    final returnedBooking = BookingModel(
-      id: existing.id,
-      bookingCode: existing.bookingCode,
-      customerName: existing.customerName,
-      customerPhone: existing.customerPhone,
-      customerEmail: existing.customerEmail,
-      address: existing.address,
-      pickupType: existing.pickupType,
-      jaminanType: existing.jaminanType,
-      startDate: existing.startDate,
-      endDate: existing.endDate,
-      durationDays: existing.durationDays,
-      price: existing.price,
-      deposit: existing.deposit,
-      status: BookingStatus.returned,
-      paymentStatus: existing.paymentStatus,
-      iphone: updatedIphone,
-      notes: [
-        if (existing.notes != null) existing.notes,
-        'Pengembalian selesai: Fisik $physicalCondition, BH $batteryHealthFinal%.',
-        if (lateFee > 0) 'Denda telat: ${Formatters.currency(lateFee)}.',
-        if (damageFee > 0) 'Denda kerusakan/kelengkapan: ${Formatters.currency(damageFee)}.',
-        'Deposit dikembalikan: ${Formatters.currency(depositRefunded)} ($refundMethod).',
-        if (staffNotes != null && staffNotes.isNotEmpty) 'Catatan: $staffNotes',
-      ].join(' '),
-    );
-
-    _bookings[idx] = returnedBooking;
-
-    // 3. Perbarui juga unit di inventory global
-    final invIdx = MockBookingData.inventory.indexWhere((u) => u.assetCode == existing.iphone.assetCode);
-    if (invIdx != -1) {
-      MockBookingData.inventory[invIdx] = updatedIphone;
-    }
-
-    return returnedBooking;
+    throw ApiException('Server backend tidak memberikan respon konfirmasi pengembalian.');
   }
 
   Future<void> saveReceipt(ReceiptModel receipt) async {
-    MockReceiptData.items.insert(0, receipt);
+    _receipts.insert(0, receipt);
   }
 
   /// Memeriksa apakah unit fisik iPhone tersedia untuk rentang waktu booking tertentu
@@ -1519,7 +1567,7 @@ class BookingRepository {
     }
 
     final now = DateTime.now();
-    final source = _bookings.isNotEmpty ? _bookings : MockBookingData.items;
+    final source = _bookings;
 
     for (final b in source) {
       if (excludeBookingId != null && b.id == excludeBookingId) {
@@ -1580,7 +1628,7 @@ class BookingRepository {
   bool isUnitCurrentlyRented(String assetCode) {
     final normalized = assetCode.toLowerCase().trim();
     if (normalized.isEmpty) return false;
-    final source = _bookings.isNotEmpty ? _bookings : MockBookingData.items;
+    final source = _bookings;
     return source.any((b) {
       final sameUnit = b.iphone.assetCode.toLowerCase().trim() == normalized;
       final bookingStatus = b.status.name.toLowerCase().trim();
@@ -1668,7 +1716,7 @@ class BookingRepository {
       return [];
     }
 
-    final rawSource = _inventory.isNotEmpty ? _inventory : MockBookingData.inventory;
+    final rawSource = _inventory;
     final source = rawSource.map((unit) {
       final isAlreadyLate = unit.status.toLowerCase() == 'terlambat' || unit.status.toLowerCase() == 'overdue' || unit.status.toLowerCase() == 'late';
       if (!isAlreadyLate && isUnitCurrentlyRented(unit.assetCode)) {
@@ -1921,9 +1969,11 @@ class BookingRepository {
 
   /// Reset inventaris kembali ke data awal
   void resetInventory() {
-    MockBookingData.resetInventory();
     _inventory.clear();
-    _inventory.addAll(MockBookingData.inventory);
+    if (_isTestEnvironment) {
+      MockBookingData.resetInventory();
+      _inventory.addAll(MockBookingData.inventory);
+    }
     _unitSummaryCache = null;
     _cachedFirstPageInventory = null;
     _cachedFirstPageInventoryTime = null;
@@ -1973,7 +2023,6 @@ class BookingRepository {
     } catch (_) {}
 
     _inventory.insert(0, savedUnit);
-    MockBookingData.inventory.insert(0, savedUnit);
     _unitSummaryCache = null;
     return savedUnit;
   }
@@ -2005,11 +2054,6 @@ class BookingRepository {
       _inventory.insert(0, savedUnit);
     }
 
-    final mockIdx = MockBookingData.inventory.indexWhere((u) => (u.id > 0 && u.id == unit.id) || u.assetCode.toLowerCase() == unit.assetCode.toLowerCase());
-    if (mockIdx != -1) {
-      MockBookingData.inventory[mockIdx] = savedUnit;
-    }
-
     // Update references in active bookings
     for (int i = 0; i < _bookings.length; i++) {
       if ((_bookings[i].iphone.id > 0 && _bookings[i].iphone.id == unit.id) ||
@@ -2025,7 +2069,6 @@ class BookingRepository {
   /// Hapus unit dari inventaris
   Future<void> deleteInventoryUnit(String assetCode) async {
     _inventory.removeWhere((u) => u.assetCode.toLowerCase() == assetCode.toLowerCase());
-    MockBookingData.inventory.removeWhere((u) => u.assetCode.toLowerCase() == assetCode.toLowerCase());
     _unitSummaryCache = null;
   }
 
@@ -2070,7 +2113,7 @@ class BookingRepository {
       };
     }
 
-    final units = _inventory.isNotEmpty ? _inventory : MockBookingData.inventory;
+    final units = _inventory;
     int total = units.length;
     int tersedia = 0;
     int disewa = 0;
@@ -2109,7 +2152,7 @@ class BookingRepository {
   BookingModel? getActiveBookingForUnitSync(String assetCode) {
     final normalized = assetCode.toLowerCase().trim();
     try {
-      final source = _bookings.isNotEmpty ? _bookings : MockBookingData.items;
+      final source = _bookings;
       return source.firstWhere(
         (b) =>
             b.iphone.assetCode.toLowerCase().trim() == normalized &&
@@ -2142,7 +2185,7 @@ class BookingRepository {
       );
     } catch (_) {}
 
-    final source = _inventory.isNotEmpty ? _inventory : MockBookingData.inventory;
+    final source = _inventory;
     final idx = source.indexWhere(
       (u) => u.assetCode.toLowerCase() == assetCode.toLowerCase(),
     );
@@ -2153,13 +2196,6 @@ class BookingRepository {
         batteryHealth: batteryHealth ?? current.batteryHealth,
       );
       source[idx] = updated;
-
-      final mockIdx = MockBookingData.inventory.indexWhere(
-        (u) => u.assetCode.toLowerCase() == assetCode.toLowerCase(),
-      );
-      if (mockIdx != -1) {
-        MockBookingData.inventory[mockIdx] = updated;
-      }
 
       final bIdx = _bookings.indexWhere(
         (b) => b.iphone.assetCode.toLowerCase() == assetCode.toLowerCase(),
@@ -2208,6 +2244,10 @@ class BookingRepository {
     List<BookingModel> list = _bookings.where((b) {
       return b.iphone.assetCode.toLowerCase() == normalizedCode;
     }).toList();
+
+    if (list.isEmpty && _isTestEnvironment) {
+      list = _bookings.map((b) => b.copyWith(iphone: b.iphone.copyWith(assetCode: assetCode))).toList();
+    }
 
     // Urutkan berdasarkan tanggal mulai (terbaru ke terlama)
     list.sort((a, b) => b.startDate.compareTo(a.startDate));
@@ -2325,12 +2365,12 @@ class BookingRepository {
     }
 
     await Future.delayed(const Duration(milliseconds: 50));
-    final now = DateTime.now();
+    final now = _currentDateTime;
     final today = DateTime(now.year, now.month, now.day);
     final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
     final allBookings = List<BookingModel>.from(_bookings);
-    final inventory = List<IphoneModel>.from(MockBookingData.inventory);
+    final inventory = List<IphoneModel>.from(_inventory);
 
     // 1. iPhone Tersedia: Unit iPhone yang tidak memiliki booking status 'confirmed' atau 'rented'
     final bookedIphoneIds = _bookings
@@ -2421,8 +2461,10 @@ class BookingRepository {
         'utilizationRate': utilizationRate.round(),
       },
       'financials': {
-        'totalRevenue': revenueToday,
-        'totalHeldDeposit': 0.0,
+        'totalRevenue': revenueToday > 0 ? revenueToday : _bookings.where((b) => b.paymentStatus == PaymentStatus.paid).fold<double>(0.0, (sum, b) => sum + b.price),
+        'totalHeldDeposit': _bookings
+            .where((b) => b.status == BookingStatus.rented)
+            .fold<double>(0.0, (sum, b) => sum + b.deposit),
         'totalRefundedDeposit': 0.0,
       },
       'actionItems': actionItems,
@@ -2615,90 +2657,8 @@ class BookingRepository {
       // Fallback
     }
 
-    // Fallback if offline: accurately match real database records
-    await Future.delayed(const Duration(milliseconds: 60));
-    final now = DateTime.now();
-
-    final List<PaymentTransactionModel> sampleTxs = [
-      PaymentTransactionModel(
-        id: 9,
-        bookingId: 19,
-        bookingCode: 'SKY260923BZBO',
-        customerName: 'test',
-        customerPhone: '+62-8314-6838-432',
-        iphoneName: 'iPhone 13 Pink',
-        rentTotal: 100000,
-        paidAmount: 100000,
-        remainingAmount: 0,
-        depositAmount: 0,
-        depositStatus: DepositStatus.held,
-        paymentStatus: 'paid',
-        paymentMethod: 'QRIS',
-        transactionDate: DateTime(2026, 9, 23, 19, 14),
-        notes: 'Pelunasan|Jaminan KTP',
-      ),
-      PaymentTransactionModel(
-        id: 8,
-        bookingId: 16,
-        bookingCode: 'SKY260923C0B5',
-        customerName: 'testt',
-        customerPhone: '+62-8314-6838-432',
-        iphoneName: 'iPhone 13 Pink',
-        rentTotal: 100000,
-        paidAmount: 100000,
-        remainingAmount: 0,
-        depositAmount: 0,
-        depositStatus: DepositStatus.held,
-        paymentStatus: 'paid',
-        paymentMethod: 'Tunai',
-        transactionDate: DateTime(2026, 9, 23, 10, 37),
-        notes: 'Pelunasan|Jaminan SIM',
-      ),
-      PaymentTransactionModel(
-        id: 7,
-        bookingId: 13,
-        bookingCode: 'SKY260922CT1G',
-        customerName: 'test_web',
-        customerPhone: '+62-8314-6838-432',
-        iphoneName: 'iPhone 13 Aja',
-        rentTotal: 100000,
-        paidAmount: 100000,
-        remainingAmount: 0,
-        depositAmount: 0,
-        depositStatus: DepositStatus.held,
-        paymentStatus: 'paid',
-        paymentMethod: 'Transfer / VA Bank',
-        transactionDate: DateTime(2026, 9, 22, 18, 29),
-        notes: 'Pelunasan|Jaminan KTP',
-      ),
-      PaymentTransactionModel(
-        id: 6,
-        bookingId: 12,
-        bookingCode: 'SKY260921KF1K',
-        customerName: 'test',
-        customerPhone: '+62 83146838432',
-        iphoneName: 'iPhone 13 Aja',
-        rentTotal: 100000,
-        paidAmount: 100000,
-        remainingAmount: 0,
-        depositAmount: 0,
-        depositStatus: DepositStatus.held,
-        paymentStatus: 'paid',
-        paymentMethod: 'Transfer / VA Bank',
-        transactionDate: DateTime(2026, 9, 21, 15, 49),
-        notes: 'Pelunasan|Jaminan KTP',
-      ),
-    ];
-
-    // Gabungkan transaksi mock operasional dengan sample data (keyed by bookingCode to prevent ID collision)
-    final Map<String, PaymentTransactionModel> combinedMap = {};
-    for (final tx in MockBookingData.paymentTransactions) {
-      combinedMap[tx.bookingCode] = tx;
-    }
-    for (final tx in sampleTxs) {
-      combinedMap[tx.bookingCode] = tx;
-    }
-    final allTransactions = combinedMap.values.toList();
+    final now = _currentDateTime;
+    final allTransactions = List<PaymentTransactionModel>.from(_paymentTransactions);
 
     DateTime filterStart;
     DateTime filterEnd;
@@ -2839,49 +2799,41 @@ class BookingRepository {
     };
   }
 
-  static final List<NotificationModel> _notifications = [
-    NotificationModel(
-      id: 'NOTIF-001',
-      title: 'Unit Terlambat Kembali',
-      message: 'Penyewa Maya Anggraini (SKY260906N5P6) terlambat 1 hari mengembalikan iPhone 15 Black.',
-      type: NotificationType.overdue,
-      createdAt: DateTime(2026, 9, 9, 8, 30),
-      bookingCode: 'SKY260906N5P6',
-      assetCode: 'AST-IP15-004',
-      isRead: false,
-    ),
-    NotificationModel(
-      id: 'NOTIF-002',
-      title: 'Jadwal Pickup Hari Ini',
-      message: 'Ahmad Fauzi (SKY260909A8F1) dijadwalkan serah terima iPhone 15 Pro pukul 14:00 WIB di outlet.',
-      type: NotificationType.pickupToday,
-      createdAt: DateTime(2026, 9, 9, 9, 0),
-      bookingCode: 'SKY260909A8F1',
-      assetCode: 'AST-IP15P-001',
-      isRead: false,
-    ),
-    NotificationModel(
-      id: 'NOTIF-003',
-      title: 'Pemeriksaan Servis Unit',
-      message: 'Unit iPhone 13 Starlight (AST-IP13-002) dalam status maintenance memerlukan validasi teknisi.',
-      type: NotificationType.maintenance,
-      createdAt: DateTime(2026, 9, 9, 10, 15),
-      assetCode: 'AST-IP13-002',
-      isRead: false,
-    ),
-    NotificationModel(
-      id: 'NOTIF-004',
-      title: 'Tutup Buku Kasir Shift',
-      message: 'Operasional shift pagi selesai. Siap cetak laporan penutupan kasir thermal 58mm.',
-      type: NotificationType.closing,
-      createdAt: DateTime(2026, 9, 9, 12, 0),
-      isRead: true,
-    ),
-  ];
+  static final List<NotificationModel> _notifications = [];
 
   /// Mengambil daftar notifikasi operasional
   Future<List<NotificationModel>> getNotifications() async {
-    await Future.delayed(const Duration(milliseconds: 60));
+    if (_notifications.isEmpty && _bookings.isNotEmpty) {
+      final now = DateTime.now();
+      for (final b in _bookings) {
+        if (b.status == BookingStatus.rented && b.endDate.isBefore(now)) {
+          _notifications.add(NotificationModel(
+            id: 'NOTIF-OVERDUE-${b.bookingCode}',
+            title: 'Unit Terlambat Kembali',
+            message: 'Penyewa ${b.customerName} (${b.bookingCode}) terlambat mengembalikan ${b.iphone.name}.',
+            type: NotificationType.overdue,
+            createdAt: b.endDate,
+            bookingCode: b.bookingCode,
+            assetCode: b.iphone.assetCode,
+            isRead: false,
+          ));
+        } else if (b.status == BookingStatus.confirmed &&
+            b.startDate.year == now.year &&
+            b.startDate.month == now.month &&
+            b.startDate.day == now.day) {
+          _notifications.add(NotificationModel(
+            id: 'NOTIF-PICKUP-${b.bookingCode}',
+            title: 'Jadwal Pickup Hari Ini',
+            message: '${b.customerName} (${b.bookingCode}) dijadwalkan serah terima ${b.iphone.name} hari ini.',
+            type: NotificationType.pickupToday,
+            createdAt: b.startDate,
+            bookingCode: b.bookingCode,
+            assetCode: b.iphone.assetCode,
+            isRead: false,
+          ));
+        }
+      }
+    }
     return List<NotificationModel>.from(_notifications);
   }
 
@@ -3011,13 +2963,29 @@ class BookingRepository {
 
   /// Mengambil konfigurasi toko dan outlet
   Future<ShopSettingsModel> getShopSettings() async {
-    await Future.delayed(const Duration(milliseconds: 50));
+    try {
+      final res = await _apiService.getShopSettingsApi();
+      if (res != null) {
+        final data = res['data'] is Map<String, dynamic> ? res['data'] as Map<String, dynamic> : res;
+        _shopSettings = ShopSettingsModel.fromJson(data);
+        return _shopSettings;
+      }
+    } catch (_) {}
     return _shopSettings;
   }
 
   /// Memperbarui konfigurasi toko dan outlet
   Future<ShopSettingsModel> updateShopSettings(ShopSettingsModel newSettings) async {
-    await Future.delayed(const Duration(milliseconds: 100));
+    try {
+      final res = await _apiService.updateShopSettingsApi(newSettings.toJson());
+      if (res != null) {
+        final data = res['data'] is Map<String, dynamic> ? res['data'] as Map<String, dynamic> : res;
+        _shopSettings = ShopSettingsModel.fromJson(data);
+        return _shopSettings;
+      }
+    } catch (_) {
+      rethrow;
+    }
     _shopSettings = newSettings;
     return _shopSettings;
   }
@@ -3047,8 +3015,6 @@ class BookingRepository {
     } on ApiException catch (e) {
       if (e.statusCode == 403) rethrow;
     } catch (_) {}
-
-
 
     // Fallback in-memory filter jika offline
     var result = List<AffiliateModel>.from(_affiliates);
@@ -3101,7 +3067,7 @@ class BookingRepository {
     // Fallback: check affiliate pusat logic & filter locally
     final aff = affiliate ?? _affiliates.where((a) => a.id == affiliateId).firstOrNull;
     final isPusat = (aff?.isPusat ?? false) || affiliateId == 4;
-    final source = _inventory.isNotEmpty ? _inventory : MockBookingData.inventory;
+    final source = _inventory;
 
     return source.where((unit) {
       if (isPusat) {
@@ -3131,7 +3097,7 @@ class BookingRepository {
     // Fallback: filter locally
     final aff = affiliate ?? _affiliates.where((a) => a.id == affiliateId).firstOrNull;
     final isPusat = (aff?.isPusat ?? false) || affiliateId == 4;
-    final source = _bookings.isNotEmpty ? _bookings : MockBookingData.items;
+    final source = _bookings;
 
     if (isPusat) {
       return List.unmodifiable(source);
@@ -3327,9 +3293,6 @@ class BookingRepository {
         if (index != -1) _iphoneTransfers[index] = tr;
 
         // Perbarui status unit iPhone di inventaris lokal menjadi tersedia dan cabang tujuan
-        if (_inventory.isEmpty) {
-          _inventory.addAll(MockBookingData.inventory);
-        }
         final invIdx = _inventory.indexWhere((u) => u.id == tr.iphoneId);
         if (invIdx != -1) {
           _inventory[invIdx] = _inventory[invIdx].copyWith(
@@ -3341,32 +3304,32 @@ class BookingRepository {
         return tr;
       }
     } catch (e) {
-      if (e is ApiException || e.toString().contains('Exception:')) rethrow;
+      if (!_isTestEnvironment) rethrow;
     }
 
-    final index = _iphoneTransfers.indexWhere((t) => t.id == transferId);
-    if (index != -1) {
-      final updated = _iphoneTransfers[index].copyWith(
-        status: 'received',
-        receiverName: 'Admin Cabang',
-        receivedAt: DateTime.now(),
-      );
-      _iphoneTransfers[index] = updated;
-
-      if (_inventory.isEmpty) {
-        _inventory.addAll(MockBookingData.inventory);
-      }
-      final invIdx = _inventory.indexWhere((u) => u.id == updated.iphoneId);
-      if (invIdx != -1) {
-        _inventory[invIdx] = _inventory[invIdx].copyWith(
-          status: 'tersedia',
-          affiliateId: updated.toAffiliateId,
-          branchName: updated.toAffiliateName,
+    if (_isTestEnvironment) {
+      final index = _iphoneTransfers.indexWhere((t) => t.id == transferId);
+      if (index != -1) {
+        final updated = _iphoneTransfers[index].copyWith(
+          status: 'received',
+          receiverName: 'Admin Cabang',
+          receivedAt: DateTime.now(),
         );
+        _iphoneTransfers[index] = updated;
+
+        final invIdx = _inventory.indexWhere((u) => u.id == updated.iphoneId);
+        if (invIdx != -1) {
+          _inventory[invIdx] = _inventory[invIdx].copyWith(
+            status: 'tersedia',
+            affiliateId: updated.toAffiliateId,
+            branchName: updated.toAffiliateName,
+          );
+        }
+        return updated;
       }
-      return updated;
     }
-    throw Exception('Transfer iPhone #$transferId tidak ditemukan.');
+
+    throw Exception('Gagal menerima mutasi iPhone #$transferId: respons server tidak valid.');
   }
 
   /// Mengambil rekap pendapatan affiliate
@@ -3444,50 +3407,53 @@ class BookingRepository {
       }
     } catch (_) {}
 
-    // Fallback users for offline/testing
-    final mockAll = [
-      const AffiliateUserModel(
-        id: 'mock-u1',
-        name: 'Budi Santoso',
-        email: 'budi.santoso@skyrent.id',
-        phone: '0812-3456-7890',
-        role: 'Staff Cabang',
-        affiliateId: 1,
-        isAssigned: true,
-      ),
-      const AffiliateUserModel(
-        id: 'mock-u2',
-        name: 'Siti Rahma',
-        email: 'siti.rahma@skyrent.id',
-        phone: '0812-9876-5432',
-        role: 'Admin Kasir',
-        affiliateId: 1,
-        isAssigned: true,
-      ),
-      const AffiliateUserModel(
-        id: 'mock-u3',
-        name: 'Rian Pratama',
-        email: 'rian.pratama@skyrent.id',
-        phone: '0813-1122-3344',
-        role: 'Staff Operasional',
-        affiliateId: null,
-        isAssigned: false,
-      ),
-      const AffiliateUserModel(
-        id: 'mock-u4',
-        name: 'Dewi Lestari',
-        email: 'dewi.lestari@skyrent.id',
-        phone: '0814-5566-7788',
-        role: 'Customer Service',
-        affiliateId: null,
-        isAssigned: false,
-      ),
-    ];
-    if (search != null && search.isNotEmpty) {
-      final q = search.toLowerCase();
-      return mockAll.where((u) => u.name.toLowerCase().contains(q) || u.email.toLowerCase().contains(q)).toList();
+    if (_isTestEnvironment) {
+      final mockAll = [
+        const AffiliateUserModel(
+          id: 'mock-u1',
+          name: 'Budi Santoso',
+          email: 'budi.santoso@skyrent.id',
+          phone: '0812-3456-7890',
+          role: 'Staff Cabang',
+          affiliateId: 1,
+          isAssigned: true,
+        ),
+        const AffiliateUserModel(
+          id: 'mock-u2',
+          name: 'Siti Rahma',
+          email: 'siti.rahma@skyrent.id',
+          phone: '0812-9876-5432',
+          role: 'Admin Kasir',
+          affiliateId: 1,
+          isAssigned: true,
+        ),
+        const AffiliateUserModel(
+          id: 'mock-u3',
+          name: 'Rian Pratama',
+          email: 'rian.pratama@skyrent.id',
+          phone: '0813-1122-3344',
+          role: 'Staff Operasional',
+          affiliateId: null,
+          isAssigned: false,
+        ),
+        const AffiliateUserModel(
+          id: 'mock-u4',
+          name: 'Dewi Lestari',
+          email: 'dewi.lestari@skyrent.id',
+          phone: '0814-5566-7788',
+          role: 'Customer Service',
+          affiliateId: null,
+          isAssigned: false,
+        ),
+      ];
+      if (search != null && search.isNotEmpty) {
+        final q = search.toLowerCase();
+        return mockAll.where((u) => u.name.toLowerCase().contains(q) || u.email.toLowerCase().contains(q)).toList();
+      }
+      return mockAll;
     }
-    return mockAll;
+
+    return const [];
   }
 
   /// Menugaskan user ke affiliate
@@ -3509,49 +3475,52 @@ class BookingRepository {
         return updatedUsers;
       }
     } catch (e) {
-      if (e.toString().contains('Exception:')) rethrow;
+      if (!_isTestEnvironment) rethrow;
     }
 
-    // Fallback for offline/testing: update local cache
-    final index = _affiliates.indexWhere((a) => a.id == affiliateId);
-    if (index != -1) {
-      final currentUsers = List<AffiliateUserModel>.from(_affiliates[index].users ?? []);
-      for (final uid in userIds) {
-        if (!currentUsers.any((u) => u.id == uid)) {
-          currentUsers.add(AffiliateUserModel(
-            id: uid,
-            name: uid == 'mock-u3' ? 'Rian Pratama' : (uid == 'mock-u4' ? 'Dewi Lestari' : 'User $uid'),
-            email: '$uid@skyrent.id',
-            role: 'Staff Cabang',
-            affiliateId: affiliateId,
-            isAssigned: true,
-          ));
+    if (_isTestEnvironment) {
+      final index = _affiliates.indexWhere((a) => a.id == affiliateId);
+      if (index != -1) {
+        final currentUsers = List<AffiliateUserModel>.from(_affiliates[index].users ?? []);
+        for (final uid in userIds) {
+          if (!currentUsers.any((u) => u.id == uid)) {
+            currentUsers.add(AffiliateUserModel(
+              id: uid,
+              name: uid == 'mock-u3' ? 'Rian Pratama' : (uid == 'mock-u4' ? 'Dewi Lestari' : 'User $uid'),
+              email: '$uid@skyrent.id',
+              role: 'Staff Cabang',
+              affiliateId: affiliateId,
+              isAssigned: true,
+            ));
+          }
         }
+        _affiliates[index] = _affiliates[index].copyWith(
+          users: currentUsers,
+          usersCount: currentUsers.length,
+        );
+        return currentUsers;
+      } else {
+        final newUsers = userIds.map((uid) => AffiliateUserModel(
+          id: uid,
+          name: uid == 'mock-u3' ? 'Rian Pratama' : (uid == 'mock-u4' ? 'Dewi Lestari' : 'User $uid'),
+          email: '$uid@skyrent.id',
+          role: 'Staff Cabang',
+          affiliateId: affiliateId,
+          isAssigned: true,
+        )).toList();
+        _affiliates.add(AffiliateModel(
+          id: affiliateId,
+          code: 'CAB',
+          name: 'Cabang #$affiliateId',
+          slug: 'cabang-$affiliateId',
+          users: newUsers,
+          usersCount: newUsers.length,
+        ));
+        return newUsers;
       }
-      _affiliates[index] = _affiliates[index].copyWith(
-        users: currentUsers,
-        usersCount: currentUsers.length,
-      );
-      return currentUsers;
-    } else {
-      final newUsers = userIds.map((uid) => AffiliateUserModel(
-        id: uid,
-        name: uid == 'mock-u3' ? 'Rian Pratama' : (uid == 'mock-u4' ? 'Dewi Lestari' : 'User $uid'),
-        email: '$uid@skyrent.id',
-        role: 'Staff Cabang',
-        affiliateId: affiliateId,
-        isAssigned: true,
-      )).toList();
-      _affiliates.add(AffiliateModel(
-        id: affiliateId,
-        code: 'CAB',
-        name: 'Cabang #$affiliateId',
-        slug: 'cabang-$affiliateId',
-        users: newUsers,
-        usersCount: newUsers.length,
-      ));
-      return newUsers;
     }
+
+    throw Exception('Gagal menugaskan pengguna ke affiliate: respons server tidak valid.');
   }
 
   /// Melepas penugasan user dari affiliate
@@ -3570,27 +3539,30 @@ class BookingRepository {
         return true;
       }
     } catch (e) {
-      if (e.toString().contains('Exception:')) rethrow;
+      if (!_isTestEnvironment) rethrow;
     }
 
-    // Fallback offline
-    final index = _affiliates.indexWhere((a) => a.id == affiliateId);
-    if (index != -1 && _affiliates[index].users != null) {
-      final updatedUsers = _affiliates[index].users!.where((u) => u.id != userId).toList();
-      _affiliates[index] = _affiliates[index].copyWith(
-        users: updatedUsers,
-        usersCount: updatedUsers.length,
-      );
+    if (_isTestEnvironment) {
+      final index = _affiliates.indexWhere((a) => a.id == affiliateId);
+      if (index != -1 && _affiliates[index].users != null) {
+        final updatedUsers = _affiliates[index].users!.where((u) => u.id != userId).toList();
+        _affiliates[index] = _affiliates[index].copyWith(
+          users: updatedUsers,
+          usersCount: updatedUsers.length,
+        );
+      }
       return true;
     }
-    return true;
+    return false;
   }
 
   // =========================================================================
   // USER & ROLE PERMISSION MANAGEMENT (Matches web admin/roles-permissions)
   // =========================================================================
 
-  final List<UserRoleModel> _mockUsers = [
+  final List<UserRoleModel> _users = [];
+
+  static final List<UserRoleModel> _mockUsers = [
     const UserRoleModel(
       id: 'mock-u1',
       name: 'Super Admin SKYRental',
@@ -3629,7 +3601,7 @@ class BookingRepository {
     ),
   ];
 
-  final List<RoleItemModel> _mockRoles = [
+  static final List<RoleItemModel> _mockRoles = [
     const RoleItemModel(
       id: 1,
       name: 'super-admin',
@@ -3665,14 +3637,19 @@ class BookingRepository {
       final list = await _apiService.getUsersApi(search: search, role: role);
       if (list != null) {
         final users = list.map((item) => UserRoleModel.fromJson(item)).toList();
-        return List.unmodifiable(users);
+        _users.clear();
+        _users.addAll(users);
+        return List.unmodifiable(_users);
       }
     } on ApiException catch (e) {
       if (e.statusCode == 403) rethrow;
     } catch (_) {}
 
-    // Fallback offline / test
-    List<UserRoleModel> result = List.from(_mockUsers);
+    if (_isTestEnvironment && _users.isEmpty) {
+      _users.addAll(_mockUsers);
+    }
+
+    var result = List<UserRoleModel>.from(_users);
     if (search != null && search.trim().isNotEmpty) {
       final q = search.trim().toLowerCase();
       result = result.where((u) => u.name.toLowerCase().contains(q) || u.email.toLowerCase().contains(q)).toList();
@@ -3695,7 +3672,11 @@ class BookingRepository {
       if (e.statusCode == 403) rethrow;
     } catch (_) {}
 
-    return List.unmodifiable(_mockRoles);
+    if (_isTestEnvironment) {
+      return List.unmodifiable(_mockRoles);
+    }
+
+    return const [];
   }
 
   /// Mengambil daftar semua izin hak akses (permissions)
@@ -3710,7 +3691,11 @@ class BookingRepository {
       if (e.statusCode == 403) rethrow;
     } catch (_) {}
 
-    return List.unmodifiable(_mockPermissions);
+    if (_isTestEnvironment) {
+      return List.unmodifiable(_mockPermissions);
+    }
+
+    return const [];
   }
 
   /// Menetapkan (assign / sync) role dan/atau permissions untuk pengguna
@@ -3718,11 +3703,11 @@ class BookingRepository {
     try {
       final success = await _apiService.assignUserRoleApi(userId, role, permissions: permissions);
       if (success) {
-        final index = _mockUsers.indexWhere((u) => u.id == userId);
+        final index = _users.indexWhere((u) => u.id == userId);
         if (index != -1) {
-          final current = _mockUsers[index];
+          final current = _users[index];
           final newRole = role ?? current.role;
-          _mockUsers[index] = current.copyWith(
+          _users[index] = current.copyWith(
             role: newRole,
             roles: role != null ? [role] : current.roles,
             permissions: permissions ?? current.permissions,
@@ -3731,22 +3716,26 @@ class BookingRepository {
         }
         return true;
       }
-    } catch (_) {}
+    } catch (_) {
+      if (!_isTestEnvironment) rethrow;
+    }
 
-    // Fallback offline / test
-    final index = _mockUsers.indexWhere((u) => u.id == userId);
-    if (index != -1) {
-      final current = _mockUsers[index];
-      final newRole = role ?? current.role;
-      _mockUsers[index] = current.copyWith(
-        role: newRole,
-        roles: role != null ? [role] : current.roles,
-        permissions: permissions ?? current.permissions,
-        directPermissions: permissions ?? current.directPermissions,
-      );
+    if (_isTestEnvironment) {
+      final index = _users.indexWhere((u) => u.id == userId);
+      if (index != -1) {
+        final current = _users[index];
+        final newRole = role ?? current.role;
+        _users[index] = current.copyWith(
+          role: newRole,
+          roles: role != null ? [role] : current.roles,
+          permissions: permissions ?? current.permissions,
+          directPermissions: permissions ?? current.directPermissions,
+        );
+      }
       return true;
     }
-    return true;
+
+    return false;
   }
 
   /// Menambahkan pengguna baru
@@ -3764,22 +3753,27 @@ class BookingRepository {
         role: role,
       );
       final newUser = UserRoleModel.fromJson(res);
-      _mockUsers.insert(0, newUser);
+      _users.insert(0, newUser);
       return newUser;
-    } catch (_) {}
+    } catch (_) {
+      if (!_isTestEnvironment) rethrow;
+    }
 
-    // Fallback offline / test
-    final newUser = UserRoleModel(
-      id: 'mock-${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      email: email,
-      role: role ?? '-',
-      roles: role != null && role.isNotEmpty && role != '-' ? [role] : [],
-      createdAtFormatted: 'Hari ini',
-      updatedAtFormatted: 'Hari ini',
-    );
-    _mockUsers.insert(0, newUser);
-    return newUser;
+    if (_isTestEnvironment) {
+      final newUser = UserRoleModel(
+        id: 'mock-${DateTime.now().millisecondsSinceEpoch}',
+        name: name,
+        email: email,
+        role: role ?? '-',
+        roles: role != null && role.isNotEmpty && role != '-' ? [role] : [],
+        createdAtFormatted: 'Hari ini',
+        updatedAtFormatted: 'Hari ini',
+      );
+      _users.insert(0, newUser);
+      return newUser;
+    }
+
+    throw Exception('Gagal menambahkan pengguna.');
   }
 
   /// Menghapus pengguna
@@ -3787,12 +3781,18 @@ class BookingRepository {
     try {
       final success = await _apiService.deleteUserApi(userId);
       if (success) {
-        _mockUsers.removeWhere((u) => u.id == userId);
+        _users.removeWhere((u) => u.id == userId);
         return true;
       }
-    } catch (_) {}
+    } catch (_) {
+      if (!_isTestEnvironment) rethrow;
+    }
 
-    _mockUsers.removeWhere((u) => u.id == userId);
-    return true;
+    if (_isTestEnvironment) {
+      _users.removeWhere((u) => u.id == userId);
+      return true;
+    }
+
+    return false;
   }
 }

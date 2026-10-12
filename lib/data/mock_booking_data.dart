@@ -582,6 +582,24 @@ class MockBookingData {
 
   static final List<PaymentTransactionModel> paymentTransactions = [
     PaymentTransactionModel(
+      id: 200,
+      bookingId: 99,
+      bookingCode: 'SKY260923BZBO',
+      customerName: 'test',
+      customerPhone: '081234567899',
+      iphoneName: 'iPhone 13 Pink 128GB',
+      rentTotal: 250000,
+      paidAmount: 250000,
+      remainingAmount: 0,
+      depositAmount: 150000,
+      depositStatus: DepositStatus.held,
+      refundAmount: 0,
+      paymentStatus: 'paid',
+      paymentMethod: 'Tunai',
+      transactionDate: DateTime(2026, 9, 9, 10, 0),
+      notes: 'Test transaksi penjualan',
+    ),
+    PaymentTransactionModel(
       id: 201,
       bookingId: 101,
       bookingCode: 'SKY260909A8F1',

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/iphone_model.dart';
@@ -27,19 +27,12 @@ class ApiService {
   static const String _prefKeyAuthToken = 'api_auth_token';
   static const String _prefKeyUserProfile = 'api_user_profile';
 
-  static String get _initialBaseUrl {
-    if (!kIsWeb) {
-      try {
-        if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-          return 'http://127.0.0.1:8000/api/v1';
-        }
-      } catch (_) {}
-    }
-    return 'http://192.168.1.93:8000/api/v1';
-  }
+  static const String productionBaseUrl = 'https://skyrental.id/api/v1';
 
-  /// Default API base URL pointing to local Laravel backend or production domain
-  String baseUrl = _initialBaseUrl;
+  static String get _initialBaseUrl => productionBaseUrl;
+
+  /// Default API base URL pointing to official production API
+  String baseUrl = productionBaseUrl;
 
   /// Bearer Sanctum auth token
   String? authToken;
@@ -49,7 +42,20 @@ class ApiService {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getString(_prefKeyBaseUrl);
       if (saved != null && saved.trim().isNotEmpty) {
-        baseUrl = saved.trim();
+        final cleanSaved = saved.trim();
+        // Discard old development URLs so production app connects to https://skyrental.id
+        if (cleanSaved.contains('127.0.0.1') ||
+            cleanSaved.contains('localhost') ||
+            cleanSaved.contains('192.168.') ||
+            cleanSaved.contains('10.0.2.2') ||
+            cleanSaved.contains('skyrent.test')) {
+          baseUrl = productionBaseUrl;
+          await prefs.setString(_prefKeyBaseUrl, productionBaseUrl);
+        } else {
+          baseUrl = cleanSaved;
+        }
+      } else {
+        baseUrl = productionBaseUrl;
       }
       final savedToken = prefs.getString(_prefKeyAuthToken);
       if (savedToken != null && savedToken.trim().isNotEmpty) {
@@ -229,46 +235,10 @@ class ApiService {
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
       return const [];
     }
-    final list = <String>[];
-    final bool isDesktop = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
-
-    if (isDesktop) {
-      list.addAll([
-        'http://127.0.0.1:8000/api/v1',
-        'http://localhost:8000/api/v1',
-        'http://skyrent.test/api/v1',
-        'http://localhost/api/v1',
-        if (!baseUrl.contains('skyrental.id')) baseUrl,
-        'http://192.168.1.93:8000/api/v1',
-      ]);
-    } else {
-      // Mobile / Emulator
-      // Jika baseUrl bukan skyrental.id, prioritaskan baseUrl yang tersimpan
-      if (!baseUrl.contains('skyrental.id')) {
-        list.add(baseUrl);
-      }
-      list.addAll([
-        'http://10.0.2.2:8000/api/v1',       // Android Emulator loopback
-        'http://192.168.1.93:8000/api/v1',   // Host LAN IP
-        'http://127.0.0.1:8000/api/v1',
-        'http://localhost:8000/api/v1',
-        'http://skyrent.test/api/v1',
-        'http://localhost/api/v1',
-      ]);
-      // Jika baseUrl adalah skyrental.id, coba setelah endpoint lokal
-      if (baseUrl.contains('skyrental.id')) {
-        list.add(baseUrl);
-      }
-    }
-    // Tambahkan domain production sebagai cadangan terakhir
-    list.add('https://skyrental.id/api/v1');
-
-    // Return distinct non-empty list
-    final seen = <String>{};
-    return list.where((u) => u.isNotEmpty && seen.add(u)).toList();
+    return [baseUrl];
   }
 
-  Map<String, String> _buildHeaders({bool isJson = false}) {
+  Map<String, String> _buildHeaders({bool isJson = false, Uri? targetUri}) {
     final headers = <String, String>{
       'Accept': 'application/json',
     };
@@ -276,7 +246,10 @@ class ApiService {
       headers['Content-Type'] = 'application/json';
     }
     if (authToken != null && authToken!.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $authToken';
+      // Do not send authentication tokens to unrelated hosts
+      if (targetUri == null || targetUri.host == Uri.parse(baseUrl).host) {
+        headers['Authorization'] = 'Bearer $authToken';
+      }
     }
     return headers;
   }
@@ -2007,6 +1980,356 @@ class ApiService {
       } catch (_) {}
     }
     return false;
+  }
+
+  /// Mengambil konfigurasi nama toko & outlet
+  /// GET /api/v1/settings/shop
+  Future<Map<String, dynamic>?> getShopSettingsApi() async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/settings/shop');
+        final response = await http.get(uri, headers: _buildHeaders(targetUri: uri)).timeout(const Duration(seconds: 10));
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return (decoded['data'] as Map<String, dynamic>?) ?? decoded;
+          }
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Memperbarui konfigurasi nama toko & outlet (Memerlukan Super-admin)
+  /// PUT /api/v1/settings/shop
+  Future<Map<String, dynamic>?> updateShopSettingsApi(Map<String, dynamic> data) async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/settings/shop');
+        final response = await http.put(
+          uri,
+          headers: _buildHeaders(isJson: true, targetUri: uri),
+          body: jsonEncode(data),
+        ).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return (decoded['data'] as Map<String, dynamic>?) ?? decoded;
+          }
+        }
+
+        if (response.statusCode >= 400) {
+          String message = 'Gagal menyimpan pengaturan toko (HTTP ${response.statusCode})';
+          Map<String, dynamic>? errors;
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map) {
+              if (errBody['message'] != null) message = errBody['message'].toString();
+              if (errBody['errors'] is Map<String, dynamic>) errors = errBody['errors'] as Map<String, dynamic>;
+            }
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode, errors: errors);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Mengambil daftar riwayat struk / cetak ulang transaksi
+  /// GET /api/v1/receipts
+  Future<Map<String, dynamic>?> getReceiptsApi({
+    String? search,
+    String? type,
+    String? date,
+    String? startDate,
+    String? endDate,
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    for (final base in candidateUrls) {
+      try {
+        final queryParams = <String, String>{
+          'page': page.toString(),
+          'per_page': perPage.toString(),
+        };
+        if (search != null && search.trim().isNotEmpty) {
+          queryParams['search'] = search.trim();
+        }
+        if (type != null && type.isNotEmpty && type != 'all' && type != 'semua') {
+          queryParams['type'] = type;
+        }
+        if (date != null && date.isNotEmpty) {
+          queryParams['date'] = date;
+        }
+        if (startDate != null && startDate.isNotEmpty) {
+          queryParams['start_date'] = startDate;
+        }
+        if (endDate != null && endDate.isNotEmpty) {
+          queryParams['end_date'] = endDate;
+        }
+
+        final uri = Uri.parse('$base/receipts').replace(queryParameters: queryParams);
+        final response = await http.get(uri, headers: _buildHeaders(targetUri: uri)).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        }
+        if (response.statusCode >= 400) {
+          String message = 'Gagal memuat struk (HTTP ${response.statusCode})';
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map && errBody['message'] != null) {
+              message = errBody['message'].toString();
+            }
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Mengambil detail satu struk transaksi
+  /// GET /api/v1/receipts/{bookingIdOrCode}
+  Future<Map<String, dynamic>?> getReceiptDetailApi(String bookingIdOrCode) async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/receipts/$bookingIdOrCode');
+        final response = await http.get(uri, headers: _buildHeaders(targetUri: uri)).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return (decoded['data'] as Map<String, dynamic>?) ?? decoded;
+          }
+        }
+        if (response.statusCode >= 400) {
+          String message = 'Struk tidak ditemukan (HTTP ${response.statusCode})';
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Mengambil daftar rental aktif (status rented) untuk alur pengembalian
+  /// GET /api/v1/returns/active-rentals
+  Future<Map<String, dynamic>?> getActiveRentalsApi({
+    String? query,
+    String? search,
+    bool? isOverdueOnly,
+    bool? isDueTodayOnly,
+    bool? isUpcomingOnly,
+    String? modelFilter,
+    String? jaminanFilter,
+    String sortBy = 'urgent',
+    int page = 1,
+    int perPage = 50,
+  }) async {
+    for (final base in candidateUrls) {
+      try {
+        final queryParams = <String, String>{
+          'page': page.toString(),
+          'per_page': perPage.toString(),
+          'sort': sortBy,
+        };
+        final searchTerm = (query ?? search)?.trim();
+        if (searchTerm != null && searchTerm.isNotEmpty) {
+          queryParams['search'] = searchTerm;
+        }
+        if (isOverdueOnly == true) {
+          queryParams['is_overdue'] = '1';
+        }
+        if (isDueTodayOnly == true) {
+          queryParams['is_due_today'] = '1';
+        }
+        if (isUpcomingOnly == true) {
+          queryParams['is_upcoming'] = '1';
+        }
+        if (modelFilter != null && modelFilter != 'Semua' && modelFilter.isNotEmpty) {
+          queryParams['model'] = modelFilter;
+        }
+        if (jaminanFilter != null && jaminanFilter != 'Semua' && jaminanFilter.isNotEmpty) {
+          queryParams['jaminan'] = jaminanFilter;
+        }
+
+        final uri = Uri.parse('$base/returns/active-rentals').replace(queryParameters: queryParams);
+        final response = await http.get(uri, headers: _buildHeaders(targetUri: uri)).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        }
+        if (response.statusCode >= 400) {
+          String message = 'Gagal memuat rental aktif (HTTP ${response.statusCode})';
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Mengambil ringkasan operasional rental aktif & pengembalian
+  /// GET /api/v1/returns/summary
+  Future<Map<String, dynamic>?> getReturnSummaryApi() async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/returns/summary');
+        final response = await http.get(uri, headers: _buildHeaders(targetUri: uri)).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return (decoded['data'] as Map<String, dynamic>?) ?? decoded;
+          }
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Mengambil daftar riwayat transaksi pembayaran kasir & sewa
+  /// GET /api/v1/payments
+  Future<Map<String, dynamic>?> getPaymentsApi({
+    String? search,
+    String? type,
+    String? status,
+    String? paymentMethod,
+    String? date,
+    String? startDate,
+    String? endDate,
+    int page = 1,
+    int limit = 50,
+  }) async {
+    for (final base in candidateUrls) {
+      try {
+        final queryParams = <String, String>{
+          'page': page.toString(),
+          'limit': limit.toString(),
+        };
+        if (search != null && search.trim().isNotEmpty) {
+          queryParams['search'] = search.trim();
+        }
+        final effectiveType = (type != null && type.isNotEmpty && type != 'all' && type != 'semua')
+            ? type
+            : ((status != null && status.isNotEmpty && status != 'Semua' && status != 'all') ? status : null);
+        if (effectiveType != null) {
+          queryParams['type'] = effectiveType;
+        }
+        if (paymentMethod != null && paymentMethod.isNotEmpty && paymentMethod != 'semua') {
+          queryParams['payment_method'] = paymentMethod;
+        }
+        if (date != null && date.isNotEmpty) {
+          queryParams['date'] = date;
+        }
+        if (startDate != null && startDate.isNotEmpty) {
+          queryParams['start_date'] = startDate;
+        }
+        if (endDate != null && endDate.isNotEmpty) {
+          queryParams['end_date'] = endDate;
+        }
+
+        final uri = Uri.parse('$base/payments').replace(queryParameters: queryParams);
+        final response = await http.get(uri, headers: _buildHeaders(targetUri: uri)).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        }
+        if (response.statusCode >= 400) {
+          String message = 'Gagal memuat riwayat pembayaran (HTTP ${response.statusCode})';
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Memproses pengembalian / refund uang jaminan (deposit) via REST API
+  /// POST /api/v1/deposits/refund
+  Future<Map<String, dynamic>?> refundDepositApi({
+    required String bookingCode,
+    required double amount,
+    required String refundMethod,
+    String? bankName,
+    String? accountNumber,
+    String? accountHolder,
+    String? note,
+    String? notes,
+  }) async {
+    final effectiveNote = (note != null && note.isNotEmpty) ? note : notes;
+    final payload = {
+      'booking_code': bookingCode,
+      'amount': amount,
+      'refund_method': refundMethod,
+      if (bankName != null && bankName.isNotEmpty) 'bank_name': bankName,
+      if (accountNumber != null && accountNumber.isNotEmpty) 'account_number': accountNumber,
+      if (accountHolder != null && accountHolder.isNotEmpty) 'account_holder': accountHolder,
+      if (effectiveNote != null && effectiveNote.isNotEmpty) 'note': effectiveNote,
+    };
+
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/deposits/refund');
+        final response = await http.post(
+          uri,
+          headers: _buildHeaders(isJson: true, targetUri: uri),
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        }
+        if (response.statusCode >= 400) {
+          String message = 'Gagal memproses refund deposit (HTTP ${response.statusCode})';
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
   }
 }
 

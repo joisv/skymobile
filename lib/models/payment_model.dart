@@ -123,24 +123,41 @@ class PaymentTransactionModel {
   }
 
   factory PaymentTransactionModel.fromJson(Map<String, dynamic> json) {
+    DateTime parsedDate;
+    try {
+      final dateVal = json['transaction_date'] ?? json['paid_at'] ?? json['created_at'];
+      parsedDate = dateVal != null ? DateTime.parse(dateVal.toString()) : DateTime.now();
+    } catch (_) {
+      parsedDate = DateTime.now();
+    }
+
+    final idVal = json['id'];
+    final int parsedId = idVal is int ? idVal : int.tryParse(idVal?.toString() ?? '0') ?? 0;
+
+    final bookingIdVal = json['booking_id'];
+    final int parsedBookingId = bookingIdVal is int ? bookingIdVal : int.tryParse(bookingIdVal?.toString() ?? '0') ?? parsedId;
+
+    final amountVal = (json['paid_amount'] as num?)?.toDouble() ?? (json['amount'] as num?)?.toDouble() ?? 0.0;
+    final rentVal = (json['rent_total'] as num?)?.toDouble() ?? amountVal;
+
     return PaymentTransactionModel(
-      id: json['id'] as int,
-      bookingId: json['booking_id'] as int,
-      bookingCode: json['booking_code'] as String,
-      customerName: json['customer_name'] as String,
-      customerPhone: json['customer_phone'] as String,
-      iphoneName: json['iphone_name'] as String? ?? 'iPhone',
-      rentTotal: (json['rent_total'] as num).toDouble(),
-      paidAmount: (json['paid_amount'] as num).toDouble(),
-      remainingAmount: (json['remaining_amount'] as num).toDouble(),
-      depositAmount: (json['deposit_amount'] as num).toDouble(),
-      depositStatus: DepositStatus.fromString(json['deposit_status'] as String? ?? 'held'),
-      refundAmount: (json['refund_amount'] as num?)?.toDouble() ?? 0,
-      deductionAmount: (json['deduction_amount'] as num?)?.toDouble() ?? 0,
-      paymentStatus: json['payment_status'] as String? ?? 'unpaid',
-      paymentMethod: json['payment_method'] as String? ?? 'QRIS',
-      transactionDate: DateTime.parse(json['transaction_date'] as String),
-      notes: json['notes'] as String?,
+      id: parsedId,
+      bookingId: parsedBookingId,
+      bookingCode: json['booking_code']?.toString() ?? json['receipt_number']?.toString() ?? '',
+      customerName: json['customer_name']?.toString() ?? 'Pelanggan',
+      customerPhone: json['customer_phone']?.toString() ?? '',
+      iphoneName: json['iphone_name']?.toString() ?? json['unit_name']?.toString() ?? 'iPhone',
+      rentTotal: rentVal,
+      paidAmount: amountVal,
+      remainingAmount: (json['remaining_amount'] as num?)?.toDouble() ?? 0.0,
+      depositAmount: (json['deposit_amount'] as num?)?.toDouble() ?? (json['deposit_fee'] as num?)?.toDouble() ?? 0.0,
+      depositStatus: DepositStatus.fromString(json['deposit_status']?.toString() ?? 'held'),
+      refundAmount: (json['refund_amount'] as num?)?.toDouble() ?? 0.0,
+      deductionAmount: (json['deduction_amount'] as num?)?.toDouble() ?? 0.0,
+      paymentStatus: json['payment_status']?.toString() ?? 'paid',
+      paymentMethod: json['payment_method']?.toString() ?? 'Tunai',
+      transactionDate: parsedDate,
+      notes: json['notes']?.toString() ?? json['note']?.toString(),
     );
   }
 

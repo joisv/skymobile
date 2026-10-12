@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:barcode_widget/barcode_widget.dart';
-import '../../data/mock_receipt_data.dart';
+import '../../data/booking_repository.dart';
 import '../../models/receipt_format_settings.dart';
 import '../../models/receipt_model.dart';
 import '../../models/printer_device_model.dart';
@@ -24,8 +24,9 @@ class ReceiptScreen extends StatefulWidget {
 }
 
 class _ReceiptScreenState extends State<ReceiptScreen> {
-  late int _selectedMockIndex;
-  late ReceiptModel _currentReceipt;
+  ReceiptModel? _currentReceipt;
+  List<ReceiptModel> _receiptList = [];
+  bool _isLoading = false;
   bool _isThermalView = true; // true: Thermal Paper (ESC/POS), false: Digital Card
   bool _isPrinting = false;
   PrinterDeviceModel _activePrinter = PrinterDeviceModel.defaultVsc();
@@ -38,12 +39,27 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     super.initState();
     if (widget.initialReceipt != null) {
       _currentReceipt = widget.initialReceipt!;
-      _selectedMockIndex = 0;
-    } else {
-      _selectedMockIndex = 0;
-      _currentReceipt = MockReceiptData.items[0];
     }
+    _loadLatestReceipt();
     _loadActivePrinter();
+  }
+
+  Future<void> _loadLatestReceipt() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await BookingRepository().getReceiptHistory();
+      if (mounted) {
+        setState(() {
+          _receiptList = list;
+          if (_currentReceipt == null && list.isNotEmpty) {
+            _currentReceipt = list.first;
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _loadActivePrinter() async {
@@ -57,15 +73,9 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     }
   }
 
-  void _selectReceipt(int index) {
-    setState(() {
-      _selectedMockIndex = index;
-      _currentReceipt = MockReceiptData.items[index];
-    });
-  }
-
   void _copyReceiptText() {
-    var text = _currentReceipt.toEscPos58mm(formatSettings: _formatSettings);
+    if (_currentReceipt == null) return;
+    var text = _currentReceipt!.toEscPos58mm(formatSettings: _formatSettings);
     text = text.replaceAllMapped(
       RegExp(r'\[STORE_NAME:.*?:.*?:.*?:(.*?)\]'),
       (m) => m.group(1) ?? '',
@@ -81,6 +91,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   }
 
   Future<void> _handlePrint() async {
+    if (_currentReceipt == null) return;
     setState(() => _isPrinting = true);
 
     showDialog(
@@ -109,7 +120,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
       ),
     );
 
-    final result = await _printService.printReceipt(_currentReceipt, targetPrinter: _activePrinter);
+    final result = await _printService.printReceipt(_currentReceipt!, targetPrinter: _activePrinter);
 
     if (!mounted) return;
     Navigator.pop(context); // Close loading dialog
@@ -126,7 +137,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Resi ${_currentReceipt.receiptNumber} berhasil dicetak pada printer ${result.deviceName ?? _activePrinter.name} (${result.bytesSent} byte)!',
+                  'Resi ${_currentReceipt!.receiptNumber} berhasil dicetak pada printer ${result.deviceName ?? _activePrinter.name} (${result.bytesSent} byte)!',
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
@@ -224,138 +235,184 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // 1. Mock Data Selector Carousel / Tabs
-          Container(
-            color: AppTheme.surface,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Pilih Data Tiruan Resi:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Memuat data resi...'),
+                ],
+              ),
+            )
+          : _currentReceipt == null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey.shade400),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Belum Ada Struk Transaksi',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Struk akan otomatis tersedia setelah pembayaran atau pengembalian unit diproses.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                          onPressed: _loadLatestReceipt,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Muat Ulang'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
-                    // View Toggle
+                  ),
+                )
+              : Column(
+                  children: [
+                    // 1. Real Receipt Selector Carousel / Tabs
                     Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme.cardBorder,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
+                      color: AppTheme.surface,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildViewToggleItem(
-                            title: 'Thermal 58mm',
-                            icon: Icons.receipt_long_rounded,
-                            isActive: _isThermalView,
-                            onTap: () => setState(() => _isThermalView = true),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _receiptList.length > 1 ? 'Pilih Struk Transaksi:' : 'Pratinjau Struk:',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                              ),
+                              // View Toggle
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: AppTheme.cardBorder,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    _buildViewToggleItem(
+                                      title: 'Thermal 58mm',
+                                      icon: Icons.receipt_long_rounded,
+                                      isActive: _isThermalView,
+                                      onTap: () => setState(() => _isThermalView = true),
+                                    ),
+                                    _buildViewToggleItem(
+                                      title: 'Kartu Digital',
+                                      icon: Icons.dashboard_customize_rounded,
+                                      isActive: !_isThermalView,
+                                      onTap: () => setState(() => _isThermalView = false),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                          _buildViewToggleItem(
-                            title: 'Kartu Digital',
-                            icon: Icons.dashboard_customize_rounded,
-                            isActive: !_isThermalView,
-                            onTap: () => setState(() => _isThermalView = false),
-                          ),
+                          if (_receiptList.length > 1) ...[
+                            const SizedBox(height: 8),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: List.generate(_receiptList.length, (index) {
+                                  final item = _receiptList[index];
+                                  final isSelected = _currentReceipt?.receiptNumber == item.receiptNumber;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: ChoiceChip(
+                                      avatar: Icon(
+                                        _getTypeIcon(item.type),
+                                        size: 14,
+                                        color: isSelected ? Colors.white : AppTheme.primary,
+                                      ),
+                                      label: Text(
+                                        '${item.receiptNumber} (${item.customerName})',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                          color: isSelected ? Colors.white : AppTheme.textPrimary,
+                                        ),
+                                      ),
+                                      selected: isSelected,
+                                      selectedColor: AppTheme.primary,
+                                      onSelected: (val) {
+                                        if (val) setState(() => _currentReceipt = item);
+                                      },
+                                    ),
+                                  );
+                                }),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: List.generate(MockReceiptData.items.length, (index) {
-                      final item = MockReceiptData.items[index];
-                      final isSelected = _selectedMockIndex == index;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          avatar: Icon(
-                            _getTypeIcon(item.type),
-                            size: 14,
-                            color: isSelected ? Colors.white : AppTheme.primary,
-                          ),
-                          label: Text(
-                            '${item.customerName} (${item.type.label})',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              color: isSelected ? Colors.white : AppTheme.textPrimary,
-                            ),
-                          ),
-                          selected: isSelected,
-                          selectedColor: AppTheme.primary,
-                          onSelected: (val) {
-                            if (val) _selectReceipt(index);
-                          },
-                        ),
-                      );
-                    }),
-                  ),
-                ),
-              ],
-            ),
-          ),
 
-          // 2. Hardware Status Ribbon & Paper Length Meter
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            color: AppTheme.cardBorder,
-            child: Row(
-              children: [
-                Icon(
-                  _activePrinter.isConnected ? Icons.bluetooth_connected_rounded : Icons.bluetooth_disabled_rounded,
-                  size: 14,
-                  color: _activePrinter.isConnected ? const Color(0xFF047857) : const Color(0xFFDC2626),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Printer: ${_activePrinter.name} (58mm)',
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-                ),
-                const SizedBox(width: 8),
-                // Paper Length Meter Badge
-                Builder(
-                  builder: (context) {
-                    final raw = _currentReceipt.toEscPos58mm(formatSettings: _formatSettings);
-                    final cm = ReceiptModel.estimatePaperLengthCm(raw, _formatSettings);
-                    final isEco = _formatSettings.densityMode == 'compact';
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: isEco ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: isEco ? const Color(0xFFA7F3D0) : const Color(0xFFCBD5E1),
-                        ),
-                      ),
+                    // 2. Hardware Status Ribbon & Paper Length Meter
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      color: AppTheme.cardBorder,
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            isEco ? Icons.eco_rounded : Icons.straighten_rounded,
-                            size: 10,
-                            color: isEco ? const Color(0xFF047857) : const Color(0xFF64748B),
+                            _activePrinter.isConnected ? Icons.bluetooth_connected_rounded : Icons.bluetooth_disabled_rounded,
+                            size: 14,
+                            color: _activePrinter.isConnected ? const Color(0xFF047857) : const Color(0xFFDC2626),
                           ),
-                          const SizedBox(width: 3),
+                          const SizedBox(width: 6),
                           Text(
-                            isEco ? '~$cm cm (ECO)' : '~$cm cm',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              color: isEco ? const Color(0xFF047857) : const Color(0xFF475569),
-                            ),
+                            'Printer: ${_activePrinter.name} (58mm)',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
                           ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                          const SizedBox(width: 8),
+                          // Paper Length Meter Badge
+                          Builder(
+                            builder: (context) {
+                              final raw = _currentReceipt!.toEscPos58mm(formatSettings: _formatSettings);
+                              final cm = ReceiptModel.estimatePaperLengthCm(raw, _formatSettings);
+                              final isEco = _formatSettings.densityMode == 'compact';
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: isEco ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: isEco ? const Color(0xFFA7F3D0) : const Color(0xFFCBD5E1),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      isEco ? Icons.eco_rounded : Icons.straighten_rounded,
+                                      size: 10,
+                                      color: isEco ? const Color(0xFF047857) : const Color(0xFF64748B),
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      isEco ? '~$cm cm (ECO)' : '~$cm cm',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: isEco ? const Color(0xFF047857) : const Color(0xFF475569),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -487,7 +544,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
 
   // Realistic Physical Thermal Receipt Preview
   Widget _buildThermalPaperView() {
-    final rawText = _currentReceipt.toEscPos58mm(formatSettings: _formatSettings);
+    if (_currentReceipt == null) return const SizedBox.shrink();
+    final rawText = _currentReceipt!.toEscPos58mm(formatSettings: _formatSettings);
     final hasBarcodeTag = rawText.contains(RegExp(r'\[BARCODE:.*?\]'));
 
     const monoStyle = TextStyle(
@@ -556,7 +614,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     Widget contentWidget;
     if (hasBarcodeTag && _formatSettings.showBarcode) {
       final parts = rawText.split(RegExp(r'\[BARCODE:.*?\]\n?'));
-      final bookingCode = _currentReceipt.bookingCode;
+      final bookingCode = _currentReceipt!.bookingCode;
 
       contentWidget = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -617,7 +675,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
 
   // Digital Rich Card View
   Widget _buildDigitalCardView() {
-    final r = _currentReceipt;
+    if (_currentReceipt == null) return const SizedBox.shrink();
+    final r = _currentReceipt!;
 
     return Card(
       color: AppTheme.surface,

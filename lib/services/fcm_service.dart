@@ -132,7 +132,7 @@ class FcmService {
       try {
         _fcmToken = await messaging.getToken();
         if (kDebugMode) {
-          debugPrint('[FCM] Device Token acquired: ${_fcmToken != null && _fcmToken!.length > 10 ? _fcmToken!.substring(0, 10) + '...' : 'none'}');
+          debugPrint('[FCM] Device Token acquired: ${_fcmToken != null && _fcmToken!.length > 10 ? '${_fcmToken!.substring(0, 10)}...' : 'none'}');
         }
         if (_fcmToken != null && _fcmToken!.isNotEmpty && AuthService().isAuthenticated) {
           unawaited(ApiService().registerDeviceTokenApi(_fcmToken!, platform: 'android'));
@@ -148,7 +148,7 @@ class FcmService {
         final oldToken = _fcmToken;
         _fcmToken = newToken;
         if (kDebugMode) {
-          debugPrint('[FCM] Token refreshed: ${newToken.length > 10 ? newToken.substring(0, 10) + '...' : 'none'}');
+          debugPrint('[FCM] Token refreshed: ${newToken.length > 10 ? '${newToken.substring(0, 10)}...' : 'none'}');
         }
         onTokenRefreshed?.call(newToken);
 

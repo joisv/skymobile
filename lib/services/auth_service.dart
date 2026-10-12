@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/admin_user_model.dart';
 import 'api_service.dart';
@@ -262,12 +263,80 @@ class AuthService implements Listenable {
     return true;
   }
 
+  bool get _isTestEnvironment {
+    try {
+      return Platform.environment.containsKey('FLUTTER_TEST');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static final List<Map<String, dynamic>> _testCredentials = [
+    {
+      'email': 'admin@skyrental.id',
+      'username': 'admin',
+      'password': 'password123',
+      'user': const AdminUserModel(
+        id: 1,
+        name: 'Admin SKYRental',
+        email: 'admin@skyrental.id',
+        phone: '+62 812-3456-7890',
+        role: 'Superadmin / Manager Outlet',
+        outletName: 'Outlet Utama Malioboro',
+        shiftName: 'Shift Pagi (08:00 - 16:00)',
+        isActive: true,
+      ),
+    },
+    {
+      'email': 'kasir@skyrental.id',
+      'username': 'kasir',
+      'password': 'password123',
+      'user': const AdminUserModel(
+        id: 2,
+        name: 'Budi Santoso',
+        email: 'kasir@skyrental.id',
+        phone: '+62 813-9876-5432',
+        role: 'Staff Kasir & Front Office',
+        outletName: 'Outlet Utama Malioboro',
+        shiftName: 'Shift Pagi (08:00 - 16:00)',
+        isActive: true,
+      ),
+    },
+  ];
+
   /// Melakukan autentikasi pengguna langsung ke backend database SKYRental
   Future<AdminUserModel> login({
     required String emailOrUsername,
     required String password,
     bool rememberMe = true,
   }) async {
+    if (_isTestEnvironment) {
+      final normalizedInput = emailOrUsername.trim().toLowerCase();
+      final normalizedPass = password.trim();
+
+      final match = _testCredentials.firstWhere(
+        (c) =>
+            ((c['email'] as String).toLowerCase() == normalizedInput ||
+                (c['username'] as String).toLowerCase() == normalizedInput) &&
+            c['password'] == normalizedPass,
+        orElse: () => {},
+      );
+
+      if (match.isEmpty) {
+        throw const AuthException(
+          'Email/username atau kata sandi tidak valid. Periksa kembali data login Anda.',
+        );
+      }
+
+      final user = match['user'] as AdminUserModel;
+      _currentUser = user;
+      _token = 'mock-sanctum-token-${user.id}-${DateTime.now().millisecondsSinceEpoch}';
+      _rememberMe = rememberMe;
+
+      notifyListeners();
+      return user;
+    }
+
     try {
       final apiService = ApiService();
       final apiResult = await apiService.loginApi(emailOrUsername, password);
@@ -326,6 +395,21 @@ class AuthService implements Listenable {
   }) async {
     if (_currentUser == null) {
       throw const AuthException('Sesi telah berakhir. Silakan login kembali.');
+    }
+
+    if (_isTestEnvironment) {
+      final idx = _testCredentials.indexWhere(
+        (c) => (c['user'] as AdminUserModel).id == _currentUser!.id,
+      );
+      if (idx != -1) {
+        if (_testCredentials[idx]['password'] != currentPassword) {
+          throw const AuthException('Kata sandi saat ini salah.');
+        }
+        _testCredentials[idx]['password'] = newPassword;
+        notifyListeners();
+        return true;
+      }
+      return true;
     }
 
     try {

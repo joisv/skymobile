@@ -38,8 +38,6 @@ import 'package:skyrental_admin/screens/affiliate/affiliate_revenue_screen.dart'
 import 'package:skyrental_admin/screens/account/account_screen.dart';
 import 'package:skyrental_admin/models/user_role_model.dart';
 import 'package:skyrental_admin/screens/account/roles_permissions_screen.dart';
-import 'package:skyrental_admin/screens/account/user_list_screen.dart';
-import 'package:skyrental_admin/screens/account/assign_role_screen.dart';
 import 'package:skyrental_admin/screens/account/theme_settings_screen.dart';
 import 'package:skyrental_admin/screens/dashboard/sales_report_screen.dart';
 import 'package:skyrental_admin/screens/unit_status/widgets/create_iphone_dialog.dart';

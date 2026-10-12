@@ -140,6 +140,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 runSpacing: 6,
                 children: [
                   ActionChip(
+                    avatar: const Icon(Icons.cloud_done_rounded, size: 14, color: Colors.green),
+                    label: const Text('Produksi (skyrental.id)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    onPressed: () {
+                      setModalState(() {
+                        controller.text = ApiService.productionBaseUrl;
+                        testResult = null;
+                      });
+                    },
+                  ),
+                  ActionChip(
                     avatar: const Icon(Icons.wifi, size: 14),
                     label: const Text('Host LAN (192.168.1.93)', style: TextStyle(fontSize: 11)),
                     onPressed: () {
@@ -176,7 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: controller,
                 decoration: InputDecoration(
                   labelText: 'Base URL API Backend',
-                  hintText: 'http://192.168.1.93:8000/api/v1',
+                  hintText: ApiService.productionBaseUrl,
                   prefixIcon: const Icon(Icons.link, size: 18),
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.restore, size: 18),

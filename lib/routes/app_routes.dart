@@ -7,11 +7,9 @@ import '../models/payment_model.dart';
 import '../models/receipt_model.dart';
 import '../models/user_role_model.dart';
 import '../screens/account/account_screen.dart';
-import '../screens/account/assign_role_screen.dart';
 import '../screens/account/change_password_screen.dart';
 import '../screens/account/roles_permissions_screen.dart';
 import '../screens/account/shop_settings_screen.dart';
-import '../screens/account/user_list_screen.dart';
 import '../screens/account/theme_settings_screen.dart';
 import '../screens/affiliate/affiliate_detail_screen.dart';
 import '../screens/affiliate/affiliate_form_screen.dart';
@@ -584,7 +582,6 @@ class AppRoutes {
       case userList:
       case '/users':
       case 'users':
-      case '/admin/users':
       case 'admin/users':
         return MaterialPageRoute(
           builder: (_) => UserListScreen(repository: repository),
@@ -594,7 +591,6 @@ class AppRoutes {
       case assignRole:
       case '/assign-role':
       case 'assign-role':
-      case '/admin/assign-role':
       case 'admin/assign-role':
         final initialUser = settings.arguments is UserRoleModel ? settings.arguments as UserRoleModel : null;
         return MaterialPageRoute(

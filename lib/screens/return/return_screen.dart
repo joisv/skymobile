@@ -32,8 +32,6 @@ class _ReturnScreenState extends State<ReturnScreen> {
   String _selectedJaminanFilter = 'Semua'; // 'Semua', 'KTP', 'Motor', 'Ijazah', 'Keluarga'
   String _sortBy = 'urgent'; // 'urgent', 'newest', 'customerAsc', 'depositDesc'
 
-  final DateTime _mockCurrentTime = DateTime(2026, 9, 9, 14, 0);
-
   int get _activeFilterCount {
     int count = 0;
     if (_selectedStatusFilter != 'Semua') count++;
@@ -600,10 +598,11 @@ class _ReturnScreenState extends State<ReturnScreen> {
   }
 
   Widget _buildReturnCard(BookingModel booking) {
-    final isOverdue = booking.endDate.isBefore(_mockCurrentTime);
-    final isDueToday = booking.endDate.year == _mockCurrentTime.year &&
-        booking.endDate.month == _mockCurrentTime.month &&
-        booking.endDate.day == _mockCurrentTime.day;
+    final now = DateTime.now();
+    final isOverdue = booking.endDate.isBefore(now);
+    final isDueToday = booking.endDate.year == now.year &&
+        booking.endDate.month == now.month &&
+        booking.endDate.day == now.day;
 
     Color statusColor;
     String statusLabel;
@@ -611,7 +610,7 @@ class _ReturnScreenState extends State<ReturnScreen> {
 
     if (isOverdue) {
       statusColor = const Color(0xFFDC2626);
-      final daysLate = _mockCurrentTime.difference(booking.endDate).inDays + 1;
+      final daysLate = now.difference(booking.endDate).inDays + 1;
       statusLabel = 'Terlambat $daysLate Hari';
       statusIcon = Icons.error_outline_rounded;
     } else if (isDueToday) {
@@ -620,7 +619,7 @@ class _ReturnScreenState extends State<ReturnScreen> {
       statusIcon = Icons.access_time_filled_rounded;
     } else {
       statusColor = const Color(0xFF0284C7);
-      final daysLeft = booking.endDate.difference(_mockCurrentTime).inDays;
+      final daysLeft = booking.endDate.difference(now).inDays;
       statusLabel = 'Tersisa $daysLeft Hari';
       statusIcon = Icons.check_circle_outline_rounded;
     }

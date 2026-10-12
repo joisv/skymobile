@@ -358,56 +358,58 @@ class _QrScannerScreenState extends State<QrScannerScreen> with SingleTickerProv
             ),
           ),
 
-          // Bottom Sheet Simulation Bar (Allows 1-tap testing in Dev/Mock Mode)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryContainer.withValues(alpha: 0.95),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: SafeArea(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                        Icon(Icons.touch_app_rounded, size: 15, color: AppTheme.accent),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'Simulasi Scan Cepat (Data Mock):',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
+          // Test controller simulation bar (only active in automated tests where controller is explicitly injected)
+          if (widget.controller != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryContainer.withValues(alpha: 0.95),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          _buildMockScanChip('SKY260909A8F1', 'Ahmad (Confirmed/Pickup)'),
-                          const SizedBox(width: 8),
-                          _buildMockScanChip('SKY260908C4D5', 'Kevin (Rented/Return)'),
-                          const SizedBox(width: 8),
-                          _buildMockScanChip('SKY260909B2C3', 'Siti (DP 50%)'),
-                          const SizedBox(width: 8),
-                          _buildMockScanChip('INVALID-CODE', 'Kode Salah (Test Error)'),
+                          Icon(Icons.touch_app_rounded, size: 15, color: AppTheme.accent),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Simulasi Scan Cepat (Data Mock):',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildMockScanChip('SKY260909A8F1', 'Ahmad (Confirmed/Pickup)'),
+                            const SizedBox(width: 8),
+                            _buildMockScanChip('SKY260908C4D5', 'Kevin (Rented/Return)'),
+                            const SizedBox(width: 8),
+                            _buildMockScanChip('SKY260909B2C3', 'Siti (DP 50%)'),
+                            const SizedBox(width: 8),
+                            _buildMockScanChip('INVALID-CODE', 'Kode Salah (Test Error)'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );

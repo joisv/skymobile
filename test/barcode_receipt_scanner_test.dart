@@ -5,6 +5,7 @@ import 'package:barcode_widget/barcode_widget.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:skyrental_admin/data/booking_repository.dart';
 import 'package:skyrental_admin/data/mock_booking_data.dart';
+import 'package:skyrental_admin/data/mock_receipt_data.dart';
 import 'package:skyrental_admin/models/admin_user_model.dart';
 import 'package:skyrental_admin/models/booking_model.dart';
 import 'package:skyrental_admin/models/receipt_format_settings.dart';
@@ -182,8 +183,8 @@ void main() {
   group('Barcode UI & Scanner Flow Widget Tests', () {
     testWidgets('ReceiptScreen renders BarcodeWidget when showBarcode is enabled', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: ReceiptScreen(),
+        MaterialApp(
+          home: ReceiptScreen(initialReceipt: MockReceiptData.items.first),
         ),
       );
       await tester.pump(const Duration(milliseconds: 300));

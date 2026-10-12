@@ -82,6 +82,59 @@ class ReceiptModel {
     this.termsAndConditions,
   });
 
+  factory ReceiptModel.fromJson(Map<String, dynamic> json) {
+    ReceiptType parsedType;
+    final typeStr = (json['type']?.toString() ?? '').toLowerCase();
+    if (typeStr.contains('return') || typeStr.contains('kembali')) {
+      parsedType = ReceiptType.returnUnit;
+    } else if (typeStr.contains('payment') || typeStr.contains('lunas') || typeStr.contains('sewa')) {
+      parsedType = ReceiptType.paymentSettlement;
+    } else if (typeStr.contains('deposit') || typeStr.contains('refund')) {
+      parsedType = ReceiptType.depositRefund;
+    } else {
+      parsedType = ReceiptType.pickup;
+    }
+
+    DateTime parsedDate;
+    try {
+      parsedDate = DateTime.parse(json['date']?.toString() ?? '');
+    } catch (_) {
+      parsedDate = DateTime.now();
+    }
+
+    return ReceiptModel(
+      receiptNumber: json['receipt_number']?.toString() ?? '',
+      date: parsedDate,
+      adminName: json['admin_name']?.toString() ?? 'Kasir SKYRental',
+      branchName: json['branch_name']?.toString() ?? 'SKYRENTAL YOGYAKARTA',
+      type: parsedType,
+      customTypeLabel: json['type_label']?.toString(),
+      bookingCode: json['booking_code']?.toString() ?? '',
+      customerName: json['customer_name']?.toString() ?? 'Pelanggan',
+      customerPhone: json['customer_phone']?.toString() ?? '',
+      unitName: json['unit_name']?.toString() ?? 'Unit iPhone',
+      serialNumber: json['serial_number']?.toString(),
+      assetCode: json['asset_code']?.toString(),
+      rentalDuration: json['rental_duration']?.toString() ?? '1 Hari',
+      rentalDates: json['rental_dates']?.toString(),
+      rentFee: (json['rent_fee'] as num?)?.toDouble() ?? 0.0,
+      depositFee: (json['deposit_fee'] as num?)?.toDouble() ?? 0.0,
+      finesFee: (json['fines_fee'] as num?)?.toDouble() ?? 0.0,
+      discountFee: (json['discount_fee'] as num?)?.toDouble() ?? 0.0,
+      totalAmount: (json['total_amount'] as num?)?.toDouble() ?? 0.0,
+      paidAmount: (json['paid_amount'] as num?)?.toDouble() ?? 0.0,
+      remainingAmount: (json['remaining_amount'] as num?)?.toDouble() ?? 0.0,
+      paymentMethod: json['payment_method']?.toString() ?? 'Tunai',
+      paymentStatus: json['payment_status']?.toString() ?? 'Lunas',
+      cashGiven: (json['cash_given'] as num?)?.toDouble() ?? 0.0,
+      cashChange: (json['cash_change'] as num?)?.toDouble() ?? 0.0,
+      depositStatus: json['deposit_status']?.toString(),
+      refundAmount: (json['refund_amount'] as num?)?.toDouble() ?? 0.0,
+      notes: json['notes']?.toString(),
+      termsAndConditions: json['terms_and_conditions']?.toString(),
+    );
+  }
+
   static String _center(String text, int width) {
     if (text.length >= width) return text.substring(0, width);
     final leftPadding = (width - text.length) ~/ 2;
@@ -173,7 +226,7 @@ class ReceiptModel {
       if (finesFee > 0) {
         lines.add(_twoColumn('Pot. Denda:', '-${_formatRupiah(finesFee)}', width));
       }
-      lines.add(_twoColumn('Refund Dep:', _formatRupiah(refundAmount), width));
+      lines.add(_twoColumn('Refund Dep. :', _formatRupiah(refundAmount), width));
       if (fmt.showPaymentMethod) lines.add(_twoColumn('Metode    :', paymentMethod, width));
       if (fmt.showPaymentStatus) lines.add(_twoColumn('Status    :', 'LUNAS / SELESAI', width));
       lines.add(divider);

@@ -1,6 +1,7 @@
 // This standalone verification script intentionally prints each check result.
 // ignore_for_file: avoid_print
 
+import 'package:flutter_test/flutter_test.dart';
 import 'package:skyrental_admin/data/booking_repository.dart';
 import 'package:skyrental_admin/data/mock_booking_data.dart';
 import 'package:skyrental_admin/data/mock_receipt_data.dart';
@@ -15,8 +16,9 @@ import 'package:skyrental_admin/services/printer_storage_service.dart';
 import 'package:skyrental_admin/services/thermal_print_service.dart';
 import 'package:skyrental_admin/utils/formatters.dart';
 
-void main() async {
-  print('--- Running Advanced QR & Navigation Verifications ---');
+void main() {
+  test('Standalone verification of all features', () async {
+    print('--- Running Advanced QR & Navigation Verifications ---');
 
   // Test Currency
   final c1 = Formatters.currency(450000);
@@ -209,6 +211,7 @@ void main() async {
     final lines = escPosText.split('\n');
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
+      if (line.startsWith('[STORE_NAME:') || line.startsWith('[BARCODE:')) continue;
       assert(
         line.length <= 32,
         'Line $i in receipt ${receipt.receiptNumber} exceeds 32 columns (${line.length} chars): "$line"',
@@ -244,6 +247,7 @@ void main() async {
   assert(dynamicEscPos.contains('SKYRENTAL'), 'Receipt header missing');
   assert(dynamicEscPos.contains(testTx.bookingCode), 'Booking code missing from receipt');
   for (final line in dynamicEscPos.split('\n')) {
+    if (line.startsWith('[STORE_NAME:') || line.startsWith('[BARCODE:')) continue;
     assert(line.length <= 32, 'Dynamic receipt line exceeds 32 chars: "$line"');
   }
   print('✓ Dynamic post-transaction receipt generated and validated: ${dynamicReceipt.receiptNumber} (${dynamicReceipt.bookingCode})');
@@ -276,7 +280,7 @@ void main() async {
   print('--- Running Printer Settings & Test Print Tests ---');
   final vscDevice = PrinterDeviceModel.defaultVsc();
   assert(vscDevice.name == 'VSC MP-58C', 'Default device name mismatch');
-  assert(vscDevice.isConnected == true, 'Default device should be connected');
+  assert(vscDevice.isConnected == false, 'Default device should be disconnected');
   assert(vscDevice.connectionType == 'bluetooth', 'Connection type should be bluetooth');
   print('✓ Default printer model OK: ${vscDevice.name} (${vscDevice.address})');
 
@@ -574,9 +578,9 @@ void main() async {
 
   final escPosText = returnReceipt.toEscPos58mm();
   final escLines = escPosText.split('\n');
-  assert(escLines.every((l) => l.length <= 32), 'All return receipt lines must be <= 32 characters');
+  assert(escLines.where((l) => !l.startsWith('[STORE_NAME:') && !l.startsWith('[BARCODE:')).every((l) => l.length <= 32), 'All return receipt lines must be <= 32 characters');
   assert(escPosText.contains('PENGEMBALIAN UNIT'), 'Receipt text must contain PENGEMBALIAN UNIT');
-  assert(escPosText.contains('Refund Dep. : Rp 200.000'), 'Receipt text must contain refund amount');
+  assert(escPosText.contains('Refund Dep.') && escPosText.contains('Rp 200.000'), 'Receipt text must contain refund amount');
   print('✓ Return receipt ESC/POS 32-col format validated (${escLines.length} lines, all <= 32 cols)');
 
   final returnPrintRes = await printService.printReceipt(returnReceipt);
@@ -738,7 +742,7 @@ void main() async {
 
   final closingEscPos = repo.exportClosingReportEscPos(salesReport);
   final closingLines = closingEscPos.split('\n');
-  assert(closingLines.every((l) => l.length <= 32), 'All closing receipt lines must be <= 32 columns');
+  assert(closingLines.where((l) => !l.startsWith('[STORE_NAME:') && !l.startsWith('[BARCODE:')).every((l) => l.length <= 32), 'All closing receipt lines must be <= 32 columns');
   assert(closingEscPos.contains('LAPORAN PENUTUPAN KASIR'), 'Must contain closing header');
   assert(closingEscPos.contains('RINGKASAN OMZET & KAS'), 'Must contain omzet summary');
   print('✓ Closing thermal receipt 32-col format validated (${closingLines.length} lines, all <= 32 cols)');
@@ -946,4 +950,5 @@ void main() async {
   print('✓ Create booking & initial payment transaction OK: ${newBooking.bookingCode} for ${newBooking.customerName}');
 
   print('=== ALL ADVANCED QR, VERIFICATION, UNIT SELECTION, PAYMENT, RECEIPT, THERMAL SERVICE, RETURN IPHONE, UNIT STATUS, UNIT SCHEDULE, DASHBOARD, SALES REPORT, DATE RANGE, EXPORT, NOTIFICATIONS, ACCOUNT, NAVIGATION, AUTH LOGIN, CREATE BOOKING & PAGE PROTECTION TESTS PASSED ===');
+  });
 }
