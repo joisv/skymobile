@@ -5,10 +5,13 @@ import '../models/booking_model.dart';
 import '../models/iphone_model.dart';
 import '../models/payment_model.dart';
 import '../models/receipt_model.dart';
+import '../models/user_role_model.dart';
 import '../screens/account/account_screen.dart';
+import '../screens/account/assign_role_screen.dart';
 import '../screens/account/change_password_screen.dart';
 import '../screens/account/roles_permissions_screen.dart';
 import '../screens/account/shop_settings_screen.dart';
+import '../screens/account/user_list_screen.dart';
 import '../screens/account/theme_settings_screen.dart';
 import '../screens/affiliate/affiliate_detail_screen.dart';
 import '../screens/affiliate/affiliate_form_screen.dart';
@@ -74,6 +77,8 @@ class AppRoutes {
   static const String account = '/account';
   static const String changePassword = '/change-password';
   static const String shopSettings = '/shop-settings';
+  static const String userList = '/admin/users';
+  static const String assignRole = '/admin/assign-role';
   static const String rolesPermissions = '/admin/roles-permissions';
   static const String login = '/login';
   static const String affiliateList = '/affiliates';
@@ -576,6 +581,30 @@ class AppRoutes {
           settings: settings,
         );
 
+      case userList:
+      case '/users':
+      case 'users':
+      case '/admin/users':
+      case 'admin/users':
+        return MaterialPageRoute(
+          builder: (_) => UserListScreen(repository: repository),
+          settings: settings,
+        );
+
+      case assignRole:
+      case '/assign-role':
+      case 'assign-role':
+      case '/admin/assign-role':
+      case 'admin/assign-role':
+        final initialUser = settings.arguments is UserRoleModel ? settings.arguments as UserRoleModel : null;
+        return MaterialPageRoute(
+          builder: (_) => AssignRoleScreen(
+            repository: repository,
+            initialUser: initialUser,
+          ),
+          settings: settings,
+        );
+
       case rolesPermissions:
       case '/admin/roles-permission':
       case 'admin/roles-permission':
@@ -586,10 +615,6 @@ class AppRoutes {
       case 'roles-permission':
       case '/user-roles':
       case 'user-roles':
-      case '/users':
-      case 'users':
-      case '/admin/users':
-      case 'admin/users':
         return MaterialPageRoute(
           builder: (_) => RolesPermissionsScreen(repository: repository),
           settings: settings,

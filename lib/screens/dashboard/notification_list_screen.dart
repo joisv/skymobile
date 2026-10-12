@@ -53,8 +53,12 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   }
 
   Future<void> _markAllAsRead() async {
-    await widget.repository.markAllNotificationsAsRead();
-    _loadNotifications();
+    setState(() {
+      _notifications = _notifications.map((n) => n.copyWith(isRead: true)).toList();
+    });
+    try {
+      await widget.repository.markAllNotificationsAsRead();
+    } catch (_) {}
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -66,8 +70,12 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   }
 
   Future<void> _markAsRead(String id) async {
-    await widget.repository.markNotificationAsRead(id);
-    _loadNotifications();
+    setState(() {
+      _notifications = _notifications.map((n) => n.id == id ? n.copyWith(isRead: true) : n).toList();
+    });
+    try {
+      await widget.repository.markNotificationAsRead(id);
+    } catch (_) {}
   }
 
   List<NotificationModel> get _filteredNotifications {

@@ -93,6 +93,16 @@ class BookingDetailScreen extends StatelessWidget {
       return;
     }
 
+    if (!booking.canReturn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Booking tidak dapat dikembalikan. Status saat ini: ${booking.status.label}.'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+
     // Jika telat dan ada denda keterlambatan: proses pembayaran di kasir
     if (booking.isCurrentlyLate && booking.estimatedLateFee > 0) {
       Navigator.pushNamed(
@@ -115,67 +125,91 @@ class BookingDetailScreen extends StatelessWidget {
     // Jika tepat waktu / bebas denda: dialog konfirmasi cepat dan selesaikan pengembalian
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 24),
-            SizedBox(width: 8),
-            Text('Konfirmasi Pengembalian', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Text(
-          'Unit ${booking.iphone.fullName} dikembalikan tepat waktu tanpa denda. Selesaikan pengembalian unit dan ubah status unit menjadi Tersedia (Ready)?',
-          style: const TextStyle(fontSize: 13, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              try {
-                await repository?.completeReturn(
-                  bookingCode: booking.bookingCode,
-                  physicalCondition: 'Baik / Sempurna',
-                  batteryHealthFinal: booking.iphone.batteryHealth,
-                  lateFee: 0,
-                  damageFee: 0,
-                  depositRefunded: 0,
-                  refundMethod: 'Tanpa Denda',
-                  accessoriesReturned: ['Lengkap'],
-                  staffNotes: 'Pengembalian unit tepat waktu diselesaikan langsung.',
-                );
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Pengembalian unit berhasil diselesaikan! Status unit kembali Tersedia.'),
-                      backgroundColor: Color(0xFF10B981),
-                    ),
-                  );
-                  Navigator.pop(context, true);
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Gagal menyelesaikan pengembalian: $e'),
-                      backgroundColor: AppTheme.error,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Ya, Selesaikan'),
-          ),
-        ],
-      ),
+      barrierDismissible: false,
+      builder: (ctx) {
+        bool isSubmitting = false;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 24),
+                  SizedBox(width: 8),
+                  Text('Konfirmasi Pengembalian', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Text(
+                'Unit ${booking.iphone.fullName} dikembalikan tepat waktu tanpa denda. Selesaikan pengembalian unit dan ubah status unit menjadi Tersedia (Ready)?',
+                style: const TextStyle(fontSize: 13, height: 1.4),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setDialogState(() => isSubmitting = true);
+                          try {
+                            await repository?.completeReturn(
+                              bookingCode: booking.bookingCode,
+                              physicalCondition: 'Baik / Sempurna',
+                              batteryHealthFinal: booking.iphone.batteryHealth,
+                              lateFee: 0,
+                              damageFee: 0,
+                              depositRefunded: 0,
+                              refundMethod: 'Tanpa Denda',
+                              accessoriesReturned: ['Lengkap'],
+                              staffNotes: 'Pengembalian unit tepat waktu diselesaikan langsung.',
+                            );
+
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                            }
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Pengembalian unit berhasil diselesaikan! Status unit kembali Tersedia.'),
+                                  backgroundColor: Color(0xFF10B981),
+                                ),
+                              );
+                              Navigator.pop(context, true);
+                            }
+                          } catch (e) {
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                            }
+                            if (context.mounted) {
+                              final cleanMsg = e.toString().replaceFirst(RegExp(r'^(Exception|ApiException):\s*'), '');
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Gagal menyelesaikan pengembalian: $cleanMsg'),
+                                  backgroundColor: AppTheme.error,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Ya, Selesaikan'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -215,6 +249,8 @@ class BookingDetailScreen extends StatelessWidget {
         child: (photo != null && photo.isNotEmpty)
             ? Image.network(
                 photo,
+                cacheWidth: (size * 2).clamp(48.0, 240.0).toInt(),
+                cacheHeight: (size * 2).clamp(48.0, 240.0).toInt(),
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Center(
                   child: Icon(Icons.phone_iphone_rounded, color: AppTheme.secondary, size: size * 0.5),
@@ -322,8 +358,8 @@ class BookingDetailScreen extends StatelessWidget {
           _buildTabletNavItem(Icons.phone_iphone_rounded, 'Unit iPhone', false, () {
             Navigator.pushNamed(context, AppRoutes.unitStatus);
           }),
-          _buildTabletNavItem(Icons.print_outlined, 'Printer & Shift', false, () {
-            Navigator.pushNamed(context, AppRoutes.printerSettings);
+          _buildTabletNavItem(Icons.settings_outlined, 'Settings', false, () {
+            Navigator.pushNamed(context, AppRoutes.account);
           }),
         ],
       ),
@@ -2293,7 +2329,9 @@ class BookingDetailScreen extends StatelessWidget {
                     const Icon(Icons.credit_card_outlined, size: 13, color: Color(0xFF2563EB)),
                     const SizedBox(width: 4),
                     Text(
-                      booking.jaminanType.isNotEmpty ? booking.jaminanType : 'KTP Asli',
+                      booking.kia
+                          ? 'Kartu Identitas Anak'
+                          : (booking.jaminanType.isNotEmpty ? booking.jaminanType : 'KTP Asli'),
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,

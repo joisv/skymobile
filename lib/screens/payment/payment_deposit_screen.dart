@@ -455,7 +455,9 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
     final String bookingCode = booking?.bookingCode ?? (isSample ? 'BK-8821' : 'BK-0000');
     final String receiptNum = isSample
         ? 'SAMPLE-${DateTime.now().millisecondsSinceEpoch % 10000}'
-        : 'STR-${_paymentDateTime.year}${_paymentDateTime.month.toString().padLeft(2, '0')}-${(5000 + (booking?.id ?? 102))}';
+        : ((booking != null && booking.bookingCode.isNotEmpty && booking.bookingCode != 'BK-0000')
+            ? booking.bookingCode
+            : 'STR-${_paymentDateTime.year}${_paymentDateTime.month.toString().padLeft(2, '0')}-${(5000 + (booking?.id ?? 102))}');
 
     final methodObj = _selectedPaymentMethodObj;
     final methodName = methodObj?.displayName ?? _selectedMethod.toUpperCase();
@@ -513,6 +515,69 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
     );
   }
 
+  ReceiptModel _createReceiptFromPaymentResult(BookingPaymentResult result) {
+    final booking = result.updatedBooking ?? _activeBooking;
+    final currentUser = AuthService().currentUser;
+    final adminName = currentUser != null
+        ? '${currentUser.name} (${currentUser.role})'
+        : 'Staff Kasir';
+    final branchName = currentUser?.outletName ?? 'SKYRENTAL YOGYAKARTA';
+
+    final bool isPenalty = result.paymentType == 'penalty';
+    final String methodUpper = result.paymentMethod.toUpperCase();
+
+    String customLabel;
+    if (widget.isReturnFlow) {
+      customLabel = 'TANDA TERIMA PENGEMBALIAN - $methodUpper';
+    } else if (isPenalty) {
+      customLabel = 'TANDA TERIMA DENDA - $methodUpper';
+    } else {
+      customLabel = 'TANDA TERIMA - $methodUpper';
+    }
+
+    final double rentFee = booking?.price ?? result.totalAmount;
+    final double depositFee = booking?.deposit ?? 0.0;
+    final double finesFee = isPenalty ? result.amount : 0.0;
+    final double discountFee = booking?.discount ?? 0.0;
+
+    return ReceiptModel(
+      receiptNumber: result.receiptNumber.isNotEmpty && result.receiptNumber != '-'
+          ? result.receiptNumber
+          : (result.bookingCode.isNotEmpty && result.bookingCode != '-'
+              ? result.bookingCode
+              : (booking?.bookingCode ?? 'BK-0000')),
+      date: result.paidAt,
+      adminName: adminName,
+      branchName: branchName,
+      type: widget.isReturnFlow ? ReceiptType.returnUnit : _paymentType.receiptType,
+      customTypeLabel: customLabel,
+      bookingCode: result.bookingCode,
+      customerName: result.customerName,
+      customerPhone: result.customerPhone ?? booking?.customerPhone ?? '-',
+      unitName: result.unitName,
+      serialNumber: booking?.iphone.serialNumber ?? '-',
+      assetCode: booking?.iphone.assetCode,
+      rentalDuration: '${booking?.durationDays ?? 1} Hari',
+      rentalDates: booking != null
+          ? '${Formatters.formatDate(booking.startDate)} - ${Formatters.formatDate(booking.endDate)}'
+          : null,
+      rentFee: rentFee,
+      depositFee: depositFee,
+      finesFee: finesFee,
+      discountFee: discountFee,
+      totalAmount: result.totalAmount,
+      paidAmount: result.amount,
+      remainingAmount: result.remainingPayment,
+      refundAmount: 0.0,
+      paymentMethod: methodUpper,
+      paymentStatus: result.paymentStatus,
+      cashGiven: result.cashReceived,
+      cashChange: result.change,
+      depositStatus: 'Tanpa Deposit',
+      notes: result.note ?? 'Pembayaran ${result.paymentTypeLabel} via $methodUpper',
+    );
+  }
+
   Future<void> _confirmPayment() async {
     if (_amount <= 0) {
       _showSnackbar('Nominal pembayaran harus lebih besar dari Rp 0!', isError: true);
@@ -531,12 +596,12 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
 
     try {
       final bookingCode = _activeBooking!.bookingCode;
-      final newPaymentStatus = _sisaTagihan <= 0 ? PaymentStatus.paid : PaymentStatus.partial;
       final methodObj = _selectedPaymentMethodObj;
       final methodName = methodObj?.displayName ?? _selectedMethod.toUpperCase();
       final methodToSend = methodObj?.slug.isNotEmpty == true ? methodObj!.slug : _selectedMethod;
 
-      await widget.repository.submitBookingPayment(
+      // Kirim pembayaran ke Laravel REST API dan dapatkan response data tersimpan riil
+      final paymentResult = await widget.repository.submitBookingPaymentDetail(
         bookingCode: bookingCode,
         amount: _amount,
         pay: _isCashSelected ? _pay : _amount,
@@ -567,29 +632,32 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
       }
 
       if (widget.isReturnFlow) {
-        try {
-          await widget.repository.completeReturn(
-            bookingCode: bookingCode,
-            physicalCondition: 'Baik / Sesuai Kesepakatan',
-            batteryHealthFinal: _activeBooking?.iphone.batteryHealth ?? 100,
-            lateFee: _amount,
-            damageFee: 0,
-            depositRefunded: 0,
-            refundMethod: _isCashSelected ? 'Tunai Kasir' : methodName,
-            accessoriesReturned: ['Lengkap'],
-            staffNotes: 'Pengembalian unit selesai dengan pelunasan denda keterlambatan Rp ${Formatters.formatCurrency(_amount)}',
-          );
-        } catch (_) {}
+        final returnRes = await widget.repository.completeReturn(
+          bookingCode: bookingCode,
+          physicalCondition: 'Baik / Sesuai Kesepakatan',
+          batteryHealthFinal: _activeBooking?.iphone.batteryHealth ?? 100,
+          lateFee: _amount,
+          damageFee: 0,
+          depositRefunded: 0,
+          refundMethod: _isCashSelected ? 'Tunai Kasir' : methodName,
+          accessoriesReturned: ['Lengkap'],
+          staffNotes: 'Pengembalian unit selesai dengan pelunasan denda keterlambatan Rp ${Formatters.formatCurrency(_amount)}',
+        );
+        _activeBooking = returnRes;
       }
 
-      if (_activeBooking != null && _paymentType != PaymentTypeOption.penalty) {
+      // Perbarui activeBooking dengan data nyata yang dikembalikan backend
+      if (paymentResult.updatedBooking != null) {
+        _activeBooking = paymentResult.updatedBooking;
+      } else if (_activeBooking != null && _paymentType != PaymentTypeOption.penalty) {
         _activeBooking = _activeBooking!.copyWith(
-          paymentStatus: newPaymentStatus,
-          downPayment: (_activeBooking!.downPayment + _amount),
+          paymentStatus: paymentResult.isSettled ? PaymentStatus.paid : PaymentStatus.partial,
+          downPayment: paymentResult.totalPaid,
         );
       }
 
-      final receipt = _createReceipt(isSample: false);
+      // Buat struk tanda terima berbasiskan data pembayaran riil dari backend
+      final receipt = _createReceiptFromPaymentResult(paymentResult);
       await widget.repository.saveReceipt(receipt);
 
       if (_printReceipt) {
@@ -600,7 +668,7 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
 
       if (!mounted) return;
       setState(() => _isConfirming = false);
-      _showSuccessDialog(receipt);
+      _showSuccessDialog(paymentResult, receipt);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isConfirming = false);
@@ -618,7 +686,17 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
     );
   }
 
-  void _showSuccessDialog(ReceiptModel receipt) {
+  void _showSuccessDialog(BookingPaymentResult paymentResult, ReceiptModel receipt) {
+    final displayReceiptNum = paymentResult.receiptNumber.isNotEmpty && paymentResult.receiptNumber != '-'
+        ? paymentResult.receiptNumber
+        : (paymentResult.bookingCode.isNotEmpty && paymentResult.bookingCode != '-'
+            ? paymentResult.bookingCode
+            : receipt.receiptNumber);
+
+    final paymentTimeStr = paymentResult.paidAtFormatted != null && paymentResult.paidAtFormatted!.isNotEmpty
+        ? paymentResult.paidAtFormatted!
+        : '${Formatters.date(paymentResult.paidAt)}, ${Formatters.time(paymentResult.paidAt)} WIB';
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -658,8 +736,10 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
                 ),
               ),
             ],
-            Text('Nomor Resi: ${receipt.receiptNumber}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            // 1. Nomor Resi / Booking nyata dari backend
+            Text('Nomor Resi: $displayReceiptNum', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 6),
+            // 2. Nominal Pembayaran & Label Jenis Pembayaran nyata dari backend
             Row(
               children: [
                 Container(
@@ -668,20 +748,48 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
                     color: AppTheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text(_paymentType.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                  child: Text(paymentResult.paymentTypeLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary)),
                 ),
                 const SizedBox(width: 8),
-                Text(Formatters.formatCurrency(receipt.paidAmount), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.secondary)),
+                Text(Formatters.formatCurrency(paymentResult.amount), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.secondary)),
               ],
             ),
-            const SizedBox(height: 8),
-            if (_selectedMethod == 'tunai') ...[
-              Text('Uang Diterima: ${Formatters.formatCurrency(receipt.cashGiven)}', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+            const SizedBox(height: 6),
+            // 3. Metode Pembayaran nyata dari backend
+            Text('Metode: ${paymentResult.paymentMethod}', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+            const SizedBox(height: 6),
+            // 4. Detail Tunai jika ada pembayaran tunai
+            if (paymentResult.cashReceived > 0 && paymentResult.cashReceived != paymentResult.amount) ...[
+              Text('Uang Diterima: ${Formatters.formatCurrency(paymentResult.cashReceived)}', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
               const SizedBox(height: 2),
-              Text('Kembalian: ${Formatters.formatCurrency(receipt.cashChange)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.success)),
-              const SizedBox(height: 8),
+              Text('Kembalian: ${Formatters.formatCurrency(paymentResult.change)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.success)),
+              const SizedBox(height: 6),
             ],
-            if (_sisaTagihan > 0) ...[
+            // 5. Informasi Booking: Customer & Unit
+            if (paymentResult.customerName != '-' || paymentResult.unitName != '-') ...[
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (paymentResult.customerName != '-')
+                      Text('Customer: ${paymentResult.customerName}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                    if (paymentResult.unitName != '-') ...[
+                      const SizedBox(height: 2),
+                      Text('Unit: ${paymentResult.unitName}', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
+            // 6. Status Pelunasan / Sisa Tagihan nyata dari backend
+            if (paymentResult.remainingPayment > 0) ...[
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -693,14 +801,32 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
                   children: [
                     const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFFD97706)),
                     const SizedBox(width: 6),
-                    Text('Sisa Tagihan: ${Formatters.formatCurrency(_sisaTagihan)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF92400E))),
+                    Text('Sisa Tagihan: ${Formatters.formatCurrency(paymentResult.remainingPayment)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF92400E))),
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
+            ] else if (paymentResult.isSettled) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDCFCE7),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_outline_rounded, size: 14, color: Color(0xFF047857)),
+                    SizedBox(width: 4),
+                    Text('Status: Lunas', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF047857))),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
             ],
-            Text('Waktu: ${Formatters.date(_paymentDateTime)}, ${Formatters.time(_paymentDateTime)} WIB', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-            const SizedBox(height: 10),
+            // 7. Waktu Pembayaran nyata dari backend
+            Text('Waktu: $paymentTimeStr', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+            const SizedBox(height: 8),
             if (_printReceipt)
               Row(
                 children: [
@@ -1915,8 +2041,8 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
           _buildTabletNavItem(Icons.phone_iphone_rounded, 'Unit iPhone', false, () {
             Navigator.pushNamed(context, AppRoutes.unitStatus);
           }),
-          _buildTabletNavItem(Icons.print_outlined, 'Printer & Shift', false, () {
-            Navigator.pushNamed(context, AppRoutes.printerSettings);
+          _buildTabletNavItem(Icons.settings_outlined, 'Settings', false, () {
+            Navigator.pushNamed(context, AppRoutes.account);
           }),
         ],
       ),

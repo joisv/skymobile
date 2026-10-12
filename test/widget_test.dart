@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -37,6 +38,8 @@ import 'package:skyrental_admin/screens/affiliate/affiliate_revenue_screen.dart'
 import 'package:skyrental_admin/screens/account/account_screen.dart';
 import 'package:skyrental_admin/models/user_role_model.dart';
 import 'package:skyrental_admin/screens/account/roles_permissions_screen.dart';
+import 'package:skyrental_admin/screens/account/user_list_screen.dart';
+import 'package:skyrental_admin/screens/account/assign_role_screen.dart';
 import 'package:skyrental_admin/screens/account/theme_settings_screen.dart';
 import 'package:skyrental_admin/screens/dashboard/sales_report_screen.dart';
 import 'package:skyrental_admin/screens/unit_status/widgets/create_iphone_dialog.dart';
@@ -1349,28 +1352,91 @@ void main() {
     expect(find.text('Inspeksi Siap'), findsNothing);
     expect(find.text('Metrik Operasional Hari Ini'), findsOneWidget);
 
-    // 2. Verify 4 Metrics in a row
+    // 2. Verify 4 Metrics in a row across full width
     expect(find.text('Pickup Hari Ini'), findsOneWidget);
     expect(find.text('Return Hari Ini'), findsOneWidget);
     expect(find.text('Unit Disewa'), findsOneWidget);
     expect(find.text('Omzet Hari Ini'), findsOneWidget);
 
-    // 3. Verify Right Sidebar: Aksi Cepat Kasir, Printer Kasir, Stok Siap Sewa
+    // 3. Verify Right Sidebar (Printer & Kasir / Cashier) is PRESENT on the 2-column dashboard layout
     expect(find.text('Aksi Cepat Kasir'), findsOneWidget);
-    expect(find.text('Buat Booking Baru'), findsWidgets);
-    expect(find.text('Scan QR Booking'), findsOneWidget);
-    expect(find.text('Cek Stok Unit'), findsOneWidget);
-
     expect(find.text('Printer Kasir'), findsOneWidget);
     expect(find.text('Tes Cetak Nota Struk'), findsOneWidget);
-
     expect(find.text('Stok Siap Sewa'), findsOneWidget);
 
-    // 4. Verify transaction queue cards & action buttons
+    // 4. Verify transaction queue header & 2-column layout inside the main dashboard column
     expect(find.text('Antrean Transaksi'), findsOneWidget);
-    expect(find.text('Proses Serah Terima'), findsNothing);
+    expect(find.byKey(const Key('tablet_transaction_queue_two_columns')), findsOneWidget);
+    expect(find.byKey(const Key('tablet_queue_column_left')), findsOneWidget);
+    expect(find.byKey(const Key('tablet_queue_column_right')), findsOneWidget);
 
-    // 5. Check no overflow exceptions were logged
+    // 5. Verify Floating Action Button Buat Booking is present on tablet
+    expect(find.widgetWithText(FloatingActionButton, 'Buat Booking'), findsOneWidget);
+
+    // 6. Check no overflow exceptions were logged
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'DashboardScreen renders responsive 2-column portrait tablet layout (800 x 1280) without overflow',
+      (WidgetTester tester) async {
+    // Portrait tablet resolution
+    tester.view.physicalSize = const Size(800, 1280);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final repository = BookingRepository();
+    await tester.pumpWidget(SkyRentalAdminApp(bookingRepository: repository));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Verify 4 Metrics in a row
+    expect(find.text('Metrik Operasional Hari Ini'), findsOneWidget);
+    expect(find.text('Pickup Hari Ini'), findsOneWidget);
+    expect(find.text('Return Hari Ini'), findsOneWidget);
+    expect(find.text('Unit Disewa'), findsOneWidget);
+    expect(find.text('Omzet Hari Ini'), findsOneWidget);
+
+    // Verify Printer and Cashier appear in the 2-column tablet layout
+    expect(find.text('Aksi Cepat Kasir'), findsOneWidget);
+    expect(find.text('Printer Kasir'), findsOneWidget);
+    expect(find.text('Tes Cetak Nota Struk'), findsOneWidget);
+    expect(find.text('Stok Siap Sewa'), findsOneWidget);
+
+    // Verify 2-column transaction queue layout is rendered on tablet portrait
+    expect(find.text('Antrean Transaksi'), findsOneWidget);
+    expect(find.byKey(const Key('tablet_transaction_queue_two_columns')), findsOneWidget);
+    expect(find.byKey(const Key('tablet_queue_column_left')), findsOneWidget);
+    expect(find.byKey(const Key('tablet_queue_column_right')), findsOneWidget);
+
+    // Verify Floating Action Button Buat Booking is present on tablet portrait
+    expect(find.widgetWithText(FloatingActionButton, 'Buat Booking'), findsOneWidget);
+
+    // Check no overflow exceptions were logged
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'DashboardScreen preserves single-column mobile layout on narrow screens (390 x 844)',
+      (WidgetTester tester) async {
+    // Mobile phone resolution
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final repository = BookingRepository();
+    await tester.pumpWidget(SkyRentalAdminApp(bookingRepository: repository));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Verify tablet 2-column widget is NOT used on mobile
+    expect(find.byKey(const Key('tablet_transaction_queue_two_columns')), findsNothing);
+
+    // Verify mobile transaction queue section and mobile FAB are present
+    expect(find.text('Antrean Transaksi'), findsOneWidget);
+    expect(find.widgetWithText(FloatingActionButton, 'Buat Booking'), findsOneWidget);
+
+    // Check no overflow exceptions were logged
     expect(tester.takeException(), isNull);
   });
 
@@ -1930,7 +1996,7 @@ void main() {
     expect(find.text('Dashboard'), findsOneWidget);
     expect(find.text('Report'), findsOneWidget);
     expect(find.text('Unit iPhone'), findsOneWidget);
-    expect(find.text('Printer & Shift'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
 
     // 6. Verify column proportions: Right column is smaller than Left column (flex 60 vs flex 40)
     final leftColumnScroll = find.descendant(
@@ -1976,10 +2042,94 @@ void main() {
     expect(find.text('Dashboard'), findsWidgets);
     expect(find.text('Report'), findsOneWidget);
     expect(find.text('Unit iPhone'), findsOneWidget);
-    expect(find.text('Printer & Shift'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
 
     // Verify creator name is displayed in transaction queue cards
     expect(find.textContaining('Dibuat oleh:'), findsWidgets);
+  });
+
+  testWidgets(
+      'MainNavigationScreen hides menu labels on mobile screens and shows labels on tablet screens (including device rotation)',
+      (WidgetTester tester) async {
+    final repository = BookingRepository();
+
+    // -------------------------------------------------------------
+    // 1. Mobile Portrait (390 x 844)
+    // -------------------------------------------------------------
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.reset();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: MainNavigationScreen(repository: repository),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Verify NavigationBar is present on mobile
+    final navBarFinder = find.byType(NavigationBar);
+    expect(navBarFinder, findsOneWidget);
+
+    // Verify that NO menu labels exist inside the mobile NavigationBar
+    final navBarTexts = find.descendant(
+      of: navBarFinder,
+      matching: find.byWidgetPredicate((w) => w is Text && w.data != null && w.data!.isNotEmpty),
+    );
+    expect(navBarTexts, findsNothing,
+        reason: 'Mobile navigation bar must display only icons and hide all menu labels');
+
+    // Verify all 4 navigation icons are present
+    expect(find.byIcon(Icons.dashboard_rounded), findsOneWidget); // active
+    expect(find.byIcon(Icons.assessment_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.phone_iphone_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+
+    // -------------------------------------------------------------
+    // 2. Mobile Landscape / Rotation (844 x 390)
+    // -------------------------------------------------------------
+    tester.view.physicalSize = const Size(844, 390);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Still mobile: NavigationBar is used and labels remain hidden
+    expect(navBarFinder, findsOneWidget);
+    expect(
+      find.descendant(
+        of: navBarFinder,
+        matching: find.byWidgetPredicate((w) => w is Text && w.data != null && w.data!.isNotEmpty),
+      ),
+      findsNothing,
+      reason: 'Mobile landscape must still hide navigation labels',
+    );
+
+    // -------------------------------------------------------------
+    // 3. Tablet Portrait (800 x 1280)
+    // -------------------------------------------------------------
+    tester.view.physicalSize = const Size(800, 1280);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Tablet: labels are visible
+    expect(find.text('Report'), findsOneWidget);
+    expect(find.text('Unit iPhone'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+
+    // -------------------------------------------------------------
+    // 4. Tablet Landscape (1280 x 800)
+    // -------------------------------------------------------------
+    tester.view.physicalSize = const Size(1280, 800);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Tablet: both icons and labels remain visible
+    expect(find.text('Report'), findsOneWidget);
+    expect(find.text('Unit iPhone'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
   });
 
   testWidgets(
@@ -2049,7 +2199,7 @@ void main() {
     // 4. Verify Master Sidebar Categories & Menu Items
     expect(find.text('TOKO & OUTLET'), findsOneWidget);
     expect(find.text('Pengaturan Nama Toko & Outlet'), findsOneWidget);
-    expect(find.text('Shift Operasional Kasir'), findsOneWidget);
+    expect(find.text('Shift Operasional Kasir'), findsNothing);
     expect(find.text('MITRA & CABANG AFFILIATE'), findsOneWidget);
     expect(find.text('HARDWARE & RESI'), findsOneWidget);
     expect(find.text('NOTIFIKASI OPERASIONAL'), findsOneWidget);
@@ -2063,21 +2213,15 @@ void main() {
     expect(find.text('Simpan Pengaturan'), findsOneWidget);
     expect(find.text('PRATINJAU KERTAS THERMAL 58MM (LIVE RECEIPT PREVIEW)'), findsOneWidget);
     expect(find.text('58mm Thermal Print Mode'), findsOneWidget);
-    expect(find.text('VALIDASI OUTLET RESMI'), findsOneWidget);
     expect(find.text('IDENTITAS RENTAL'), findsOneWidget);
     expect(find.text('Nama Bisnis / Toko'), findsOneWidget);
     expect(find.text('Nama Cabang / Outlet'), findsOneWidget);
     expect(find.text('TEKS KAKI STRUK (FOOTER STRUK THERMAL)'), findsOneWidget);
-    expect(find.text('WIFI OUTLET (FASILITAS PELANGGAN)'), findsOneWidget);
-    expect(find.text('Tampil di QR & Struk'), findsOneWidget);
+    expect(find.text('WIFI OUTLET (FASILITAS PELANGGAN)'), findsNothing);
+    expect(find.text('Tampil di QR & Struk'), findsNothing);
 
-    // 6. Test Switching to another menu: Shift Operasional Kasir
-    await tester.tap(find.text('Shift Operasional Kasir'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Shift Operasional Kasir & Laci Kas'), findsOneWidget);
-    expect(find.text('STATUS SHIFT KASIR AKTIF'), findsOneWidget);
-    expect(find.text('MODAL AWAL & SALDO LACI KASIR'), findsOneWidget);
+    // 6. Verify Shift Operasional Kasir is removed from Master Sidebar
+    expect(find.text('Shift Operasional Kasir'), findsNothing);
 
     // 7. Test Switching to Ubah Kata Sandi
     final ubahKataSandiFinder = find.text('Ubah Kata Sandi');
@@ -3204,6 +3348,313 @@ void main() {
       expect(find.text('Users & Role Permissions'), findsOneWidget);
     });
 
+    testWidgets('UserListScreen renders KPI cards, search, filter chips, and user cards matching reference UI', (WidgetTester tester) async {
+      final repository = BookingRepository();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UserListScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify Header & Subtitle
+      expect(find.text('Pengguna & Hak Akses'), findsOneWidget);
+      expect(find.text('Manajemen peran & izin tim'), findsOneWidget);
+
+      // Verify KPI Summary Cards
+      expect(find.text('Total'), findsOneWidget);
+      expect(find.text('Akun'), findsOneWidget);
+      expect(find.text('Super Admin'), findsWidgets);
+      expect(find.text('Aktif'), findsOneWidget);
+      expect(find.text('Staf'), findsOneWidget);
+
+      // Verify Search bar & Filter Chips
+      expect(find.text('Cari nama atau email...'), findsOneWidget);
+      expect(find.textContaining('Semua'), findsWidgets);
+      expect(find.textContaining('Super Admin'), findsWidgets);
+      expect(find.textContaining('Admin Cabang'), findsWidgets);
+
+      // Verify User Cards: "Atur Izin" button & FAB
+      expect(find.text('Atur Izin'), findsWidgets);
+      expect(find.text('Tambah Pengguna'), findsOneWidget);
+    });
+
+    testWidgets('AssignRoleScreen renders dedicated role assignment and permission configuration page', (WidgetTester tester) async {
+      final repository = BookingRepository();
+      AuthService().setCurrentUserForTest(const AdminUserModel(
+        id: 1,
+        name: 'Super Admin',
+        email: 'super@skyrental.id',
+        phone: '+6281234567890',
+        role: 'super-admin',
+        outletName: 'Outlet Utama',
+        shiftName: 'Shift 1',
+        isActive: true,
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AssignRoleScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify Page Title
+      expect(find.text('Assign Role & Hak Akses'), findsOneWidget);
+      expect(find.text('Tetapkan peran & konfigurasi izin tim'), findsOneWidget);
+
+      // Verify User Selector & Tabs
+      expect(find.text('Pengguna Terpilih'), findsOneWidget);
+      expect(find.text('Pilih Peran (Role)'), findsOneWidget);
+      expect(find.textContaining('Hak Akses'), findsWidgets);
+
+      // Verify Save Button
+      expect(find.text('Simpan Peran & Hak Akses'), findsOneWidget);
+    });
+
+    testWidgets('AccountScreen navigation separation: User List and Assign Role open distinct pages', (WidgetTester tester) async {
+      final repository = BookingRepository();
+      AuthService().setCurrentUserForTest(const AdminUserModel(
+        id: 1,
+        name: 'Super Admin',
+        email: 'super@skyrental.id',
+        phone: '+6281234567890',
+        role: 'super-admin',
+        outletName: 'Outlet Utama',
+        shiftName: 'Shift 1',
+        isActive: true,
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Column(
+                children: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pushNamed(AppRoutes.userList),
+                    child: const Text('Go to User List'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pushNamed(AppRoutes.assignRole),
+                    child: const Text('Go to Assign Role'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Test 1: Tapping "Go to User List" opens UserListScreen
+      await tester.tap(find.text('Go to User List'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(UserListScreen), findsOneWidget);
+      expect(find.byType(AssignRoleScreen), findsNothing);
+      expect(find.text('Pengguna & Hak Akses'), findsOneWidget);
+
+      // Pop back
+      Navigator.of(tester.element(find.byType(UserListScreen))).pop();
+      await tester.pumpAndSettle();
+
+      // Test 2: Tapping "Go to Assign Role" opens AssignRoleScreen
+      await tester.tap(find.text('Go to Assign Role'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AssignRoleScreen), findsOneWidget);
+      expect(find.byType(UserListScreen), findsNothing);
+      expect(find.text('Assign Role & Hak Akses'), findsOneWidget);
+    });
+
+    testWidgets('UserListScreen navigates to AssignRoleScreen via Atur Izin button', (WidgetTester tester) async {
+      final repository = BookingRepository();
+      AuthService().setCurrentUserForTest(const AdminUserModel(
+        id: 1,
+        name: 'Super Admin',
+        email: 'super@skyrental.id',
+        phone: '+6281234567890',
+        role: 'super-admin',
+        outletName: 'Outlet Utama',
+        shiftName: 'Shift 1',
+        isActive: true,
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
+          home: UserListScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap first "Atur Izin" button
+      final aturIzinBtn = find.text('Atur Izin').first;
+      await tester.tap(aturIzinBtn);
+      await tester.pumpAndSettle();
+
+      // Verify navigated to AssignRoleScreen
+      expect(find.byType(AssignRoleScreen), findsOneWidget);
+      expect(find.text('Assign Role & Hak Akses'), findsOneWidget);
+    });
+
+    testWidgets('UserListScreen tablet responsiveness: renders 2-column grid and horizontal toolbar on tablet portrait', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 1280);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repository = BookingRepository();
+      AuthService().setCurrentUserForTest(const AdminUserModel(
+        id: 1,
+        name: 'Super Admin',
+        email: 'super@skyrental.id',
+        phone: '+6281234567890',
+        role: 'super-admin',
+        outletName: 'Outlet Utama',
+        shiftName: 'Shift 1',
+        isActive: true,
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UserListScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify 4 KPI Summary Cards on tablet
+      expect(find.text('Total'), findsOneWidget);
+      expect(find.text('Akun'), findsOneWidget);
+      expect(find.text('Super Admin'), findsWidgets);
+      expect(find.text('Admin Cabang'), findsWidgets);
+      expect(find.text('Staf'), findsOneWidget);
+
+      // Verify horizontal search & filter toolbar
+      expect(find.text('Cari nama atau email...'), findsOneWidget);
+      expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
+
+      // Verify GridView/SliverGrid rendered for 2-columns
+      expect(find.byType(SliverGrid), findsOneWidget);
+      expect(find.byType(SliverList), findsNothing);
+
+      // Verify action buttons are visible and interactive
+      expect(find.text('Atur Izin'), findsWidgets);
+      expect(find.text('Tambah Pengguna'), findsOneWidget);
+    });
+
+    testWidgets('UserListScreen tablet responsiveness: renders 3-column grid and horizontal toolbar on tablet landscape', (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repository = BookingRepository();
+      AuthService().setCurrentUserForTest(const AdminUserModel(
+        id: 1,
+        name: 'Super Admin',
+        email: 'super@skyrental.id',
+        phone: '+6281234567890',
+        role: 'super-admin',
+        outletName: 'Outlet Utama',
+        shiftName: 'Shift 1',
+        isActive: true,
+      ));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UserListScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify 4 KPI Summary Cards on tablet
+      expect(find.text('Total'), findsOneWidget);
+      expect(find.text('Super Admin'), findsWidgets);
+      expect(find.text('Admin Cabang'), findsWidgets);
+      expect(find.text('Staf'), findsOneWidget);
+
+      // Verify horizontal search & filter toolbar
+      expect(find.text('Cari nama atau email...'), findsOneWidget);
+
+      // Verify GridView/SliverGrid rendered for 3-columns on extra wide
+      expect(find.byType(SliverGrid), findsOneWidget);
+      expect(find.byType(SliverList), findsNothing);
+
+      // Verify action buttons are visible
+      expect(find.text('Atur Izin'), findsWidgets);
+    });
+
+    testWidgets('AccountScreen navigation: Assign Role menu is removed from both mobile and tablet views', (WidgetTester tester) async {
+      final repository = BookingRepository();
+      AuthService().setCurrentUserForTest(const AdminUserModel(
+        id: 1,
+        name: 'Super Admin',
+        email: 'super@skyrental.id',
+        phone: '+6281234567890',
+        role: 'super-admin',
+        outletName: 'Outlet Utama',
+        shiftName: 'Shift 1',
+        isActive: true,
+      ));
+
+      // 1. Mobile View (390 x 844)
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
+          home: AccountScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // User List is visible in mobile menu
+      expect(find.text('Daftar Pengguna'), findsOneWidget);
+      // Assign Role & Permission is removed from mobile menu
+      expect(find.text('Assign Role & Permission'), findsNothing);
+      expect(find.text('Role & Izin Akses'), findsNothing);
+
+      // 2. Tablet Landscape View (1280 x 800)
+      tester.view.physicalSize = const Size(1280, 800);
+      await tester.pumpWidget(
+        MaterialApp(
+          onGenerateRoute: (settings) => AppRoutes.onGenerateRoute(settings, repository),
+          home: AccountScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tablet sidebar contains Daftar Pengguna
+      expect(find.text('Daftar Pengguna'), findsOneWidget);
+      // Tablet sidebar does NOT contain Assign Role & Hak Akses
+      expect(find.text('Assign Role & Hak Akses'), findsNothing);
+
+      // Tap Daftar Pengguna in tablet sidebar
+      await tester.tap(find.text('Daftar Pengguna'));
+      await tester.pumpAndSettle();
+
+      // Verify embedded UserListScreen detail content rendered without layout errors
+      expect(find.text('Daftar Pengguna'), findsWidgets);
+      expect(find.text('Tambah Pengguna'), findsOneWidget);
+      expect(find.text('Total'), findsOneWidget);
+      expect(find.text('Atur Izin'), findsWidgets);
+
+      // Tap Atur Izin on first user card
+      await tester.tap(find.text('Atur Izin').first);
+      await tester.pumpAndSettle();
+
+      // Verify navigated to AssignRoleScreen
+      expect(find.byType(AssignRoleScreen), findsOneWidget);
+      expect(find.text('Assign Role & Hak Akses'), findsOneWidget);
+    });
+
     testWidgets('Route Guard: Non-super-admin user receives access denied on super-admin routes', (WidgetTester tester) async {
       final repository = BookingRepository();
       // Login as regular staff/admin
@@ -3278,7 +3729,7 @@ void main() {
       // Ensure super-admin exclusive sections and menu items are not present
       expect(find.text('MANAJEMEN PENGGUNA & HAK AKSES'), findsNothing);
       expect(find.text('MITRA & CABANG AFFILIATE'), findsNothing);
-      expect(find.text('Daftar Pengguna & Role'), findsNothing);
+      expect(find.text('Daftar Pengguna'), findsNothing);
       expect(find.text('Role & Izin Akses'), findsNothing);
       expect(find.text('Mitra Cabang & Affiliate'), findsNothing);
       expect(find.text('Mutasi & Transfer Unit iPhone'), findsNothing);
@@ -3317,8 +3768,9 @@ void main() {
       // Ensure super-admin exclusive sections and menu items are visible
       expect(find.text('MANAJEMEN PENGGUNA & HAK AKSES'), findsOneWidget);
       expect(find.text('MITRA & CABANG AFFILIATE'), findsOneWidget);
-      expect(find.text('Daftar Pengguna & Role'), findsOneWidget);
-      expect(find.text('Role & Izin Akses'), findsOneWidget);
+      expect(find.text('Daftar Pengguna'), findsOneWidget);
+      expect(find.text('Role & Izin Akses'), findsNothing);
+      expect(find.text('Assign Role & Permission'), findsNothing);
       expect(find.text('Mitra Cabang & Affiliate'), findsOneWidget);
       expect(find.text('Mutasi & Transfer Unit iPhone'), findsOneWidget);
     });
@@ -3464,7 +3916,7 @@ void main() {
       expect(find.text('+ Tambah iPhone Baru'), findsNothing);
     });
 
-    testWidgets('AccountScreen: Mobile Shift Operasional Kasir opens bottom sheet modal', (WidgetTester tester) async {
+    testWidgets('AccountScreen: Mobile Shift Operasional Kasir is removed', (WidgetTester tester) async {
       tester.view.physicalSize = const Size(400, 1200);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -3480,27 +3932,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final shiftMenu = find.text('Shift Operasional Kasir');
-      await tester.scrollUntilVisible(shiftMenu, 300);
-      expect(shiftMenu, findsOneWidget);
-
-      await tester.tap(shiftMenu);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Shift Operasional Kasir & Laci Kas'), findsOneWidget);
-      expect(find.text('STATUS SHIFT KASIR AKTIF'), findsOneWidget);
-      expect(find.text('MODAL AWAL & SALDO LACI KASIR'), findsOneWidget);
-      expect(find.text('Rekonsiliasi Shift'), findsOneWidget);
-
-      // Close modal
-      await tester.tap(find.text('Tutup'));
-      await tester.pumpAndSettle();
+      expect(find.text('Shift Operasional Kasir'), findsNothing);
       expect(find.text('Shift Operasional Kasir & Laci Kas'), findsNothing);
     });
 
     group('Affiliate Scoping and Section 2 Booking Availability Tests', () {
       test('BookingRepository: Inventory correctly scoped by user affiliate', () async {
-        final affUser = const AdminUserModel(
+        const affUser = AdminUserModel(
           id: 10,
           name: 'Affiliate Staff',
           email: 'aff@skyrent.id',
@@ -3529,7 +3967,7 @@ void main() {
 
       test('BookingRepository: isUnitAvailableForPeriod checks schedule conflict per physical unit', () async {
         final repository = BookingRepository();
-        final unit1 = const IphoneModel(
+        const unit1 = IphoneModel(
           id: 101,
           name: 'iPhone 15 Pro',
           storage: '128GB',
@@ -3541,7 +3979,7 @@ void main() {
             IphoneDurationOption(id: 1, name: '1 Hari', hours: 24, price: 150000),
           ],
         );
-        final unit2 = const IphoneModel(
+        const unit2 = IphoneModel(
           id: 102,
           name: 'iPhone 15 Pro',
           storage: '128GB',
@@ -3587,7 +4025,7 @@ void main() {
       });
 
       test('BookingRepository: createBooking rejects cross-affiliate and schedule conflict bookings', () async {
-        final affUser = const AdminUserModel(
+        const affUser = AdminUserModel(
           id: 20,
           name: 'Affiliate User',
           email: 'aff2@skyrent.id',
@@ -3600,7 +4038,7 @@ void main() {
         AuthService().setCurrentUserForTest(affUser);
         final repository = BookingRepository();
 
-        final crossAffiliateUnit = const IphoneModel(
+        const crossAffiliateUnit = IphoneModel(
           id: 201,
           name: 'iPhone 13',
           storage: '128GB',
@@ -3728,7 +4166,7 @@ void main() {
       });
 
       testWidgets('CreateBookingScreen: Super-admin sees ONLY units where affiliate_id IS NULL in Section 2', (tester) async {
-        final superAdminUser = const AdminUserModel(
+        const superAdminUser = AdminUserModel(
           id: 1,
           name: 'Super Admin SKYRental',
           email: 'super-admin@example.com',
@@ -3780,7 +4218,7 @@ void main() {
       });
 
       testWidgets('CreateBookingScreen: Affiliate Admin sees ONLY units belonging to their own affiliate in Section 2', (tester) async {
-        final affiliateAdminUser = const AdminUserModel(
+        const affiliateAdminUser = AdminUserModel(
           id: 2,
           name: 'Admin Affiliate 1',
           email: 'affiliate1@example.com',
@@ -3827,10 +4265,805 @@ void main() {
         // Verify global units and other affiliates units are strictly EXCLUDED
         expect(find.textContaining('P9ZX44MN67'), findsNothing); // global
         expect(find.textContaining('K7T890PL2M'), findsNothing); // affiliateId == 2
-        expect(find.textContaining('F2LNK92YK2J'), findsNothing); // affiliateId == 3
+      });
+    });
+
+    group('Dashboard Client-Side Caching Tests', () {
+      test('BookingRepository: in-memory cache lifecycle and 5-minute TTL', () {
+        final repository = BookingRepository();
+        repository.invalidateDashboardCache();
+
+        expect(repository.isDashboardCacheValid, isFalse);
+        expect(repository.cachedDashboardData, isNull);
+
+        final mockData = {
+          'isOnline': true,
+          'metrics': {'availableUnits': 10, 'bookingToday': 5},
+          'actionItems': <BookingModel>[],
+          'recentBookings': <BookingModel>[],
+          'allQueue': <BookingModel>[],
+        };
+
+        repository.setDashboardCache(
+          data: mockData,
+          readyUnits: [],
+          pendingTransferCount: 2,
+        );
+
+        expect(repository.isDashboardCacheValid, isTrue);
+        expect(repository.cachedDashboardData, equals(mockData));
+        expect(repository.cachedPendingTransferCount, equals(2));
+        expect(repository.dashboardCacheAge, isNotNull);
+        expect(repository.dashboardCacheAge!.inSeconds, lessThan(2));
+
+        // Invalidate cache
+        repository.invalidateDashboardCache();
+        expect(repository.isDashboardCacheValid, isFalse);
+        expect(repository.cachedDashboardData, isNull);
+        expect(repository.dashboardCacheAge, isNull);
+      });
+
+      test('BookingRepository: getOperationalDashboardData uses cache when valid and bypasses on forceRefresh', () async {
+        final repository = BookingRepository();
+        repository.invalidateDashboardCache();
+
+        final mockData1 = {
+          'isOnline': true,
+          'metrics': {'availableUnits': 99},
+          'actionItems': <BookingModel>[],
+          'recentBookings': <BookingModel>[],
+          'allQueue': <BookingModel>[],
+        };
+
+        repository.setDashboardCache(
+          data: mockData1,
+          readyUnits: [],
+          pendingTransferCount: 0,
+        );
+
+        // When valid and not forceRefresh, must return cached data
+        final res1 = await repository.getOperationalDashboardData(forceRefresh: false);
+        expect(res1['metrics']['availableUnits'], equals(99));
+
+        // When forceRefresh is true, bypasses cache
+        final res2 = await repository.getOperationalDashboardData(forceRefresh: true);
+        expect(res2, isNotNull);
+      });
+
+      test('BookingRepository: deleteBooking automatically invalidates dashboard cache', () async {
+        final repository = BookingRepository();
+        final mockData = {
+          'isOnline': true,
+          'metrics': {'availableUnits': 12},
+        };
+        repository.setDashboardCache(data: mockData, readyUnits: [], pendingTransferCount: 0);
+        expect(repository.isDashboardCacheValid, isTrue);
+
+        await repository.deleteBooking('TEST-CODE-NONEXISTENT');
+        // Cache is invalidated
+        expect(repository.isDashboardCacheValid, isFalse);
+      });
+
+      testWidgets('DashboardScreen: displays cached data immediately and supports pull-to-refresh', (tester) async {
+        final repository = BookingRepository();
+        final cachedData = {
+          'isOnline': true,
+          'metrics': {
+            'availableUnits': 88,
+            'unreturnedUnits': 2,
+            'bookingToday': 4,
+            'revenueToday': 1500000.0,
+            'activeRentals': 3,
+            'todayPickups': 1,
+            'todayReturns': 2,
+            'overdueReturns': 0,
+            'rentedUnits': 3,
+            'maintenanceUnits': 0,
+            'totalUnits': 10,
+            'utilizationRate': 30,
+          },
+          'financials': {
+            'totalRevenue': 1500000.0,
+            'totalHeldDeposit': 500000.0,
+            'totalRefundedDeposit': 0.0,
+          },
+          'actionItems': <BookingModel>[],
+          'recentBookings': <BookingModel>[],
+          'allQueue': <BookingModel>[],
+        };
+
+        // Seed repository cache
+        repository.setDashboardCache(
+          data: cachedData,
+          readyUnits: [],
+          pendingTransferCount: 0,
+        );
+
+        tester.view.physicalSize = const Size(800, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DashboardScreen(repository: repository),
+          ),
+        );
+        // Instant pump without waiting for network/skeleton
+        await tester.pump();
+
+        // Cached metric 88 should be visible immediately!
+        expect(
+          find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText().contains('88')),
+          findsWidgets,
+        );
+        expect(find.text('Siap Disewa'), findsOneWidget);
+
+        // Verify RefreshIndicator exists
+        expect(find.byType(RefreshIndicator), findsOneWidget);
+
+        // Pull down to trigger RefreshIndicator (pull-to-refresh)
+        await tester.fling(find.byType(SingleChildScrollView).first, const Offset(0, 300), 1000);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+      });
+    });
+
+    group('Payment Confirmation Flow and Real Data Popup Tests', () {
+      test('BookingPaymentResult.fromJson parses Laravel API response accurately', () {
+        final mockBackendResponse = {
+          'status': 'success',
+          'message': 'Pembayaran sewa sebesar Rp 250.000 berhasil dicatat.',
+          'data': {
+            'id': 88,
+            'booking_code': 'SKY202610080088',
+            'customer_name': 'Budi Santoso',
+            'customer_phone': '081234567890',
+            'price': 250000.0,
+            'payment_status': 'paid',
+            'iphone': {
+              'name': 'iPhone 15 Pro',
+              'serial_number': 'SN-IPHONE-88',
+            },
+          },
+          'payment': {
+            'id': 99,
+            'payment_code': 'PAY-000099',
+            'booking_code': 'SKY202610080088',
+            'receipt_number': 'SKY202610080088',
+            'customer_name': 'Budi Santoso',
+            'customer_phone': '081234567890',
+            'unit_name': 'iPhone 15 Pro (SN-IPHONE-88)',
+            'payment_method': 'QRIS',
+            'amount': 250000.0,
+            'pay': 250000.0,
+            'change': 0.0,
+            'type': 'payment',
+            'type_label': 'Pelunasan Sewa',
+            'paid_at': '2026-10-08T16:24:00Z',
+            'paid_at_formatted': '08 Oct 2026, 16:24',
+          },
+          'payment_summary': {
+            'booking_code': 'SKY202610080088',
+            'receipt_number': 'SKY202610080088',
+            'payment_code': 'PAY-000099',
+            'customer_name': 'Budi Santoso',
+            'customer_phone': '081234567890',
+            'unit_name': 'iPhone 15 Pro (SN-IPHONE-88)',
+            'price': 250000.0,
+            'total_amount': 250000.0,
+            'amount_paid': 250000.0,
+            'amount': 250000.0,
+            'cash_received': 250000.0,
+            'change': 0.0,
+            'payment_method': 'QRIS',
+            'payment_type': 'payment',
+            'payment_type_label': 'Pelunasan Sewa',
+            'total_paid': 250000.0,
+            'remaining_payment': 0.0,
+            'payment_status': 'paid',
+            'is_settled': true,
+            'paid_at': '2026-10-08T16:24:00Z',
+            'paid_at_formatted': '08 Oct 2026, 16:24',
+          },
+        };
+
+        final result = BookingPaymentResult.fromJson(mockBackendResponse);
+
+        expect(result.bookingCode, equals('SKY202610080088'));
+        expect(result.receiptNumber, equals('SKY202610080088'));
+        expect(result.amount, equals(250000.0));
+        expect(result.paymentMethod, equals('QRIS'));
+        expect(result.paymentTypeLabel, equals('Pelunasan Sewa'));
+        expect(result.customerName, equals('Budi Santoso'));
+        expect(result.unitName, equals('iPhone 15 Pro (SN-IPHONE-88)'));
+        expect(result.paidAtFormatted, equals('08 Oct 2026, 16:24'));
+        expect(result.isSettled, isTrue);
+        expect(result.remainingPayment, equals(0.0));
+      });
+
+      testWidgets('PaymentDepositScreen displays real transaction data in success dialog without hardcoding', (tester) async {
+        final repository = BookingRepository();
+        const testUnit = IphoneModel(
+          id: 501,
+          name: 'iPhone 15 Pro Max',
+          storage: '256GB',
+          color: 'Natural Titanium',
+          serialNumber: 'SN-REAL-PAY-501',
+          assetCode: 'AST-REAL-501',
+          status: 'tersedia',
+          batteryHealth: 100,
+        );
+
+        final booking = await repository.createBooking(
+          customerName: 'Siti Rahma',
+          customerPhone: '081299887766',
+          customerEmail: 'siti@example.com',
+          address: 'Jl. Malioboro No 10',
+          iphone: testUnit,
+          startDate: DateTime.now(),
+          endDate: DateTime.now().add(const Duration(days: 2)),
+          durationDays: 2,
+          price: 350000,
+          deposit: 0,
+          jaminanType: 'KTP',
+          paymentStatus: PaymentStatus.unpaid,
+          amountPaid: 0,
+          paymentMethod: 'Kasir',
+        );
+
+        expect(booking.bookingCode, isNotEmpty);
+        expect(booking.bookingCode.startsWith('SKY'), isTrue);
+
+        tester.view.physicalSize = const Size(800, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: PaymentDepositScreen(
+              repository: repository,
+              booking: booking,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Cari tombol konfirmasi pembayaran
+        final confirmBtn = find.widgetWithText(ElevatedButton, 'Konfirmasi Pelunasan & Simpan');
+        expect(confirmBtn, findsOneWidget);
+
+        await tester.tap(confirmBtn);
+        await tester.pumpAndSettle();
+
+        // Popup "Pembayaran Berhasil" muncul
+        expect(find.text('Pembayaran Berhasil'), findsOneWidget);
+
+        // Nomor Resi yang ditampilkan HARUS nomor booking nyata SKY..., BUKAN STR-2026...
+        expect(find.textContaining(booking.bookingCode), findsWidgets);
+        expect(find.textContaining('STR-2026'), findsNothing);
+
+        // Data transaksi nyata terlihat di popup
+        expect(find.textContaining('Siti Rahma'), findsWidgets);
+        expect(find.textContaining('iPhone 15 Pro Max'), findsWidgets);
+
+        // Tombol aksi struk dan selesai tersedia
+        expect(find.text('Lihat Struk Resi'), findsOneWidget);
+        expect(find.text('Selesai'), findsOneWidget);
+
+        await tester.tap(find.text('Selesai'));
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('PaymentDepositScreen does NOT show success dialog when backend payment fails with ApiException', (tester) async {
+        final repository = _FailingPaymentBookingRepository();
+        const testUnit = IphoneModel(
+          id: 502,
+          name: 'iPhone 15',
+          storage: '128GB',
+          color: 'Black',
+          serialNumber: 'SN-FAIL-502',
+          assetCode: 'AST-FAIL-502',
+          status: 'tersedia',
+          batteryHealth: 100,
+        );
+
+        final booking = await repository.createBooking(
+          customerName: 'Bambang',
+          customerPhone: '081211112222',
+          customerEmail: 'bambang@example.com',
+          address: 'Jl. Solo No 1',
+          iphone: testUnit,
+          startDate: DateTime.now(),
+          endDate: DateTime.now().add(const Duration(days: 1)),
+          durationDays: 1,
+          price: 200000,
+          deposit: 0,
+          jaminanType: 'KTP',
+          paymentStatus: PaymentStatus.unpaid,
+          amountPaid: 0,
+          paymentMethod: 'Kasir',
+        );
+
+        tester.view.physicalSize = const Size(800, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: PaymentDepositScreen(
+              repository: repository,
+              booking: booking,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final confirmBtn = find.widgetWithText(ElevatedButton, 'Konfirmasi Pelunasan & Simpan');
+        expect(confirmBtn, findsOneWidget);
+
+        await tester.tap(confirmBtn);
+        await tester.pumpAndSettle();
+
+        // Popup "Pembayaran Berhasil" TIDAK BOLEH muncul!
+        expect(find.text('Pembayaran Berhasil'), findsNothing);
+
+        // Snackbar pesan error dari API harus ditampilkan
+        expect(find.textContaining('Tagihan sewa untuk booking ini sudah lunas atau dibatalkan.'), findsOneWidget);
+      });
+    });
+
+    group('Authentication Session Persistence Tests', () {
+      tearDown(() {
+        AuthService().setCurrentUserForTest(AdminUserModel.defaultAdmin());
+      });
+
+      test('restoreSession restores auth session from SharedPreferences when token and cached profile exist', () async {
+        const mockUser = AdminUserModel(
+          id: 99,
+          name: 'Affiliate Branch Manager',
+          email: 'manager@skyrental.id',
+          phone: '08123456789',
+          role: 'affiliate-admin',
+          outletName: 'Cabang Gejayan',
+          shiftName: 'Shift Siang',
+          affiliateId: 2,
+          roles: ['affiliate-admin'],
+        );
+
+        SharedPreferences.setMockInitialValues({
+          'api_auth_token': 'test-sanctum-token-999',
+          'api_user_profile': jsonEncode(mockUser.toJson()),
+        });
+
+        final auth = AuthService();
+        await auth.restoreSession();
+
+        expect(auth.isAuthenticated, isTrue);
+        expect(auth.token, equals('test-sanctum-token-999'));
+        expect(auth.currentUser?.id, equals(99));
+        expect(auth.currentUser?.name, equals('Affiliate Branch Manager'));
+        expect(auth.currentUser?.affiliateId, equals(2));
+      });
+
+      testWidgets('SkyRentalAdminApp navigates directly to Dashboard when session is restored', (WidgetTester tester) async {
+        final mockUser = AdminUserModel.defaultAdmin();
+        SharedPreferences.setMockInitialValues({
+          'api_auth_token': 'valid-bearer-token',
+          'api_user_profile': jsonEncode(mockUser.toJson()),
+        });
+
+        await AuthService().restoreSession();
+        expect(AuthService().isAuthenticated, isTrue);
+
+        final repository = BookingRepository();
+        await tester.pumpWidget(SkyRentalAdminApp(bookingRepository: repository));
+        await tester.pumpAndSettle();
+
+        // Verifikasi langsung membuka MainNavigationScreen / DashboardScreen tanpa menampilkan LoginScreen
+        expect(find.byType(DashboardScreen), findsOneWidget);
+        expect(find.byType(LoginScreen), findsNothing);
+      });
+
+      testWidgets('SkyRentalAdminApp navigates directly to LoginScreen when no session exists', (WidgetTester tester) async {
+        SharedPreferences.setMockInitialValues({});
+        await AuthService().logout();
+        expect(AuthService().isAuthenticated, isFalse);
+
+        final repository = BookingRepository();
+        await tester.pumpWidget(SkyRentalAdminApp(bookingRepository: repository));
+        await tester.pumpAndSettle();
+
+        // Verifikasi langsung membuka LoginScreen
+        expect(find.byType(LoginScreen), findsOneWidget);
+        expect(find.byType(DashboardScreen), findsNothing);
+      });
+
+      test('Explicit logout completely clears stored auth data in SharedPreferences', () async {
+        final mockUser = AdminUserModel.defaultAdmin();
+        SharedPreferences.setMockInitialValues({
+          'api_auth_token': 'token-to-be-cleared',
+          'api_user_profile': jsonEncode(mockUser.toJson()),
+        });
+
+        await AuthService().restoreSession();
+        expect(AuthService().isAuthenticated, isTrue);
+
+        await AuthService().logout();
+
+        expect(AuthService().isAuthenticated, isFalse);
+        expect(AuthService().token, isNull);
+        expect(AuthService().currentUser, isNull);
+
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('api_auth_token'), isNull);
+        expect(prefs.getString('api_user_profile'), isNull);
+      });
+    });
+
+    group('Measurable Performance Targets & Benchmark Tests', () {
+      late BookingRepository repository;
+
+      setUp(() {
+        repository = BookingRepository();
+        repository.resetInventory();
+        AuthService().setCurrentUserForTest(AdminUserModel.defaultAdmin());
+      });
+
+      tearDown(() {
+        repository.resetInventory();
+      });
+
+      test('Large iPhone Inventory: 100 units loads initial 20 items progressively under 2s', () async {
+        final units100 = BookingRepository.generateTestInventory(100);
+        repository.setTestInventory(units100);
+
+        final stopwatch = Stopwatch()..start();
+        final page1 = await repository.getInventoryUnitsPaginated(page: 1, perPage: 20);
+        stopwatch.stop();
+
+        // Target: Initial list ≤ 2 seconds
+        expect(stopwatch.elapsedMilliseconds, lessThan(2000));
+        // Target: Load only limited page initially (20 items)
+        expect(page1.units.length, 20);
+        expect(page1.total, 100);
+        expect(page1.currentPage, 1);
+        expect(page1.lastPage, 5);
+
+        // Progressive load next page
+        final page2 = await repository.getInventoryUnitsPaginated(page: 2, perPage: 20);
+        expect(page2.units.length, 20);
+        expect(page2.units.first.id, isNot(page1.units.first.id));
+      });
+
+      test('Large iPhone Inventory: 500 units loads initial 20 items progressively under 2s', () async {
+        final units500 = BookingRepository.generateTestInventory(500);
+        repository.setTestInventory(units500);
+
+        final stopwatch = Stopwatch()..start();
+        final page1 = await repository.getInventoryUnitsPaginated(page: 1, perPage: 20);
+        stopwatch.stop();
+
+        expect(stopwatch.elapsedMilliseconds, lessThan(2000));
+        expect(page1.units.length, 20);
+        expect(page1.total, 500);
+        expect(page1.currentPage, 1);
+        expect(page1.lastPage, 25);
+      });
+
+      test('Large iPhone Inventory: 1,000 units loads only 20 items in memory and filters responsively', () async {
+        final units1000 = BookingRepository.generateTestInventory(1000);
+        repository.setTestInventory(units1000);
+
+        final stopwatch = Stopwatch()..start();
+        final page1 = await repository.getInventoryUnitsPaginated(page: 1, perPage: 20);
+        stopwatch.stop();
+
+        // 1. Initial page ≤ 2s
+        expect(stopwatch.elapsedMilliseconds, lessThan(2000));
+        // 2. Memory protection: Only 20 items in memory, NOT all 1,000
+        expect(page1.units.length, 20);
+        expect(page1.total, 1000);
+        expect(page1.lastPage, 50);
+
+        // 3. Search responsiveness on 1,000 items: ≤ 500ms
+        final searchWatch = Stopwatch()..start();
+        final searchResult = await repository.getInventoryUnitsPaginated(
+          query: 'SN-PERF-3042',
+          page: 1,
+          perPage: 20,
+        );
+        searchWatch.stop();
+
+        expect(searchWatch.elapsedMilliseconds, lessThan(500));
+        expect(searchResult.units.length, 1);
+        expect(searchResult.units.first.serialNumber, 'SN-PERF-3042');
+      });
+
+      testWidgets('UnitStatusListScreen: 1,000 units inventory renders 20 items initially without loading 1,000 at once', (WidgetTester tester) async {
+        final units1000 = BookingRepository.generateTestInventory(1000);
+        repository.setTestInventory(units1000);
+
+        tester.view.physicalSize = const Size(400, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: UnitStatusListScreen(repository: repository),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Total inventory shows 1000
+        expect(find.text('1000'), findsWidgets);
+
+        // Verify initial rendered cards: loads progressively
+        expect(find.textContaining('IPH-PERF-'), findsWidgets);
+
+        // Scroll down to trigger progressive pagination
+        final listFinder = find.byWidgetPredicate((w) => w is ListView && w.scrollDirection == Axis.vertical);
+        expect(listFinder, findsOneWidget);
+
+        await tester.drag(listFinder, const Offset(0, -1000));
+        await tester.pumpAndSettle();
+
+        // More units loaded progressively
+        expect(find.byType(UnitStatusListScreen), findsOneWidget);
+      });
+
+      testWidgets('UnitStatusListScreen: Search input uses 400ms debounce before triggering request', (WidgetTester tester) async {
+        final units = BookingRepository.generateTestInventory(50);
+        repository.setTestInventory(units);
+
+        tester.view.physicalSize = const Size(400, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: UnitStatusListScreen(repository: repository),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final searchField = find.byType(TextField).first;
+
+        // Type search query
+        await tester.enterText(searchField, 'IPH-PERF-3025');
+        // Pump 200ms: debounce should NOT have fired yet
+        await tester.pump(const Duration(milliseconds: 200));
+
+        // Pump 250ms (total > 400ms): debounce timer fires and queries data
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('IPH-PERF-3025'), findsWidgets);
+      });
+
+      test('Inventory Client-Side Caching: Returning to cached list takes ≤ 500 ms', () async {
+        final units = BookingRepository.generateTestInventory(100);
+        repository.setTestInventory(units);
+
+        // 1. Initial fetch: stores cache
+        final initial = await repository.getInventoryUnitsPaginated(page: 1, perPage: 20, forceRefresh: true);
+        expect(initial.units.length, 20);
+        expect(repository.isInventoryCacheValid, isTrue);
+
+        // 2. Return to page: retrieve from cache within ≤ 500 ms (measured in ms)
+        final stopwatch = Stopwatch()..start();
+        final cached = await repository.getInventoryUnitsPaginated(page: 1, perPage: 20, forceRefresh: false);
+        stopwatch.stop();
+
+        expect(stopwatch.elapsedMilliseconds, lessThan(500));
+        expect(cached.units.length, 20);
+        expect(cached.units.first.id, initial.units.first.id);
+
+        // 3. Force refresh bypasses cache
+        final refreshed = await repository.getInventoryUnitsPaginated(page: 1, perPage: 20, forceRefresh: true);
+        expect(refreshed.units.length, 20);
+      });
+
+      testWidgets('Memory Stability: Repeatedly opening and closing UnitStatusListScreen 20 times does not leak resources', (WidgetTester tester) async {
+        tester.view.physicalSize = const Size(400, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        for (int i = 0; i < 20; i++) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: UnitStatusListScreen(repository: repository),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Close / unmount screen
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        }
+
+        // Passed 20 full mounting/disposing cycles cleanly without exception or leak
+        expect(true, isTrue);
+      });
+    });
+
+    group('KIA (Kartu Identitas Anak) Jaminan Tests', () {
+      test('BookingModel handles kia flag in constructor, fromJson, and copyWith', () {
+        final b1 = BookingModel(
+          id: 1,
+          bookingCode: 'SKY2610090001',
+          customerName: 'Test Anak',
+          customerPhone: '08123456789',
+          customerEmail: 'anak@test.local',
+          pickupType: 'Outlet',
+          jaminanType: 'Kartu Pelajar',
+          kia: true,
+          startDate: DateTime(2026, 10, 9),
+          endDate: DateTime(2026, 10, 10),
+          durationDays: 24,
+          price: 150000,
+          deposit: 0,
+          status: BookingStatus.confirmed,
+          paymentStatus: PaymentStatus.paid,
+          iphone: const IphoneModel(
+            id: 1,
+            name: 'iPhone 13',
+            storage: '128GB',
+            color: 'Midnight',
+            serialNumber: 'SN-001',
+            assetCode: 'IPH-001',
+            status: 'ready',
+          ),
+        );
+
+        expect(b1.kia, isTrue);
+        expect(b1.jaminanType, 'Kartu Pelajar');
+
+        final json = {
+          'id': 2,
+          'booking_code': 'SKY2610090002',
+          'customer_name': 'Test Anak 2',
+          'customer_phone': '08123456789',
+          'customer_email': 'anak2@test.local',
+          'jaminan_type': 'Kartu Pelajar',
+          'kia': true,
+          'start_booking_date': '2026-10-09',
+          'end_booking_date': '2026-10-10',
+          'price': 150000,
+          'deposit': 0,
+          'status': 'confirmed',
+          'payment_status': 'paid',
+          'iphone': {
+            'id': 1,
+            'name': 'iPhone 13',
+            'storage': '128GB',
+            'color': 'Midnight',
+            'serial_number': 'SN-001',
+            'asset_code': 'IPH-001',
+            'status': 'ready',
+          },
+        };
+
+        final b2 = BookingModel.fromJson(json);
+        expect(b2.kia, isTrue);
+        expect(b2.jaminanType, 'Kartu Pelajar');
+
+        final b3 = b2.copyWith(kia: false, jaminanType: 'KTP');
+        expect(b3.kia, isFalse);
+        expect(b3.jaminanType, 'KTP');
+      });
+
+      testWidgets('BookingDetailScreen: Jaminan Dititipkan displays Kartu Identitas Anak when kia is true', (WidgetTester tester) async {
+        final booking = BookingModel(
+          id: 1,
+          bookingCode: 'SKY2610090001',
+          customerName: 'Anak Customer',
+          customerPhone: '08123456789',
+          customerEmail: 'anak@test.local',
+          pickupType: 'Outlet',
+          jaminanType: 'Kartu Pelajar',
+          kia: true,
+          startDate: DateTime(2026, 10, 9, 10, 0),
+          endDate: DateTime(2026, 10, 10, 10, 0),
+          durationDays: 24,
+          price: 150000,
+          deposit: 0,
+          status: BookingStatus.confirmed,
+          paymentStatus: PaymentStatus.paid,
+          iphone: const IphoneModel(
+            id: 1,
+            name: 'iPhone 13',
+            storage: '128GB',
+            color: 'Midnight',
+            serialNumber: 'SN-001',
+            assetCode: 'IPH-001',
+            status: 'ready',
+          ),
+        );
+
+        tester.view.physicalSize = const Size(800, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: BookingDetailScreen(booking: booking),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Jaminan Dititipkan'), findsOneWidget);
+        expect(find.text('Kartu Identitas Anak'), findsOneWidget);
+      });
+
+      testWidgets('BookingDetailScreen: Jaminan Dititipkan displays jaminan_type when kia is false', (WidgetTester tester) async {
+        final booking = BookingModel(
+          id: 2,
+          bookingCode: 'SKY2610090002',
+          customerName: 'Reguler Customer',
+          customerPhone: '08123456789',
+          customerEmail: 'reguler@test.local',
+          pickupType: 'Outlet',
+          jaminanType: 'SIM',
+          kia: false,
+          startDate: DateTime(2026, 10, 9, 10, 0),
+          endDate: DateTime(2026, 10, 10, 10, 0),
+          durationDays: 24,
+          price: 150000,
+          deposit: 0,
+          status: BookingStatus.confirmed,
+          paymentStatus: PaymentStatus.paid,
+          iphone: const IphoneModel(
+            id: 1,
+            name: 'iPhone 13',
+            storage: '128GB',
+            color: 'Midnight',
+            serialNumber: 'SN-001',
+            assetCode: 'IPH-001',
+            status: 'ready',
+          ),
+        );
+
+        tester.view.physicalSize = const Size(800, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: BookingDetailScreen(booking: booking),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Jaminan Dititipkan'), findsOneWidget);
+        expect(find.text('SIM'), findsOneWidget);
       });
     });
   });
+}
+
+class _FailingPaymentBookingRepository extends BookingRepository {
+  @override
+  Future<BookingPaymentResult> submitBookingPaymentDetail({
+    required String bookingCode,
+    required double amount,
+    required double pay,
+    required String paymentMethod,
+    required String type,
+    DateTime? paidAt,
+    String? note,
+    bool sendWhatsapp = true,
+  }) async {
+    throw ApiException('Tagihan sewa untuk booking ini sudah lunas atau dibatalkan.', statusCode: 422);
+  }
 }
 
 

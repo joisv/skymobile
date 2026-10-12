@@ -1,4 +1,3 @@
-import 'package:barcode_widget/barcode_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -18,6 +17,8 @@ import '../dashboard/notification_list_screen.dart';
 import '../receipt/printer_settings_screen.dart';
 import '../receipt/receipt_format_settings_screen.dart';
 import '../receipt/reprint_receipt_list_screen.dart';
+import '../receipt/widgets/thermal_receipt_paper_preview.dart';
+import '../../models/receipt_format_settings.dart';
 import 'roles_permissions_screen.dart';
 import 'theme_settings_screen.dart';
 import '../../widgets/app_header.dart';
@@ -67,9 +68,13 @@ class _AccountScreenState extends State<AccountScreen> {
   late final TextEditingController _footerController;
   late final TextEditingController _wifiNameController;
   late final TextEditingController _wifiPasswordController;
-  bool _obscureWifiPassword = true;
   bool _isSavingShopSettings = false;
   ShopSettingsModel _shopSettings = ShopSettingsModel.defaultSettings();
+  ReceiptFormatSettings _receiptFormatSettings = const ReceiptFormatSettings();
+
+  void _onShopFieldChanged() {
+    if (mounted) setState(() {});
+  }
 
   // Template message controllers
   late final TextEditingController _waTemplateController;
@@ -97,6 +102,12 @@ class _AccountScreenState extends State<AccountScreen> {
     _wifiNameController = TextEditingController(text: _shopSettings.wifiName);
     _wifiPasswordController = TextEditingController(text: _shopSettings.wifiPassword);
 
+    _shopNameController.addListener(_onShopFieldChanged);
+    _outletNameController.addListener(_onShopFieldChanged);
+    _addressController.addListener(_onShopFieldChanged);
+    _phoneController.addListener(_onShopFieldChanged);
+    _footerController.addListener(_onShopFieldChanged);
+
     _waTemplateController = TextEditingController(
       text: 'Halo {nama}, pesanan iPhone {iphone} Anda di SKYRental telah siap diambil.',
     );
@@ -115,6 +126,12 @@ class _AccountScreenState extends State<AccountScreen> {
 
   @override
   void dispose() {
+    _shopNameController.removeListener(_onShopFieldChanged);
+    _outletNameController.removeListener(_onShopFieldChanged);
+    _addressController.removeListener(_onShopFieldChanged);
+    _phoneController.removeListener(_onShopFieldChanged);
+    _footerController.removeListener(_onShopFieldChanged);
+
     _shopNameController.dispose();
     _outletNameController.dispose();
     _addressController.dispose();
@@ -146,16 +163,19 @@ class _AccountScreenState extends State<AccountScreen> {
         _printerStorageService.getPrimaryPrinter(),
         widget.repository.getShopSettings(),
         SharedPreferences.getInstance(),
+        _printerStorageService.getReceiptFormatSettings(),
       ]);
 
       final printer = futures[0] as PrinterDeviceModel;
       final shop = futures[1] as ShopSettingsModel;
       final prefs = futures[2] as SharedPreferences;
+      final format = futures[3] as ReceiptFormatSettings;
 
       if (mounted) {
         setState(() {
           _primaryPrinter = printer;
           _shopSettings = shop;
+          _receiptFormatSettings = format;
           _shopNameController.text = shop.shopName;
           _outletNameController.text = shop.outletName;
           _addressController.text = shop.address;
@@ -201,14 +221,30 @@ class _AccountScreenState extends State<AccountScreen> {
         address: _addressController.text.trim(),
         phoneNumber: _phoneController.text.trim(),
         footerNote: _footerController.text.trim(),
-        wifiName: _wifiNameController.text.trim(),
-        wifiPassword: _wifiPasswordController.text.trim(),
       );
 
       final saved = await widget.repository.updateShopSettings(updated);
+
+      final currentFormat = await _printerStorageService.getReceiptFormatSettings();
+      final updatedFormat = currentFormat.copyWith(
+        businessName: _shopNameController.text.trim(),
+        branchName: _outletNameController.text.trim(),
+        businessTagline: _addressController.text.trim().isNotEmpty
+            ? _addressController.text.trim()
+            : currentFormat.businessTagline,
+        contactInfo: _phoneController.text.trim().isNotEmpty
+            ? 'CS: ${_phoneController.text.trim()} (WA)'
+            : currentFormat.contactInfo,
+        footerLine1: _footerController.text.trim().isNotEmpty
+            ? _footerController.text.trim()
+            : currentFormat.footerLine1,
+      );
+      await _printerStorageService.saveReceiptFormatSettings(updatedFormat);
+
       if (mounted) {
         setState(() {
           _shopSettings = saved;
+          _receiptFormatSettings = updatedFormat;
           _isSavingShopSettings = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -311,18 +347,21 @@ class _AccountScreenState extends State<AccountScreen> {
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(ctx).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Anda telah berhasil keluar dari akun SKYRental Admin.'),
-                  backgroundColor: AppTheme.primary,
-                ),
-              );
-              Navigator.of(context).pushNamedAndRemoveUntil(
-                AppRoutes.login,
-                (route) => false,
-              );
+              await AuthService().logout();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Anda telah berhasil keluar dari akun SKYRental Admin.'),
+                    backgroundColor: AppTheme.primary,
+                  ),
+                );
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  AppRoutes.login,
+                  (route) => false,
+                );
+              }
             },
             child: const Text('Ya, Keluar'),
           ),
@@ -331,145 +370,6 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
-  void _showShiftDetailModal() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 44,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.access_time_filled_rounded, color: Colors.blueAccent, size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Shift Operasional Kasir & Laci Kas',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        'Status shift kerja aktif & ringkasan laci kasir',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('STATUS SHIFT KASIR AKTIF',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.6, color: Color(0xFF475569))),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _buildMetricBox('Kasir Bertugas', _user.name, Icons.person_outline, const Color(0xFF2563EB)),
-                      const SizedBox(width: 8),
-                      _buildMetricBox('Shift Operasional', _user.shiftName, Icons.schedule, const Color(0xFF059669)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('MODAL AWAL & SALDO LACI KASIR',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.6, color: Color(0xFF475569))),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _buildMetricBox('Modal Awal Laci', 'Rp 500.000', Icons.account_balance_wallet_outlined, const Color(0xFFD97706)),
-                      const SizedBox(width: 8),
-                      _buildMetricBox('Total Transaksi Tunai', 'Rp 1.450.000', Icons.payments_outlined, const Color(0xFF059669)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFCBD5E1)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Status shift saat ini aktif. Penutupan kasir dapat dilakukan akhir jam shift.')),
-                      );
-                    },
-                    icon: const Icon(Icons.lock_clock_outlined, size: 16),
-                    label: const Text('Rekonsiliasi Shift', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F172A),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('Tutup', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   void _showAboutDialogModal() {
     showModalBottomSheet(
@@ -993,14 +893,6 @@ class _AccountScreenState extends State<AccountScreen> {
                   title: 'Pengaturan Nama Toko & Outlet',
                   subtitle: 'Konfigurasi identitas, alamat & WiFi',
                 ),
-                _buildTabletSidebarItem(
-                  key: 'shiftOperasional',
-                  icon: Icons.access_time_filled_rounded,
-                  title: 'Shift Operasional Kasir',
-                  subtitle: 'Buka/tutup kas & modal awal',
-                  trailingBadge: 'Aktif',
-                  trailingBadgeColor: const Color(0xFF15803D),
-                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -1031,11 +923,11 @@ class _AccountScreenState extends State<AccountScreen> {
                 title: 'PENGGUNA & HAK AKSES',
                 children: [
                   _buildTabletSidebarItem(
-                    key: 'rolePermissions',
+                    key: 'userList',
                     icon: Icons.manage_accounts_rounded,
-                    title: 'Manajemen Pengguna & Role',
-                    subtitle: 'Daftar user, tambah akun & assign hak akses',
-                    trailingBadge: 'Kelola Akses',
+                    title: 'Daftar Pengguna',
+                    subtitle: 'Kelola akun tim, tambah user baru & status',
+                    trailingBadge: 'User List',
                     trailingBadgeColor: const Color(0xFFEA580C),
                   ),
                 ],
@@ -1433,8 +1325,6 @@ class _AccountScreenState extends State<AccountScreen> {
     switch (_selectedMenuKey) {
       case 'shopSettings':
         return _buildShopSettingsDetail();
-      case 'shiftOperasional':
-        return _buildShiftOperasionalDetail();
       case 'affiliateList':
         if (!AuthService().isSuperAdmin) {
           return _buildUnauthorizedDetail('Mitra Cabang & Affiliate');
@@ -1459,6 +1349,24 @@ class _AccountScreenState extends State<AccountScreen> {
         return _buildMessageTemplatesDetail();
       case 'changePassword':
         return _buildChangePasswordDetail();
+      case 'userList':
+        if (!AuthService().isSuperAdmin) {
+          return _buildUnauthorizedDetail('Daftar Pengguna');
+        }
+        return UserListScreen(
+          key: const ValueKey('embedded_user_list'),
+          repository: widget.repository,
+          isEmbedded: true,
+        );
+      case 'assignRole':
+        if (!AuthService().isSuperAdmin && !AuthService().isAdmin) {
+          return _buildUnauthorizedDetail('Assign Role & Hak Akses');
+        }
+        return AssignRoleScreen(
+          key: const ValueKey('embedded_assign_role'),
+          repository: widget.repository,
+          isEmbedded: true,
+        );
       case 'rolePermissions':
         if (!AuthService().isSuperAdmin) {
           return _buildUnauthorizedDetail('Manajemen Pengguna & Role');
@@ -1501,7 +1409,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                   SizedBox(height: 3),
                   Text(
-                    'Kelola identitas outlet resmi, nomor layanan pelanggan, teks kaki struk, dan fasilitas WiFi pelanggan.',
+                    'Kelola identitas outlet resmi, nomor layanan pelanggan, dan teks kaki struk.',
                     style: TextStyle(
                       fontSize: 12,
                       color: Color(0xFF64748B),
@@ -1579,118 +1487,14 @@ class _AccountScreenState extends State<AccountScreen> {
 
               // Realistic Thermal Receipt Paper Preview
               Center(
-                child: Container(
-                  width: 320,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.phone_iphone_rounded, size: 20, color: Color(0xFF475569)),
-                      const SizedBox(height: 6),
-                      Text(
-                        _shopNameController.text.toUpperCase(),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13.5,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _outletNameController.text,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w600,
-                          fontSize: 11.5,
-                          color: Color(0xFF334155),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _addressController.text,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 10,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Telp/WA: ${_phoneController.text}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 10,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        '--------------------------------',
-                        style: TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 10,
-                          color: Color(0xFF94A3B8),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '“${_footerController.text}”',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontStyle: FontStyle.italic,
-                          fontSize: 10,
-                          color: Color(0xFF475569),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'WiFi: ${_wifiNameController.text} | Pass: ${_wifiPasswordController.text}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      BarcodeWidget(
-                        barcode: Barcode.qrCode(),
-                        data: 'https://skyrental.id/outlet/${_outletNameController.text.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '')}',
-                        width: 56,
-                        height: 56,
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'VALIDASI OUTLET RESMI',
-                        style: TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                          color: Color(0xFF94A3B8),
-                        ),
-                      ),
-                    ],
-                  ),
+                child: ThermalReceiptPaperPreview(
+                  formatSettings: _receiptFormatSettings,
+                  shopName: _shopNameController.text,
+                  outletName: _outletNameController.text,
+                  address: _addressController.text,
+                  phoneNumber: _phoneController.text,
+                  footerNote: _footerController.text,
+                  showHeaderBadge: false,
                 ),
               ),
             ],
@@ -1795,156 +1599,11 @@ class _AccountScreenState extends State<AccountScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
-
-        // CARD 4: WIFI OUTLET (FASILITAS PELANGGAN)
-        _buildDetailCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'WIFI OUTLET (FASILITAS PELANGGAN)',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.6,
-                        color: Color(0xFF475569),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0xFFBFDBFE)),
-                    ),
-                    child: const Text(
-                      'Tampil di QR & Struk',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF2563EB),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: _buildDetailTextField(
-                      label: 'Nama Jaringan WiFi (SSID)',
-                      controller: _wifiNameController,
-                      prefixIcon: Icons.wifi,
-                      hint: 'SKYRENTAL_GUEST',
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: _buildDetailTextField(
-                      label: 'Kata Sandi WiFi',
-                      controller: _wifiPasswordController,
-                      prefixIcon: Icons.lock_outline,
-                      hint: 'rentaliphoneoke',
-                      obscureText: _obscureWifiPassword,
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureWifiPassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                          size: 18,
-                          color: const Color(0xFF64748B),
-                        ),
-                        onPressed: () => setState(() => _obscureWifiPassword = !_obscureWifiPassword),
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ],
     );
   }
 
-  // =========================================================================
-  // 2. DETAIL VIEW: SHIFT OPERASIONAL KASIR
-  // =========================================================================
 
-  Widget _buildShiftOperasionalDetail() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildDetailHeader(
-          title: 'Shift Operasional Kasir & Laci Kas',
-          subtitle: 'Pantau status shift kerja aktif, modal awal laci kasir, dan penutupan shift kasir.',
-          actionButton: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Color(0xFFCBD5E1)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              foregroundColor: const Color(0xFF0F172A),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Status shift saat ini aktif. Penutupan kasir dapat dilakukan akhir jam shift.')),
-              );
-            },
-            icon: const Icon(Icons.lock_clock_outlined, size: 16),
-            label: const Text('Rekonsiliasi Shift', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildDetailCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('STATUS SHIFT KASIR AKTIF', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.6, color: Color(0xFF475569))),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  _buildMetricBox('Kasir Bertugas', _user.name, Icons.person_outline, const Color(0xFF2563EB)),
-                  const SizedBox(width: 12),
-                  _buildMetricBox('Shift Operasional', _user.shiftName, Icons.schedule, const Color(0xFF059669)),
-                  const SizedBox(width: 12),
-                  _buildMetricBox('Terminal POS', 'POS-MLBR-04', Icons.devices, const Color(0xFF7C3AED)),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildDetailCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('MODAL AWAL & SALDO LACI KASIR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.6, color: Color(0xFF475569))),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  _buildMetricBox('Modal Awal Laci', 'Rp 500.000', Icons.account_balance_wallet_outlined, const Color(0xFFD97706)),
-                  const SizedBox(width: 12),
-                  _buildMetricBox('Total Transaksi Tunai', 'Rp 1.450.000', Icons.payments_outlined, const Color(0xFF059669)),
-                  const SizedBox(width: 12),
-                  _buildMetricBox('Estimasi Kas Fisik', 'Rp 1.950.000', Icons.point_of_sale_outlined, const Color(0xFF2563EB)),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 
   // =========================================================================
   // 3. DETAIL VIEW: MITRA CABANG & AFFILIATE
@@ -2482,21 +2141,11 @@ class _AccountScreenState extends State<AccountScreen> {
                 _buildMenuItem(
                   icon: Icons.manage_accounts_rounded,
                   iconColor: const Color(0xFFEA580C),
-                  title: 'Daftar Pengguna & Role',
-                  subtitle: 'Kelola akun pengguna, tambah user baru & hapus akun',
-                  trailingBadge: 'Kelola User',
+                  title: 'Daftar Pengguna',
+                  subtitle: 'Kelola akun pengguna, peran & izin tim',
+                  trailingBadge: 'User List',
                   trailingBadgeColor: const Color(0xFFEA580C),
-                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
-                ),
-                const Divider(height: 1, indent: 56),
-                _buildMenuItem(
-                  icon: Icons.security_rounded,
-                  iconColor: const Color(0xFF4F46E5),
-                  title: 'Assign Role & Permission',
-                  subtitle: 'Tetapkan role utama & hak akses izin pengguna',
-                  trailingBadge: 'Assign Role',
-                  trailingBadgeColor: const Color(0xFF4F46E5),
-                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.userList),
                 ),
               ]),
               const SizedBox(height: 20),
@@ -2510,16 +2159,6 @@ class _AccountScreenState extends State<AccountScreen> {
                 title: 'Pengaturan Nama Toko & Outlet',
                 subtitle: 'Konfigurasi identitas toko, alamat & kontak',
                 onTap: () => Navigator.of(context).pushNamed(AppRoutes.shopSettings),
-              ),
-              const Divider(height: 1, indent: 56),
-              _buildMenuItem(
-                icon: Icons.access_time_filled_rounded,
-                iconColor: Colors.blueAccent,
-                title: 'Shift Operasional Kasir',
-                subtitle: _user.shiftName,
-                trailingBadge: 'Aktif',
-                trailingBadgeColor: Colors.green,
-                onTap: () => _showShiftDetailModal(),
               ),
             ]),
             const SizedBox(height: 20),
@@ -2577,18 +2216,6 @@ class _AccountScreenState extends State<AccountScreen> {
                 subtitle: 'Perbarui kata sandi akun admin kasir',
                 onTap: () => Navigator.of(context).pushNamed(AppRoutes.changePassword),
               ),
-              if (AuthService().isSuperAdmin) ...[
-                const Divider(height: 1, indent: 56),
-                _buildMenuItem(
-                  icon: Icons.badge_rounded,
-                  iconColor: Colors.indigo,
-                  title: 'Role & Izin Akses',
-                  subtitle: _user.role,
-                  trailingBadge: 'Kelola Role',
-                  trailingBadgeColor: Colors.indigo,
-                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.rolesPermissions),
-                ),
-              ],
             ]),
             const SizedBox(height: 20),
 

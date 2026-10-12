@@ -5,7 +5,7 @@ import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 
 /// Single unified reusable top app header component used across all screens
-/// (Dashboard, Sales Report, Unit iPhone, Printer, Shift, Create Booking, etc.).
+/// (Dashboard, Sales Report, Unit iPhone, Settings, Create Booking, etc.).
 ///
 /// Automatically retrieves authenticated user info (name, role, initials avatar)
 /// from AuthService as the single source of truth, strictly omits any hardware printer status,

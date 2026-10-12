@@ -79,6 +79,7 @@ class BookingModel {
   final String? address;
   final String pickupType;
   final String jaminanType;
+  final bool kia;
   final DateTime startDate;
   final DateTime endDate;
   final int durationDays;
@@ -110,6 +111,7 @@ class BookingModel {
     this.address,
     required this.pickupType,
     required this.jaminanType,
+    this.kia = false,
     required this.startDate,
     required this.endDate,
     required this.durationDays,
@@ -312,6 +314,15 @@ class BookingModel {
       address: address,
       pickupType: json['pickup_type']?.toString() ?? 'Outlet',
       jaminanType: json['jaminan_type']?.toString() ?? 'KTP',
+      kia: json['kia'] == true ||
+          json['kia'] == 1 ||
+          json['kia']?.toString() == 'true' ||
+          json['kia']?.toString() == '1' ||
+          (json['customer'] is Map &&
+              ((json['customer'] as Map)['kia'] == true ||
+                  (json['customer'] as Map)['kia'] == 1 ||
+                  (json['customer'] as Map)['kia']?.toString() == 'true' ||
+                  (json['customer'] as Map)['kia']?.toString() == '1')),
       startDate: startDate,
       endDate: endDate,
       durationDays: json['duration'] is int
@@ -350,6 +361,7 @@ class BookingModel {
     String? address,
     String? pickupType,
     String? jaminanType,
+    bool? kia,
     DateTime? startDate,
     DateTime? endDate,
     int? durationDays,
@@ -381,6 +393,7 @@ class BookingModel {
       address: address ?? this.address,
       pickupType: pickupType ?? this.pickupType,
       jaminanType: jaminanType ?? this.jaminanType,
+      kia: kia ?? this.kia,
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
       durationDays: durationDays ?? this.durationDays,

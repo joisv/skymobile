@@ -152,29 +152,64 @@ class AuthService implements Listenable {
     }
   }
 
-  /// Restore session from API
+  /// Restore session from persistent storage & backend API
   Future<void> restoreSession() async {
     final apiService = ApiService();
-    // Tunggu SharedPreferences termuat
+    // 1. Muat SharedPreferences (token & base URL)
     await apiService.loadPrefs();
-    // Ensure token is loaded
-    if (apiService.authToken != null) {
-      try {
-        final response = await apiService.getMe();
-        if (response != null && response['data'] != null) {
-          _currentUser = AdminUserModel.fromJson(response['data'] as Map<String, dynamic>);
-          _token = apiService.authToken;
-          notifyListeners();
-          final fcmToken = FcmService().fcmToken;
-          if (fcmToken != null && fcmToken.isNotEmpty) {
-            unawaited(apiService.registerDeviceTokenApi(fcmToken, platform: 'android'));
-          }
-        } else {
-          apiService.saveAuthToken(null);
-        }
-      } catch (_) {
-        // Assume network error, keep token if exists but user might be null unless cached
+
+    // 2. Periksa apakah terdapat token autentikasi tersimpan
+    if (apiService.authToken != null && apiService.authToken!.isNotEmpty) {
+      // 3. Langsung pulihkan sesi pengguna dari penyimpanan lokal jika tersedia
+      final cachedUserMap = await apiService.loadCachedUserProfile();
+      if (cachedUserMap != null) {
+        _currentUser = AdminUserModel.fromJson(cachedUserMap);
+        _token = apiService.authToken;
+        notifyListeners();
       }
+
+      // 4. Validasi keaktifan token ke backend REST API
+      Future<void> validateTokenOnline() async {
+        try {
+          final response = await apiService.getMe();
+          if (response != null && response['data'] != null) {
+            final userMap = response['data'] as Map<String, dynamic>;
+            _currentUser = AdminUserModel.fromJson(userMap);
+            _token = apiService.authToken;
+            await apiService.saveUserProfile(userMap);
+            notifyListeners();
+
+            final fcmToken = FcmService().fcmToken;
+            if (fcmToken != null && fcmToken.isNotEmpty) {
+              unawaited(apiService.registerDeviceTokenApi(fcmToken, platform: 'android'));
+            }
+          } else if (_currentUser == null) {
+            // Jika tidak ada cache dan backend mengembalikan respons kosong
+            await apiService.clearAuth();
+            _token = null;
+          }
+        } on ApiException catch (e) {
+          // Jika server menolak token (401 Unauthorized / 403 Forbidden), bersihkan sesi
+          if (e.statusCode == 401 || e.statusCode == 403) {
+            await apiService.clearAuth();
+            _currentUser = null;
+            _token = null;
+            notifyListeners();
+          }
+        } catch (_) {
+          // Gangguan jaringan / offline: pertahankan sesi yang sudah dipulihkan dari cache lokal
+        }
+      }
+
+      if (cachedUserMap != null) {
+        // Jalankan validasi secara asinkron agar UI terbuka secara instan tanpa menunggu latensi jaringan
+        unawaited(validateTokenOnline());
+      } else {
+        await validateTokenOnline();
+      }
+    } else {
+      _currentUser = null;
+      _token = null;
     }
   }
 
@@ -193,6 +228,10 @@ class AuthService implements Listenable {
     'users',
     '/admin/users',
     'admin/users',
+    '/admin/assign-role',
+    'admin/assign-role',
+    '/assign-role',
+    'assign-role',
     '/affiliates',
     '/affiliates/detail',
     '/affiliates/form',
@@ -230,17 +269,23 @@ class AuthService implements Listenable {
     bool rememberMe = true,
   }) async {
     try {
-      final apiResult = await ApiService().loginApi(emailOrUsername, password);
+      final apiService = ApiService();
+      final apiResult = await apiService.loginApi(emailOrUsername, password);
       if (apiResult['user'] != null) {
         final userMap = apiResult['user'] as Map<String, dynamic>;
         final user = AdminUserModel.fromJson(userMap);
         _currentUser = user;
         _token = apiResult['token']?.toString() ?? 'sanctum-token';
         _rememberMe = rememberMe;
+
+        // Simpan sesi autentikasi secara persisten ke SharedPreferences
+        await apiService.saveAuthToken(_token);
+        await apiService.saveUserProfile(user.toJson());
+
         notifyListeners();
         final fcmToken = FcmService().fcmToken;
         if (fcmToken != null && fcmToken.isNotEmpty) {
-          unawaited(ApiService().registerDeviceTokenApi(fcmToken, platform: 'android'));
+          unawaited(apiService.registerDeviceTokenApi(fcmToken, platform: 'android'));
         }
         return user;
       }
@@ -254,19 +299,21 @@ class AuthService implements Listenable {
   }
 
   Future<void> logout() async {
+    final apiService = ApiService();
     try {
-      final apiService = ApiService();
       final fcmToken = FcmService().fcmToken;
       if (fcmToken != null && fcmToken.isNotEmpty) {
         await apiService.removeDeviceTokenApi(fcmToken);
       }
       if (apiService.authToken != null) {
-        // Logout lokal saja sudah cukup untuk membersihkan sesi mobile
-        apiService.saveAuthToken(null);
+        // Cabut token pada backend database (Sanctum token revoke)
+        await apiService.logoutApi();
       }
     } catch (_) {}
 
-    await Future.delayed(const Duration(milliseconds: 150));
+    // Bersihkan token & profil pengguna dari SharedPreferences secara menyeluruh
+    await apiService.clearAuth();
+
     _currentUser = null;
     _token = null;
     notifyListeners();

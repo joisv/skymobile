@@ -21,10 +21,10 @@ class DashboardScreen extends StatefulWidget {
   });
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() => DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
   bool _isLoading = true;
   Map<String, dynamic> _dashboardData = {};
   List<IphoneModel> _readyInventory = [];
@@ -37,13 +37,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     AuthService().addListener(_onAuthChanged);
     _initPrinter();
-    _loadDashboard();
+
+    // Inisialisasi awal langsung dari client-side in-memory cache jika masih valid (< 5 menit)
+    if (widget.repository.isDashboardCacheValid && widget.repository.cachedDashboardData != null) {
+      _dashboardData = widget.repository.cachedDashboardData!;
+      _readyInventory = widget.repository.cachedReadyInventory ?? [];
+      _pendingTransferCount = widget.repository.cachedPendingTransferCount ?? 0;
+      _isLoading = false;
+    } else {
+      _loadDashboard();
+    }
   }
 
   void _onAuthChanged() {
+    if (!AuthService().isAuthenticated) {
+      widget.repository.invalidateDashboardCache();
+    }
     if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      checkAndRefreshIfExpired();
+    }
   }
 
   Future<void> _initPrinter() async {
@@ -54,15 +74,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _queueSearchController.dispose();
     AuthService().removeListener(_onAuthChanged);
     super.dispose();
   }
 
-  Future<void> _loadDashboard() async {
-    setState(() => _isLoading = true);
+  /// Cek apakah cache dashboard sudah kedaluwarsa (>= 5 menit) dan muat ulang secara otomatis jika perlu
+  void checkAndRefreshIfExpired() {
+    if (!widget.repository.isDashboardCacheValid) {
+      _loadDashboard();
+    }
+  }
+
+  Future<void> _loadDashboard({bool forceRefresh = false}) async {
+    // 1. Cek apakah cache client-side valid (< 5 menit) dan bukan forceRefresh
+    if (!forceRefresh && widget.repository.isDashboardCacheValid) {
+      final cached = widget.repository.cachedDashboardData;
+      if (cached != null) {
+        if (_dashboardData.isEmpty || _isLoading) {
+          setState(() {
+            _dashboardData = cached;
+            _readyInventory = widget.repository.cachedReadyInventory ?? [];
+            _pendingTransferCount = widget.repository.cachedPendingTransferCount ?? 0;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+    }
+
+    // 2. Hanya tampilkan loading skeleton jika data belum pernah dimuat (cold start)
+    if (_dashboardData.isEmpty) {
+      setState(() => _isLoading = true);
+    }
+
     try {
-      final data = await widget.repository.getOperationalDashboardData();
+      final data = await widget.repository.getOperationalDashboardData(forceRefresh: forceRefresh);
       List<IphoneModel> readyUnits = [];
       try {
         readyUnits = await widget.repository.getAllInventoryUnits(statusFilter: 'tersedia');
@@ -77,10 +125,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           status: 'in_transit',
           affiliateId: isAffUser ? AuthService().affiliateId : null,
           type: isAffUser ? 'inbound' : null,
-          forceRefresh: true,
+          forceRefresh: forceRefresh,
         );
         pendingTransferCount = transfers.where((t) => t.isInTransit).length;
       } catch (_) {}
+
+      // Simpan ke in-memory cache di repository
+      widget.repository.setDashboardCache(
+        data: data,
+        readyUnits: readyUnits,
+        pendingTransferCount: pendingTransferCount,
+      );
 
       if (mounted) {
         setState(() {
@@ -93,7 +148,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _readyInventory = [];
+          if (_dashboardData.isEmpty) {
+            _readyInventory = [];
+          }
           _isLoading = false;
         });
       }
@@ -145,7 +202,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        _loadDashboard();
+        _loadDashboard(forceRefresh: true);
       }
     }
   }
@@ -206,13 +263,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isTablet = constraints.maxWidth >= 900 && constraints.maxWidth > constraints.maxHeight;
+        final isLandscapeTablet = constraints.maxWidth >= 900 && constraints.maxWidth > constraints.maxHeight;
+        final isPortraitTablet = constraints.maxWidth >= 600 && constraints.maxWidth < 900 && constraints.maxHeight > constraints.maxWidth && constraints.maxHeight <= 1600;
+        final isTablet = isLandscapeTablet || isPortraitTablet;
 
         return Scaffold(
           backgroundColor: AppTheme.background,
           appBar: AppHeader(isTablet: isTablet),
           body: RefreshIndicator(
-            onRefresh: _loadDashboard,
+            onRefresh: () => _loadDashboard(forceRefresh: true),
             color: AppTheme.accent,
             child: _isLoading
                 ? DashboardSkeleton(isTablet: isTablet)
@@ -229,7 +288,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         : _buildMobileLayout(metrics, allQueue, pickupItems, returnItems, displayItems),
                   ),
           ),
-          floatingActionButton: isTablet ? null : _buildStitchFloatingActionButton(),
+          floatingActionButton: _buildStitchFloatingActionButton(),
         );
       },
     );
@@ -288,7 +347,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
           TextButton(
-            onPressed: _loadDashboard,
+            onPressed: () => _loadDashboard(forceRefresh: true),
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               minimumSize: Size.zero,
@@ -533,9 +592,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Left Column (~70% width)
+            // Left Column (~66% width: Metrik Operasional & Antrean Transaksi 2 Kolom)
             Expanded(
-              flex: 70,
+              flex: 66,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -547,9 +606,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(width: 16),
 
-            // Right Column (~30% width / Compact Sidebar Menu)
+            // Right Column (~34% width: Aksi Cepat Kasir, Printer, Stok Siap Sewa)
             Expanded(
-              flex: 30,
+              flex: 34,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -601,16 +660,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Metrik Operasional Hari Ini',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
+            Expanded(
+              child: Text(
+                'Metrik Operasional Hari Ini',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+            const SizedBox(width: 8),
             GestureDetector(
-              onTap: _loadDashboard,
+              onTap: () => _loadDashboard(forceRefresh: true),
               child: Row(
                 children: [
                   Icon(Icons.autorenew_rounded, size: 15, color: AppTheme.secondary),
@@ -777,12 +841,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      '$utilizationPercent% Utilitas Toko',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textSecondary,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '$utilizationPercent% Utilitas Toko',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textSecondary,
+                        ),
                       ),
                     ),
                   ],
@@ -816,26 +884,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: AppTheme.success,
-                            shape: BoxShape.circle,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: AppTheme.success,
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Text(
-                          '100% QRIS/Trf',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.onSuccessContainer,
+                          const SizedBox(width: 4),
+                          const Text(
+                            '100% QRIS/Trf',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.onSuccessContainer,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -954,6 +1026,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     List<BookingModel> returnItems,
     List<BookingModel> displayItems,
   ) {
+    final leftItems = <BookingModel>[];
+    final rightItems = <BookingModel>[];
+    for (int i = 0; i < displayItems.length; i++) {
+      if (i % 2 == 0) {
+        leftItems.add(displayItems[i]);
+      } else {
+        rightItems.add(displayItems[i]);
+      }
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1012,7 +1094,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const SizedBox(height: 12),
         _buildQueueSearchBar(isTablet: true),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
 
         if (displayItems.isEmpty)
           Container(
@@ -1075,7 +1157,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           )
         else
-          ...displayItems.map((b) => _buildTabletQueueCard(b)),
+          Row(
+            key: const Key('tablet_transaction_queue_two_columns'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  key: const Key('tablet_queue_column_left'),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: leftItems.map((b) => _buildTabletQueueCard(b)).toList(),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  key: const Key('tablet_queue_column_right'),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: rightItems.map((b) => _buildTabletQueueCard(b)).toList(),
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -1110,6 +1212,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: (photo != null && photo.isNotEmpty)
             ? Image.network(
                 photo,
+                cacheWidth: (size * 2).clamp(48.0, 200.0).toInt(),
+                cacheHeight: (size * 2).clamp(48.0, 200.0).toInt(),
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => Center(
                   child: Icon(
@@ -1179,15 +1283,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onTap: () => Navigator.pushNamed(context, AppRoutes.bookingDetail, arguments: b).then((_) => _loadDashboard()),
           borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -1204,17 +1314,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
                         Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             const Icon(Icons.warning_amber_rounded, size: 14, color: Color(0xFFDC2626)),
                             const SizedBox(width: 4),
-                            Text(
-                              '+$overdueHours Jam Terlambat',
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFDC2626),
+                            Flexible(
+                              child: Text(
+                                '+$overdueHours Jam Terlambat',
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFDC2626),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
                               ),
                             ),
                           ],
@@ -1252,20 +1366,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                b.customerName,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimary,
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  b.customerName,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
                               ),
-                              Text(
-                                '#${b.bookingCode}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textSecondary,
+                              const SizedBox(width: 4),
+                              Flexible(
+                                flex: 2,
+                                child: Text(
+                                  '#${b.bookingCode}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                  textAlign: TextAlign.end,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
                               ),
                             ],
@@ -1277,18 +1403,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               fontSize: 12,
                               color: AppTheme.textSecondary,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 3),
                           Row(
                             children: [
                               Icon(Icons.person_outline_rounded, size: 12.5, color: AppTheme.textSecondary),
                               const SizedBox(width: 4),
-                              Text(
-                                'Dibuat oleh: ${b.userName ?? "Kasir"}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppTheme.textSecondary,
-                                  fontWeight: FontWeight.w500,
+                              Expanded(
+                                child: Text(
+                                  'Dibuat oleh: ${b.userName ?? "Kasir"}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textSecondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
@@ -1303,40 +1433,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 10),
 
                 // Footer
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Text(
-                            'Tarif Sewa: ${Formatters.formatCurrency(b.price)}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFDC2626),
-                            ),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          'Tarif Sewa: ${Formatters.formatCurrency(b.price)}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFDC2626),
                           ),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFFDC2626)),
-                          const SizedBox(width: 4),
-                          const Flexible(
-                            child: Text(
-                              'Denda terlambat belum lunas',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFFDC2626),
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFFDC2626)),
+                            const SizedBox(width: 4),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 150),
+                              child: const Text(
+                                'Denda terlambat belum lunas',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFFDC2626),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         IconButton(
                           onPressed: () => _confirmDeleteBooking(b),
@@ -1346,8 +1487,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           padding: const EdgeInsets.all(4),
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                         ),
-                        const SizedBox(width: 6),
-                        ElevatedButton.icon(
+                        ElevatedButton(
                           onPressed: () {
                             Navigator.pushNamed(
                               context,
@@ -1360,29 +1500,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               },
                             ).then((_) => _loadDashboard());
                           },
-                          icon: const SizedBox.shrink(),
-                          label: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Proses Telat & Denda',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              SizedBox(width: 6),
-                              Icon(Icons.receipt_long_rounded, size: 15, color: Colors.white),
-                            ],
-                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFB91C1C),
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          ),
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Proses Telat & Denda',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                SizedBox(width: 4),
+                                Icon(Icons.receipt_long_rounded, size: 15, color: Colors.white),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -1416,45 +1558,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onTap: () => Navigator.pushNamed(context, AppRoutes.bookingDetail, arguments: b).then((_) => _loadDashboard()),
           borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE0F2FE),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'RETURN',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0369A1),
-                            ),
-                          ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE0F2FE),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'RETURN',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0369A1),
                         ),
-                        const SizedBox(width: 8),
-                        Row(
-                          children: [
-                            Icon(Icons.schedule_rounded, size: 14, color: AppTheme.textSecondary),
-                            const SizedBox(width: 4),
-                            Text(
-                              timeStr,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.textPrimary,
-                              ),
+                      ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.schedule_rounded, size: 14, color: AppTheme.textSecondary),
+                        const SizedBox(width: 4),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 140),
+                          child: Text(
+                            timeStr,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary,
                             ),
-                          ],
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
@@ -1489,20 +1635,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                b.customerName,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimary,
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  b.customerName,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
                               ),
-                              Text(
-                                '#${b.bookingCode}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textSecondary,
+                              const SizedBox(width: 4),
+                              Flexible(
+                                flex: 2,
+                                child: Text(
+                                  '#${b.bookingCode}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                  textAlign: TextAlign.end,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
                               ),
                             ],
@@ -1514,18 +1672,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               fontSize: 12,
                               color: AppTheme.textSecondary,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 3),
                           Row(
                             children: [
                               Icon(Icons.person_outline_rounded, size: 12.5, color: AppTheme.textSecondary),
                               const SizedBox(width: 4),
-                              Text(
-                                'Dibuat oleh: ${b.userName ?? "Kasir"}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppTheme.textSecondary,
-                                  fontWeight: FontWeight.w500,
+                              Expanded(
+                                child: Text(
+                                  'Dibuat oleh: ${b.userName ?? "Kasir"}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textSecondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
@@ -1540,23 +1702,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 10),
 
                 // Footer
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Tarif Biaya Sewa: ${Formatters.formatCurrency(b.price)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                    Text(
+                      'Tarif Biaya Sewa: ${Formatters.formatCurrency(b.price)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         IconButton(
                           onPressed: () => _confirmDeleteBooking(b),
@@ -1566,7 +1729,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           padding: const EdgeInsets.all(4),
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                         ),
-                        const SizedBox(width: 6),
                         ElevatedButton(
                           onPressed: () {
                             Navigator.pushNamed(
@@ -1581,22 +1743,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                           ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Inspeksi & Refund',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF0369A1),
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Inspeksi & Refund',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0369A1),
+                                  ),
                                 ),
-                              ),
-                              SizedBox(width: 4),
-                              Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF0369A1)),
-                            ],
+                                SizedBox(width: 4),
+                                Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF0369A1)),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -1629,45 +1794,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onTap: () => Navigator.pushNamed(context, AppRoutes.bookingDetail, arguments: b).then((_) => _loadDashboard()),
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0284C7),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'PICKUP',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0284C7),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'PICKUP',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
-                      const SizedBox(width: 8),
-                      Row(
-                        children: [
-                          Icon(Icons.schedule_rounded, size: 14, color: AppTheme.textSecondary),
-                          const SizedBox(width: 4),
-                          Text(
-                            timeStr,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimary,
-                            ),
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.schedule_rounded, size: 14, color: AppTheme.textSecondary),
+                      const SizedBox(width: 4),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 140),
+                        child: Text(
+                          timeStr,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
                           ),
-                        ],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
@@ -1688,20 +1857,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              b.customerName,
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                b.customerName,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.textPrimary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
                               ),
                             ),
-                            Text(
-                              '#${b.bookingCode}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textSecondary,
+                            const SizedBox(width: 4),
+                            Flexible(
+                              flex: 2,
+                              child: Text(
+                                '#${b.bookingCode}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.textSecondary,
+                                ),
+                                textAlign: TextAlign.end,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
                               ),
                             ),
                           ],
@@ -1713,18 +1894,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             fontSize: 12,
                             color: AppTheme.textSecondary,
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 3),
                         Row(
                           children: [
                             Icon(Icons.person_outline_rounded, size: 12.5, color: AppTheme.textSecondary),
                             const SizedBox(width: 4),
-                            Text(
-                              'Dibuat oleh: ${b.userName ?? "Kasir"}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.textSecondary,
-                                fontWeight: FontWeight.w500,
+                            Expanded(
+                              child: Text(
+                                'Dibuat oleh: ${b.userName ?? "Kasir"}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppTheme.textSecondary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -1739,33 +1924,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 10),
 
               // Footer
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Tarif Biaya Sewa: ${Formatters.formatCurrency(b.price)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  Text(
+                    'Tarif Biaya Sewa: ${Formatters.formatCurrency(b.price)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        onPressed: () => _confirmDeleteBooking(b),
-                        icon: const Icon(Icons.delete_outline_rounded, size: 19, color: AppTheme.error),
-                        tooltip: 'Hapus Booking',
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                      ),
-                    ],
+                  IconButton(
+                    onPressed: () => _confirmDeleteBooking(b),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 19, color: AppTheme.error),
+                    tooltip: 'Hapus Booking',
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   ),
                 ],
               ),
@@ -1846,12 +2025,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Navigator.pushNamed(context, AppRoutes.qrScanner).then((_) => _loadDashboard());
                     },
                     icon: const Icon(Icons.qr_code_scanner_rounded, size: 14, color: Color(0xFF0369A1)),
-                    label: const Text(
-                      'Scan QR Booking',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0369A1),
+                    label: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Scan QR Booking',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0369A1),
+                        ),
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -1875,12 +2057,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Navigator.pushNamed(context, AppRoutes.unitStatus).then((_) => _loadDashboard());
                     },
                     icon: Icon(Icons.inventory_2_outlined, size: 14, color: AppTheme.textPrimary),
-                    label: Text(
-                      'Cek Stok Unit',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Cek Stok Unit',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -1974,8 +2159,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 6,
+                runSpacing: 4,
                 children: [
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -2076,6 +2264,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 fontSize: 9.5,
                                 color: AppTheme.textSecondary,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
@@ -2205,21 +2395,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
             children: [
-              Flexible(
-                child: Text(
-                  'Stok Siap Sewa',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+              Text(
+                'Stok Siap Sewa',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
                 ),
               ),
-              const SizedBox(width: 8),
               Text(
                 '${_readyInventory.length} Unit Tersedia',
                 style: const TextStyle(
@@ -2379,16 +2568,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Metrik Operasional',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
+            Flexible(
+              child: Text(
+                'Metrik Operasional',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             GestureDetector(
-              onTap: _loadDashboard,
+              onTap: () => _loadDashboard(forceRefresh: true),
               child: Row(
                 children: [
                   Icon(Icons.autorenew_rounded, size: 14, color: AppTheme.secondary),
@@ -2583,12 +2776,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Text(
-                          'Penerimaan Sewa',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.onSuccessContainer,
+                        const Flexible(
+                          child: Text(
+                            'Penerimaan Sewa',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.onSuccessContainer,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -2630,14 +2827,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: AppTheme.textSecondary,
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.textSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 4),
               Container(
                 width: 26,
                 height: 26,
@@ -2687,32 +2889,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                Text(
-                  'Antrean Transaksi',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
+            Expanded(
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      'Antrean Transaksi',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(8),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _queueSearchQuery.isNotEmpty
+                          ? '${displayItems.length} Hasil'
+                          : (allQueue.length > 50 ? '50 Terbaru' : '${allQueue.length}'),
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                    ),
                   ),
-                  child: Text(
-                    _queueSearchQuery.isNotEmpty
-                        ? '${displayItems.length} Hasil'
-                        : (allQueue.length > 50 ? '50 Terbaru' : '${allQueue.length}'),
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
+            const SizedBox(width: 8),
             // Tombol Selector Sort Sesuai Database
             _buildSortDropdown(),
           ],
@@ -3101,38 +3310,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isOverdue
-                              ? AppTheme.errorContainer
-                              : (type == 'pickup' ? AppTheme.secondary : AppTheme.surfaceContainerHigh),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          isOverdue ? 'RETURN • OVERDUE' : type.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
                             color: isOverdue
-                                ? AppTheme.onErrorContainer
-                                : (type == 'pickup' ? Colors.white : AppTheme.secondary),
+                                ? AppTheme.errorContainer
+                                : (type == 'pickup' ? AppTheme.secondary : AppTheme.surfaceContainerHigh),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            isOverdue ? 'RETURN • OVERDUE' : type.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: isOverdue
+                                  ? AppTheme.onErrorContainer
+                                  : (type == 'pickup' ? Colors.white : AppTheme.secondary),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        time,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: isOverdue ? AppTheme.error : AppTheme.textPrimary,
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            time,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isOverdue ? AppTheme.error : AppTheme.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
@@ -3169,14 +3385,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              customerName,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
+                            Expanded(
+                              child: Text(
+                                customerName,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.textPrimary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            const SizedBox(width: 8),
                             Text(
                               bookingCode,
                               style: TextStyle(
@@ -3202,12 +3423,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           children: [
                             Icon(Icons.person_outline_rounded, size: 12, color: AppTheme.textSecondary),
                             const SizedBox(width: 4),
-                            Text(
-                              'Dibuat oleh: ${booking.userName ?? "Kasir"}',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                color: AppTheme.textSecondary,
-                                fontWeight: FontWeight.w500,
+                            Expanded(
+                              child: Text(
+                                'Dibuat oleh: ${booking.userName ?? "Kasir"}',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: AppTheme.textSecondary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],

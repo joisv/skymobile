@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:math';
 import '../models/admin_user_model.dart';
 import '../models/affiliate_model.dart';
@@ -105,6 +106,60 @@ class BookingRepository {
   final List<IphoneModel> _inventory = [];
   Map<String, int>? _unitSummaryCache;
   bool _hasFetchedFromApi = false;
+
+  // In-memory client-side cache untuk Dashboard operasional (TTL 5 menit)
+  Map<String, dynamic>? _cachedDashboardData;
+  List<IphoneModel>? _cachedReadyInventory;
+  int? _cachedPendingTransferCount;
+  DateTime? _dashboardCacheTime;
+  static const Duration dashboardCacheDuration = Duration(minutes: 5);
+
+  // In-memory client-side cache untuk Inventaris Unit iPhone (TTL 5 menit)
+  PaginatedIphonesResult? _cachedFirstPageInventory;
+  DateTime? _cachedFirstPageInventoryTime;
+  static const Duration inventoryCacheDuration = Duration(minutes: 5);
+
+  /// Status apakah cache dashboard masih valid (< 5 menit)
+  bool get isDashboardCacheValid =>
+      _cachedDashboardData != null &&
+      _dashboardCacheTime != null &&
+      DateTime.now().difference(_dashboardCacheTime!) < dashboardCacheDuration;
+
+  /// Status apakah cache inventaris unit masih valid (< 5 menit)
+  bool get isInventoryCacheValid =>
+      _cachedFirstPageInventory != null &&
+      _cachedFirstPageInventoryTime != null &&
+      DateTime.now().difference(_cachedFirstPageInventoryTime!) < inventoryCacheDuration;
+
+  /// Usia cache dashboard saat ini (jika ada)
+  Duration? get dashboardCacheAge => _dashboardCacheTime != null
+      ? DateTime.now().difference(_dashboardCacheTime!)
+      : null;
+
+  Map<String, dynamic>? get cachedDashboardData => _cachedDashboardData;
+  List<IphoneModel>? get cachedReadyInventory => _cachedReadyInventory;
+  int? get cachedPendingTransferCount => _cachedPendingTransferCount;
+  PaginatedIphonesResult? get cachedFirstPageInventory => _cachedFirstPageInventory;
+
+  /// Menyimpan data dashboard ke in-memory cache
+  void setDashboardCache({
+    required Map<String, dynamic> data,
+    required List<IphoneModel> readyUnits,
+    required int pendingTransferCount,
+  }) {
+    _cachedDashboardData = data;
+    _cachedReadyInventory = readyUnits;
+    _cachedPendingTransferCount = pendingTransferCount;
+    _dashboardCacheTime = DateTime.now();
+  }
+
+  /// Menghapus / meng-invalidasi cache dashboard sehingga pengambilan berikutnya request ke API
+  void invalidateDashboardCache() {
+    _dashboardCacheTime = null;
+    _cachedDashboardData = null;
+    _cachedReadyInventory = null;
+    _cachedPendingTransferCount = null;
+  }
 
   /// Daftar unit iPhone yang saat ini tersimpan dalam cache inventaris
   List<IphoneModel> get inventory => (_hasFetchedFromApi || _inventory.isNotEmpty) ? _inventory : MockBookingData.inventory;
@@ -469,6 +524,7 @@ class BookingRepository {
     required double price,
     required double deposit,
     required String jaminanType,
+    bool kia = false,
     String pickupType = 'Outlet',
     PaymentStatus paymentStatus = PaymentStatus.unpaid,
     double amountPaid = 0,
@@ -536,6 +592,7 @@ class BookingRepository {
         price: price,
         depositAmount: deposit,
         jaminanType: jaminanType,
+        kia: kia,
         pickupType: pickupType,
         paymentStatus: paymentStatus.name,
         amountPaid: amountPaid,
@@ -599,6 +656,7 @@ class BookingRepository {
       address: address?.trim(),
       pickupType: pickupType,
       jaminanType: jaminanType,
+      kia: kia,
       startDate: startDate,
       endDate: endDate,
       durationDays: durationDays,
@@ -639,6 +697,7 @@ class BookingRepository {
       MockBookingData.paymentTransactions.insert(0, tx);
     }
 
+    invalidateDashboardCache();
     return newBooking;
   }
 
@@ -765,7 +824,12 @@ class BookingRepository {
 
   /// Mencatat pembayaran sewa kasir (Pelunasan / DP / Penalty / Extend),
   /// menyinkronkan ke API backend, dan memperbarui status booking di memori lokal.
-  Future<bool> submitBookingPayment({
+  BookingPaymentResult? _lastPaymentResult;
+  BookingPaymentResult? get lastPaymentResult => _lastPaymentResult;
+
+  /// Mencatat transaksi pembayaran sewa (Pelunasan / DP), menyinkronkan ke API backend,
+  /// dan mengembalikan data BookingPaymentResult riil yang dikembalikan oleh Laravel.
+  Future<BookingPaymentResult> submitBookingPaymentDetail({
     required String bookingCode,
     required double amount,
     required double pay,
@@ -776,10 +840,11 @@ class BookingRepository {
     bool sendWhatsapp = true,
   }) async {
     final paymentDate = paidAt ?? DateTime.now();
+    Map<String, dynamic>? apiResult;
 
     // 1. Kirim transaksi pembayaran ke REST API backend
     try {
-      await ApiService().recordPaymentApi(
+      apiResult = await ApiService().recordPaymentApi(
         bookingCode: bookingCode,
         amount: amount,
         pay: pay,
@@ -789,9 +854,15 @@ class BookingRepository {
         note: note,
         sendWhatsapp: sendWhatsapp,
       );
+    } on ApiException {
+      // Re-throw server error (422, 403, 404, dll) agar UI menampilkan pesan error dan tidak menampilkan popup sukses
+      rethrow;
     } catch (_) {
-      // Jika offline, lanjutkan update lokal
+      // Fallback offline / network error
     }
+
+    // Invalidate dashboard cache karena keuangan / pembayaran berubah
+    invalidateDashboardCache();
 
     // 2. Perbarui model BookingModel di _bookings
     final bookingIdx = _bookings.indexWhere((b) =>
@@ -855,8 +926,12 @@ class BookingRepository {
       final b = _bookings[bookingIdx];
       final isPenalty = type == 'penalty';
       final totalBill = b.price + b.deposit - b.discount;
-      final newRemaining = isPenalty ? (totalBill - b.downPayment).clamp(0.0, double.infinity) : (totalBill - (b.downPayment + amount)).clamp(0.0, double.infinity);
-      final newStatus = isPenalty ? (b.paymentStatus == PaymentStatus.paid ? 'paid' : 'partial') : (newRemaining <= 0 ? 'paid' : 'partial');
+      final newRemaining = isPenalty
+          ? (totalBill - b.downPayment).clamp(0.0, double.infinity)
+          : (totalBill - (b.downPayment + amount)).clamp(0.0, double.infinity);
+      final newStatus = isPenalty
+          ? (b.paymentStatus == PaymentStatus.paid ? 'paid' : 'partial')
+          : (newRemaining <= 0 ? 'paid' : 'partial');
 
       MockBookingData.paymentTransactions.insert(
         0,
@@ -882,6 +957,67 @@ class BookingRepository {
       );
     }
 
+    BookingPaymentResult result;
+    if (apiResult != null) {
+      result = BookingPaymentResult.fromJson(apiResult);
+    } else {
+      final b = bookingIdx != -1 ? _bookings[bookingIdx] : null;
+      final totalBill = b != null ? (b.price + b.deposit - b.discount) : amount;
+      final currentPaidSoFar = b?.paymentStatus == PaymentStatus.paid ? totalBill : (b?.downPayment ?? 0.0);
+      final paidTotal = b != null ? (type == 'penalty' ? currentPaidSoFar : (currentPaidSoFar + amount)) : amount;
+      final rem = (totalBill - paidTotal).clamp(0.0, double.infinity);
+      final isPaid = rem <= 0;
+
+      result = BookingPaymentResult(
+        bookingCode: b?.bookingCode ?? bookingCode,
+        receiptNumber: b?.bookingCode ?? bookingCode,
+        customerName: b?.customerName ?? 'Pelanggan',
+        customerPhone: b?.customerPhone,
+        unitName: b != null ? "${b.iphone.name} (${b.iphone.serialNumber})" : 'Unit iPhone',
+        amount: amount,
+        cashReceived: pay,
+        change: (pay - amount).clamp(0.0, double.infinity),
+        paymentMethod: paymentMethod.toUpperCase(),
+        paymentType: type,
+        paymentTypeLabel: type == 'dp'
+            ? 'Uang Muka (DP)'
+            : (type == 'penalty' ? 'Denda Keterlambatan' : 'Pelunasan Sewa'),
+        totalAmount: totalBill,
+        totalPaid: paidTotal,
+        remainingPayment: rem,
+        paymentStatus: isPaid ? 'paid' : 'partial',
+        isSettled: isPaid,
+        paidAt: paymentDate,
+        note: note,
+        updatedBooking: b,
+      );
+    }
+
+    _lastPaymentResult = result;
+    return result;
+  }
+
+  /// Menjalankan pembayaran sewa dan mengembalikan boolean sukses
+  Future<bool> submitBookingPayment({
+    required String bookingCode,
+    required double amount,
+    required double pay,
+    required String paymentMethod,
+    required String type,
+    DateTime? paidAt,
+    String? note,
+    bool sendWhatsapp = true,
+  }) async {
+    await submitBookingPaymentDetail(
+      bookingCode: bookingCode,
+      amount: amount,
+      pay: pay,
+      paymentMethod: paymentMethod,
+      type: type,
+      paidAt: paidAt,
+      note: note,
+      sendWhatsapp: sendWhatsapp,
+    );
     return true;
   }
 
@@ -1249,13 +1385,17 @@ class BookingRepository {
     required List<String> accessoriesReturned,
     String? staffNotes,
   }) async {
-    // 1. Coba panggil API Backend jika tersedia
+    // 1. Panggil API Backend
+    Map<String, dynamic>? apiRes;
     try {
-      await ApiService().completeReturnApi(
+      apiRes = await ApiService().completeReturnApi(
         bookingCode: bookingCode,
         payload: {
           'condition': physicalCondition,
+          'physical_condition': physicalCondition,
+          'battery_health': batteryHealthFinal,
           'battery_health_return': batteryHealthFinal,
+          'battery_health_final': batteryHealthFinal,
           'late_fee': lateFee,
           'damage_fee': damageFee,
           'deposit_refunded': depositRefunded,
@@ -1264,7 +1404,40 @@ class BookingRepository {
           'staff_notes': staffNotes,
         },
       );
-    } catch (_) {}
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      if (_hasFetchedFromApi && !Platform.environment.containsKey('FLUTTER_TEST')) {
+        throw ApiException('Gagal terhubung ke server untuk menyelesaikan pengembalian: $e');
+      }
+    }
+
+    // 2. Jika API backend merespons dengan data booking baru, gunakan data nyata dari server
+    if (apiRes != null && apiRes['data'] != null) {
+      final updatedFromApi = BookingModel.fromJson(apiRes['data'] as Map<String, dynamic>);
+      final idx = _bookings.indexWhere((b) =>
+          b.bookingCode.trim().toLowerCase() == bookingCode.trim().toLowerCase() ||
+          b.id == updatedFromApi.id);
+
+      if (idx != -1) {
+        _bookings[idx] = updatedFromApi;
+      } else {
+        _bookings.insert(0, updatedFromApi);
+      }
+
+      // Perbarui juga status unit di inventory lokal
+      final invIdx = MockBookingData.inventory.indexWhere((u) => u.assetCode == updatedFromApi.iphone.assetCode);
+      if (invIdx != -1) {
+        MockBookingData.inventory[invIdx] = updatedFromApi.iphone;
+      }
+
+      return updatedFromApi;
+    }
+
+    if (_hasFetchedFromApi && !Platform.environment.containsKey('FLUTTER_TEST')) {
+      throw ApiException('Server backend tidak memberikan respon konfirmasi pengembalian.');
+    }
 
     await Future.delayed(const Duration(milliseconds: 250));
     final idx = _bookings.indexWhere(
@@ -1624,9 +1797,20 @@ class BookingRepository {
     int? duration,
     bool forBooking = false,
     int page = 1,
-    int perPage = 10,
+    int perPage = 20,
+    bool forceRefresh = false,
   }) async {
     final effectiveAffiliateId = AuthService().isAffiliateScoped ? AuthService().affiliateId : affiliateId;
+    final isDefaultFirstPage = page == 1 &&
+        (query == null || query.trim().isEmpty) &&
+        (statusFilter == null || statusFilter.toLowerCase() == 'semua') &&
+        (modelFilter == null || modelFilter.toLowerCase() == 'semua') &&
+        (branchFilter == null || branchFilter.toLowerCase().contains('semua')) &&
+        (effectiveAffiliateId == null || !AuthService().isAffiliateScoped);
+
+    if (!forceRefresh && isDefaultFirstPage && isInventoryCacheValid && _cachedFirstPageInventory != null) {
+      return _cachedFirstPageInventory!;
+    }
 
     try {
       final unassignedOnly = forBooking && AuthService().isSuperAdmin;
@@ -1672,12 +1856,31 @@ class BookingRepository {
         final currentPage = int.tryParse(meta?['current_page']?.toString() ?? '') ?? page;
         final lastPage = int.tryParse(meta?['last_page']?.toString() ?? '') ?? ((total / perPage).ceil().clamp(1, 999999));
 
-        return PaginatedIphonesResult(
+        if (res['summary'] is Map) {
+          final s = res['summary'] as Map<String, dynamic>;
+          _unitSummaryCache = {
+            'total': int.tryParse(s['total']?.toString() ?? '0') ?? total,
+            'tersedia': int.tryParse(s['tersedia']?.toString() ?? s['ready']?.toString() ?? '0') ?? 0,
+            'disewa': int.tryParse(s['disewa']?.toString() ?? s['rented']?.toString() ?? '0') ?? 0,
+            'terlambat': int.tryParse(s['terlambat']?.toString() ?? s['overdue']?.toString() ?? '0') ?? 0,
+            'maintenance': int.tryParse(s['maintenance']?.toString() ?? '0') ?? 0,
+            'dibooking': int.tryParse(s['dibooking']?.toString() ?? s['booked']?.toString() ?? '0') ?? 0,
+          };
+        }
+
+        final result = PaginatedIphonesResult(
           units: list,
           total: total,
           currentPage: currentPage,
           lastPage: lastPage,
         );
+
+        if (isDefaultFirstPage) {
+          _cachedFirstPageInventory = result;
+          _cachedFirstPageInventoryTime = DateTime.now();
+        }
+
+        return result;
       }
     } catch (_) {}
 
@@ -1701,12 +1904,19 @@ class BookingRepository {
     final startIndex = (page - 1) * perPage;
     final pageUnits = startIndex >= total ? <IphoneModel>[] : allUnits.skip(startIndex).take(perPage).toList();
 
-    return PaginatedIphonesResult(
+    final result = PaginatedIphonesResult(
       units: pageUnits,
       total: total,
       currentPage: page,
       lastPage: lastPage,
     );
+
+    if (isDefaultFirstPage) {
+      _cachedFirstPageInventory = result;
+      _cachedFirstPageInventoryTime = DateTime.now();
+    }
+
+    return result;
   }
 
   /// Reset inventaris kembali ke data awal
@@ -1715,6 +1925,39 @@ class BookingRepository {
     _inventory.clear();
     _inventory.addAll(MockBookingData.inventory);
     _unitSummaryCache = null;
+    _cachedFirstPageInventory = null;
+    _cachedFirstPageInventoryTime = null;
+  }
+
+  /// Helper untuk menyimulasikan inventaris besar (misalnya 100, 500, atau 1.000 unit) dalam pengujian performa
+  static List<IphoneModel> generateTestInventory(int count) {
+    return List.generate(count, (index) {
+      final id = 3000 + index;
+      final status = (index % 6 == 0)
+          ? 'disewa'
+          : (index % 20 == 0 ? 'perawatan' : 'ready');
+      return IphoneModel(
+        id: id,
+        name: 'iPhone ${13 + (index % 3)} Pro',
+        storage: index % 2 == 0 ? '128GB' : '256GB',
+        color: index % 2 == 0 ? 'Natural Titanium' : 'Black Midnight',
+        serialNumber: 'SN-PERF-$id',
+        assetCode: 'IPH-PERF-$id',
+        status: status,
+        batteryHealth: 85 + (index % 15),
+        branchName: index % 2 == 0 ? 'Genteng' : 'Siliragung',
+        affiliateId: (index % 3) + 1,
+      );
+    });
+  }
+
+  /// Menyimpan inventaris khusus pengujian beban besar ke repositori
+  void setTestInventory(List<IphoneModel> units) {
+    _inventory.clear();
+    _inventory.addAll(units);
+    _unitSummaryCache = null;
+    _cachedFirstPageInventory = null;
+    _cachedFirstPageInventoryTime = null;
   }
 
   /// Tambah unit baru ke inventaris
@@ -1787,7 +2030,10 @@ class BookingRepository {
   }
 
   /// Ringkasan status unit iPhone
-  Future<Map<String, int>> getUnitStatusSummary() async {
+  Future<Map<String, int>> getUnitStatusSummary({bool forceRefresh = false}) async {
+    if (!forceRefresh && _unitSummaryCache != null) {
+      return _unitSummaryCache!;
+    }
     try {
       final res = await ApiService().getAllIphonesApi();
       if (res != null && res['summary'] is Map) {
@@ -1982,8 +2228,13 @@ class BookingRepository {
   }
 
 
-  /// Mengambil data metrik dan operasional lengkap untuk layar dashboard
-  Future<Map<String, dynamic>> getOperationalDashboardData() async {
+  /// Mengambil data metrik dan operasional lengkap untuk layar dashboard (didukung client-side cache 5 menit)
+  Future<Map<String, dynamic>> getOperationalDashboardData({bool forceRefresh = false}) async {
+    // 0. Cek client-side cache jika tidak dipaksa refresh
+    if (!forceRefresh && isDashboardCacheValid && _cachedDashboardData != null) {
+      return _cachedDashboardData!;
+    }
+
     // 1. Coba ambil dari REST API backend Skyrent
     try {
       final apiDashboard = await ApiService().getDashboardData();
@@ -2037,7 +2288,7 @@ class BookingRepository {
         final bookingTodayVal = metrics['bookingToday'] ?? metrics['booking_today'] ?? metrics['todayBookings'] ?? metrics['todayPickups'] ?? 0;
         final revenueTodayVal = (financials['totalRevenue'] ?? financials['total_revenue'] ?? metrics['revenueToday'] ?? metrics['revenue_today'] ?? 0).toDouble();
 
-        return {
+        final result = {
           'isOnline': true,
           'metrics': {
             // 4 Core Metrics dari booking-page.blade.php
@@ -2065,6 +2316,9 @@ class BookingRepository {
           'recentBookings': finalRecent,
           'allQueue': allQueue,
         };
+        _cachedDashboardData = result;
+        _dashboardCacheTime = DateTime.now();
+        return result;
       }
     } catch (_) {
       // Fallback lokal jika offline
@@ -2229,6 +2483,7 @@ class BookingRepository {
 
   /// Menghapus booking dari sistem (API dan memori lokal)
   Future<bool> deleteBooking(String idOrCode) async {
+    invalidateDashboardCache();
     bool apiSuccess = false;
     try {
       apiSuccess = await ApiService().deleteBooking(idOrCode);

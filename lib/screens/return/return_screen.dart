@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
 import '../../models/booking_model.dart';
@@ -19,6 +20,7 @@ class ReturnScreen extends StatefulWidget {
 
 class _ReturnScreenState extends State<ReturnScreen> {
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounceTimer;
 
   List<BookingModel> _rentals = [];
   Map<String, dynamic> _summary = {};
@@ -51,6 +53,7 @@ class _ReturnScreenState extends State<ReturnScreen> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -97,7 +100,14 @@ class _ReturnScreenState extends State<ReturnScreen> {
   }
 
   void _onSearchChanged(String val) {
-    _loadData();
+    _searchDebounceTimer?.cancel();
+    if (val.isEmpty) {
+      _loadData();
+      return;
+    }
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) _loadData();
+    });
   }
 
   void _resetAllFilters() {

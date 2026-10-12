@@ -17,9 +17,11 @@
     <uses-permission android:name="android.permission.CAMERA" />
 
     <application
-        android:label="skyrental_admin"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false"
         android:usesCleartextTraffic="true">
         <!-- FCM Notification Channel -->
         <meta-data

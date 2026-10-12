@@ -137,12 +137,25 @@ class UserRoleModel {
   String get roleDisplay {
     final lower = role.toLowerCase().trim();
     if (lower == 'super-admin' || lower == 'superadmin') return 'Super Admin';
-    if (lower == 'admin') return 'Admin';
+    if (lower == 'admin') return 'Admin Cabang';
     if (lower == 'staff' || lower == 'kasir') return 'Staff Kasir';
-    if (lower == 'affiliate-admin') return 'Admin Cabang';
-    if (lower == 'affiliate') return 'Mitra Affiliate';
+    if (lower == 'affiliate-admin' || lower == 'affiliate' || lower == 'admin-cabang') return 'Admin Cabang';
     if (lower == '-' || lower.isEmpty) return 'Tanpa Role';
     return role;
+  }
+
+  String get createdDateDisplay {
+    if (createdAt != null) {
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      final day = createdAt!.day.toString().padLeft(2, '0');
+      final month = months[createdAt!.month - 1];
+      final year = createdAt!.year;
+      return '$day $month $year';
+    }
+    if (createdAtFormatted != null && createdAtFormatted!.isNotEmpty) {
+      return createdAtFormatted!.split(',').first.trim();
+    }
+    return '04 Okt 2026';
   }
 
   bool get isSuperAdmin =>

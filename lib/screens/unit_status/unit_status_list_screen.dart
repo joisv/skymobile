@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
 import '../../models/affiliate_model.dart';
@@ -27,6 +28,14 @@ class UnitStatusListScreen extends StatefulWidget {
 
 class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   final TextEditingController _searchController = TextEditingController();
+  late final ScrollController _scrollController = ScrollController();
+  Timer? _searchDebounceTimer;
+
+  static const int _pageSize = 20;
+  int _currentPage = 1;
+  int _totalUnitCount = 0;
+  bool _hasMore = false;
+  bool _isLoadingMore = false;
 
   List<IphoneModel> _units = [];
   List<AffiliateModel> _affiliates = [];
@@ -38,7 +47,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     'maintenance': 0,
     'dibooking': 0,
   };
-  Map<String, int> _affiliateUnitCounts = {};
+  final Map<String, int> _affiliateUnitCounts = {};
 
   // Cache active bookings for rented units: assetCode -> BookingModel
   final Map<String, BookingModel?> _activeBookings = {};
@@ -54,31 +63,129 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadData();
   }
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+  void _onScroll() {
+    if (_scrollController.hasClients &&
+        _scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 250) {
+      if (!_isLoading && !_isLoadingMore && _hasMore) {
+        _loadMoreUnits();
+      }
+    }
+  }
+
+  void _onSearchChanged(String val) {
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) {
+        _loadData(resetPagination: true);
+      }
     });
+  }
+
+  Future<void> _loadMoreUnits() async {
+    if (_isLoading || _isLoadingMore || !_hasMore) return;
+    await _loadData(resetPagination: false, isLoadMore: true);
+  }
+
+  Future<void> _loadData({bool resetPagination = true, bool isLoadMore = false, bool forceRefresh = false}) async {
+    if (isLoadMore) {
+      setState(() => _isLoadingMore = true);
+    } else {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+        if (resetPagination) {
+          _currentPage = 1;
+          _hasMore = false;
+        }
+      });
+    }
 
     try {
-      final summary = await widget.repository.getUnitStatusSummary();
-      var affiliates = await widget.repository.getAffiliates();
-      final allUnits = await widget.repository.getAllInventoryUnits();
+      final isAffiliateUser = AuthService().isAffiliate || AuthService().isAffiliateAdmin || (AuthService().affiliateId != null && !AuthService().isSuperAdmin);
 
-      // If affiliates list from repository is empty, infer from actual inventory units so dropdown is populated
+      int? filterAffiliateId;
+      if (isAffiliateUser) {
+        filterAffiliateId = AuthService().currentUser?.affiliateId ?? AuthService().affiliateId;
+      } else if (_selectedAffiliate != 'Semua Cabang') {
+        final match = _affiliates.where((a) => a.name.toLowerCase() == _selectedAffiliate.toLowerCase()).firstOrNull;
+        filterAffiliateId = match?.id;
+      }
+
+      final targetPage = isLoadMore ? (_currentPage + 1) : 1;
+
+      if (isLoadMore) {
+        final pagedResult = await widget.repository.getInventoryUnitsPaginated(
+          query: _searchController.text.isNotEmpty ? _searchController.text : null,
+          statusFilter: _selectedStatus == 'Semua' ? null : _selectedStatus,
+          modelFilter: _selectedModel == 'Semua' ? null : _selectedModel,
+          branchFilter: _selectedAffiliate == 'Semua Cabang' ? null : _selectedAffiliate,
+          affiliateId: filterAffiliateId,
+          sortBy: _selectedSort,
+          page: targetPage,
+          perPage: _pageSize,
+        );
+
+        for (final unit in pagedResult.units) {
+          final s = unit.status.toLowerCase();
+          if (s == 'disewa' || s == 'rented' || widget.repository.isUnitCurrentlyRented(unit.assetCode) || (unit.customerName != null && unit.customerName!.isNotEmpty)) {
+            final booking = widget.repository.getActiveBookingForUnitSync(unit.assetCode);
+            if (booking != null) {
+              _activeBookings[unit.assetCode] = booking;
+            }
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _units.addAll(pagedResult.units);
+            _currentPage = targetPage;
+            _totalUnitCount = pagedResult.total;
+            _hasMore = _units.length < pagedResult.total && targetPage < pagedResult.lastPage;
+            _isLoadingMore = false;
+          });
+        }
+        return;
+      }
+
+      // Ambil data halaman pertama, cabang, dan ringkasan status secara paralel (concurrent)
+      final results = await Future.wait([
+        widget.repository.getInventoryUnitsPaginated(
+          query: _searchController.text.isNotEmpty ? _searchController.text : null,
+          statusFilter: _selectedStatus == 'Semua' ? null : _selectedStatus,
+          modelFilter: _selectedModel == 'Semua' ? null : _selectedModel,
+          branchFilter: _selectedAffiliate == 'Semua Cabang' ? null : _selectedAffiliate,
+          affiliateId: filterAffiliateId,
+          sortBy: _selectedSort,
+          page: 1,
+          perPage: _pageSize,
+          forceRefresh: forceRefresh,
+        ),
+        widget.repository.getAffiliates(forceRefresh: forceRefresh),
+        widget.repository.getUnitStatusSummary(forceRefresh: forceRefresh),
+      ]);
+
+      final pagedResult = results[0] as PaginatedIphonesResult;
+      var affiliates = results[1] as List<AffiliateModel>;
+      final summary = results[2] as Map<String, int>;
+
+      // If affiliates list from repository is empty, infer from inventory units so dropdown is populated
       if (affiliates.isEmpty) {
         final seen = <String>{};
         final inferred = <AffiliateModel>[];
-        for (final u in allUnits) {
+        for (final u in pagedResult.units) {
           final name = u.affiliateName ?? u.branchName;
           if (name != null && name.trim().isNotEmpty && !seen.contains(name.toLowerCase())) {
             seen.add(name.toLowerCase());
@@ -96,7 +203,6 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         }
       }
 
-      final isAffiliateUser = AuthService().isAffiliate || AuthService().isAffiliateAdmin || (AuthService().affiliateId != null && !AuthService().isSuperAdmin);
       if (isAffiliateUser) {
         final myAffId = AuthService().currentUser?.affiliateId ?? AuthService().affiliateId;
         if (myAffId != null) {
@@ -107,40 +213,14 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         }
       }
 
-      // Compute dynamic branch counts from actual inventory
-      final branchCounts = <String, int>{};
-      for (final aff in affiliates) {
-        final count = allUnits.where((u) {
-          if (u.affiliateId != null && u.affiliateId == aff.id) return true;
-          final b = (u.branchName ?? u.affiliateName ?? '').toLowerCase();
-          return b.contains(aff.name.toLowerCase()) || b.contains(aff.code.toLowerCase());
-        }).length;
-        branchCounts[aff.name] = count;
-      }
-
-      int? filterAffiliateId;
-      if (isAffiliateUser) {
-        filterAffiliateId = AuthService().currentUser?.affiliateId ?? AuthService().affiliateId;
-      } else if (_selectedAffiliate != 'Semua Cabang') {
-        final match = affiliates.where((a) => a.name.toLowerCase() == _selectedAffiliate.toLowerCase()).firstOrNull;
-        filterAffiliateId = match?.id;
-      }
-
-      final units = await widget.repository.getAllInventoryUnits(
-        query: _searchController.text,
-        statusFilter: _selectedStatus == 'Semua' ? null : _selectedStatus,
-        modelFilter: _selectedModel == 'Semua' ? null : _selectedModel,
-        branchFilter: _selectedAffiliate == 'Semua Cabang' ? null : _selectedAffiliate,
-        affiliateId: filterAffiliateId,
-        sortBy: _selectedSort,
-      );
-
-      // Pre-fetch active booking for units that are rented/disewa
-      for (final unit in units) {
+      // Pre-fetch active booking for units that are rented/disewa secara instan dari sinkronisasi memori
+      for (final unit in pagedResult.units) {
         final s = unit.status.toLowerCase();
         if (s == 'disewa' || s == 'rented' || widget.repository.isUnitCurrentlyRented(unit.assetCode) || (unit.customerName != null && unit.customerName!.isNotEmpty)) {
-          final booking = await widget.repository.getActiveBookingForUnit(unit.assetCode);
-          _activeBookings[unit.assetCode] = booking;
+          final booking = widget.repository.getActiveBookingForUnitSync(unit.assetCode);
+          if (booking != null) {
+            _activeBookings[unit.assetCode] = booking;
+          }
         }
       }
 
@@ -148,9 +228,12 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         setState(() {
           _summary = summary;
           _affiliates = affiliates;
-          _affiliateUnitCounts = branchCounts;
-          _units = units;
+          _units = List<IphoneModel>.from(pagedResult.units);
+          _currentPage = 1;
+          _totalUnitCount = pagedResult.total;
+          _hasMore = _units.length < pagedResult.total && 1 < pagedResult.lastPage;
           _isLoading = false;
+          _isLoadingMore = false;
           _errorMessage = null;
         });
       }
@@ -158,6 +241,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _isLoadingMore = false;
           _errorMessage = 'Gagal memuat data unit: $e';
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -913,6 +997,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
 
   Widget _buildTabletBody() {
     return SingleChildScrollView(
+      controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 32),
       child: Column(
@@ -944,6 +1029,24 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
             _buildEmptyState()
           else
             _buildUnitCardsGridTablet(),
+
+          if (_hasMore || _isLoadingMore)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: _isLoadingMore
+                    ? const SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      )
+                    : OutlinedButton.icon(
+                        icon: const Icon(Icons.expand_more_rounded, size: 18),
+                        label: Text('Muat Lebih Banyak (${_units.length} dari $_totalUnitCount)'),
+                        onPressed: _loadMoreUnits,
+                      ),
+              ),
+            ),
         ],
       ),
     );
@@ -1003,7 +1106,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                       Expanded(
                         child: TextField(
                           controller: _searchController,
-                          onChanged: (_) => _loadData(),
+                          onChanged: _onSearchChanged,
                           style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
                           decoration: const InputDecoration(
                             hintText: 'Cari model, kode aset, SN, penyewa...',
@@ -1020,8 +1123,9 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                           onPressed: () {
+                            _searchDebounceTimer?.cancel();
                             _searchController.clear();
-                            _loadData();
+                            _loadData(resetPagination: true);
                           },
                         ),
                       InkWell(
@@ -2134,7 +2238,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                       Expanded(
                         child: TextField(
                           controller: _searchController,
-                          onChanged: (_) => _loadData(),
+                          onChanged: _onSearchChanged,
                           style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
                           decoration: const InputDecoration(
                             hintText: 'Cari iPhone, kode aset, SN, penyewa...',
@@ -2151,8 +2255,9 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                           onPressed: () {
+                            _searchDebounceTimer?.cancel();
                             _searchController.clear();
-                            _loadData();
+                            _loadData(resetPagination: true);
                           },
                         ),
                       IconButton(
@@ -2227,10 +2332,31 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   : _units.isEmpty
                       ? _buildEmptyState()
                       : ListView.separated(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          itemCount: _units.length,
+                          itemCount: _units.length + ((_hasMore || _isLoadingMore) ? 1 : 0),
                           separatorBuilder: (_, __) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) => _buildUnitCard(_units[index]),
+                          itemBuilder: (context, index) {
+                            if (index >= _units.length) {
+                              return Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  child: _isLoadingMore
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : OutlinedButton(
+                                          onPressed: _loadMoreUnits,
+                                          child: Text('Muat Lebih Banyak (${_units.length} dari $_totalUnitCount)'),
+                                        ),
+                                ),
+                              );
+                            }
+                            return _buildUnitCard(_units[index]);
+                          },
                         ),
         ),
       ],
@@ -2240,7 +2366,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   Widget _buildMobileMetricCard(String label, int count, IconData icon, Color color) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
@@ -2248,16 +2374,20 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         ),
         child: Column(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 13, color: color),
-                const SizedBox(width: 4),
-                Text(
-                  count.toString(),
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color),
-                ),
-              ],
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 12, color: color),
+                  const SizedBox(width: 3),
+                  Text(
+                    count.toString(),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 2),
             Text(

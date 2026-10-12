@@ -22,39 +22,71 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   late int _currentIndex;
-  late final List<Widget> _screens;
+  late final List<Widget?> _screens;
+  final Set<int> _loadedIndices = {};
+  final GlobalKey<DashboardScreenState> _dashboardKey = GlobalKey<DashboardScreenState>();
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
-    _screens = [
-      DashboardScreen(repository: widget.repository),
-      SalesReportScreen(repository: widget.repository),
-      UnitStatusListScreen(repository: widget.repository),
-      AccountScreen(repository: widget.repository),
-    ];
+    _screens = List<Widget?>.filled(4, null);
+    _loadedIndices.add(_currentIndex);
+  }
+
+  Widget _buildTabScreen(int index) {
+    if (!_loadedIndices.contains(index)) {
+      return const SizedBox.shrink();
+    }
+    if (_screens[index] != null) {
+      return _screens[index]!;
+    }
+    switch (index) {
+      case 0:
+        _screens[0] = DashboardScreen(key: _dashboardKey, repository: widget.repository);
+        break;
+      case 1:
+        _screens[1] = SalesReportScreen(repository: widget.repository);
+        break;
+      case 2:
+        _screens[2] = UnitStatusListScreen(repository: widget.repository);
+        break;
+      case 3:
+        _screens[3] = AccountScreen(repository: widget.repository);
+        break;
+    }
+    return _screens[index]!;
   }
 
   void _onTabSelected(int index) {
     if (_currentIndex != index) {
       setState(() {
         _currentIndex = index;
+        _loadedIndices.add(index);
       });
+      // Ketika kembali ke tab Dashboard, cek apakah cache sudah expired (>= 5 menit)
+      if (index == 0) {
+        _dashboardKey.currentState?.checkAndRefreshIfExpired();
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final mediaSize = MediaQuery.sizeOf(context);
-    final isTabletLandscape = mediaSize.width >= 900 && mediaSize.width > mediaSize.height;
+    final isTablet = mediaSize.width >= 900 || mediaSize.shortestSide >= 600;
 
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          _buildTabScreen(0),
+          _buildTabScreen(1),
+          _buildTabScreen(2),
+          _buildTabScreen(3),
+        ],
       ),
-      bottomNavigationBar: isTabletLandscape
+      bottomNavigationBar: isTablet
           ? _buildTabletBottomNav(context)
           : _buildMobileBottomNav(context),
     );
@@ -91,8 +123,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             () => _onTabSelected(2),
           ),
           _buildTabletNavItem(
-            Icons.print_outlined,
-            'Printer & Shift',
+            Icons.settings_outlined,
+            'Settings',
             _currentIndex == 3,
             () => _onTabSelected(3),
           ),
@@ -152,32 +184,33 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         ],
       ),
       child: NavigationBar(
+        height: 60,
         selectedIndex: _currentIndex,
         onDestinationSelected: _onTabSelected,
         backgroundColor: AppTheme.surface,
         indicatorColor: AppTheme.surfaceContainerLow,
         elevation: 0,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         destinations: [
           NavigationDestination(
             icon: const Icon(Icons.dashboard_outlined),
             selectedIcon: Icon(Icons.dashboard_rounded, color: AppTheme.primary),
-            label: 'Dashboard',
+            label: '',
           ),
           NavigationDestination(
             icon: const Icon(Icons.assessment_outlined),
             selectedIcon: Icon(Icons.assessment_rounded, color: AppTheme.primary),
-            label: 'Report',
+            label: '',
           ),
           NavigationDestination(
             icon: const Icon(Icons.phone_iphone_outlined),
             selectedIcon: Icon(Icons.phone_iphone_rounded, color: AppTheme.primary),
-            label: 'Unit iPhone',
+            label: '',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.print_outlined),
-            selectedIcon: Icon(Icons.print_rounded, color: AppTheme.primary),
-            label: 'Printer & Akun',
+            icon: const Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings_rounded, color: AppTheme.primary),
+            label: '',
           ),
         ],
       ),

@@ -156,8 +156,8 @@ class _RentalPaymentScreenState extends State<RentalPaymentScreen> {
         : 'SKYRENTAL PUSAT';
 
     final receipt = ReceiptModel(
-      receiptNumber: 'STR-202609-0${tx.id}',
-      date: DateTime.now(),
+      receiptNumber: tx.bookingCode.isNotEmpty ? tx.bookingCode : 'STR-202609-0${tx.id}',
+      date: tx.transactionDate,
       adminName: cashierName,
       branchName: branchName,
       type: ReceiptType.paymentSettlement,

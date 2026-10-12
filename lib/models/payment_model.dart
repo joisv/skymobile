@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'booking_model.dart';
 
 enum DepositStatus {
   held,
@@ -255,5 +256,182 @@ class PaymentMethodOption {
       PaymentMethodOption(id: 3, name: 'VA Bank', slug: 'va', badge: 'BCA/MDR', description: 'Virtual Account'),
       PaymentMethodOption(id: 4, name: 'EDC Mesin', slug: 'edc', badge: 'KARTU', description: 'Swipe / Dip'),
     ];
+  }
+}
+
+/// Model hasil pembayaran nyata yang dikembalikan dari backend REST API Laravel
+class BookingPaymentResult {
+  final String bookingCode;
+  final String receiptNumber;
+  final String? paymentCode;
+  final String customerName;
+  final String? customerPhone;
+  final String unitName;
+  final double amount;
+  final double cashReceived;
+  final double change;
+  final String paymentMethod;
+  final String paymentType;
+  final String paymentTypeLabel;
+  final double totalAmount;
+  final double totalPaid;
+  final double remainingPayment;
+  final String paymentStatus;
+  final bool isSettled;
+  final DateTime paidAt;
+  final String? paidAtFormatted;
+  final String? note;
+  final BookingModel? updatedBooking;
+
+  const BookingPaymentResult({
+    required this.bookingCode,
+    required this.receiptNumber,
+    this.paymentCode,
+    required this.customerName,
+    this.customerPhone,
+    required this.unitName,
+    required this.amount,
+    this.cashReceived = 0.0,
+    this.change = 0.0,
+    required this.paymentMethod,
+    required this.paymentType,
+    required this.paymentTypeLabel,
+    required this.totalAmount,
+    required this.totalPaid,
+    required this.remainingPayment,
+    required this.paymentStatus,
+    this.isSettled = false,
+    required this.paidAt,
+    this.paidAtFormatted,
+    this.note,
+    this.updatedBooking,
+  });
+
+  factory BookingPaymentResult.fromJson(Map<String, dynamic> json) {
+    final summary = (json['payment_summary'] as Map<String, dynamic>?) ?? {};
+    final payment = (json['payment'] as Map<String, dynamic>?) ?? {};
+    final bookingJson = (json['data'] as Map<String, dynamic>?);
+
+    final String bCode = summary['booking_code']?.toString() ??
+        payment['booking_code']?.toString() ??
+        bookingJson?['booking_code']?.toString() ??
+        json['booking_code']?.toString() ??
+        '-';
+
+    final String rNum = summary['receipt_number']?.toString() ??
+        payment['receipt_number']?.toString() ??
+        summary['payment_code']?.toString() ??
+        payment['payment_code']?.toString() ??
+        bCode;
+
+    final String? pCode = summary['payment_code']?.toString() ?? payment['payment_code']?.toString();
+
+    final String cName = summary['customer_name']?.toString() ??
+        payment['customer_name']?.toString() ??
+        bookingJson?['customer_name']?.toString() ??
+        '-';
+
+    final String? cPhone = summary['customer_phone']?.toString() ??
+        payment['customer_phone']?.toString() ??
+        bookingJson?['customer_phone']?.toString();
+
+    String uName = summary['unit_name']?.toString() ??
+        payment['unit_name']?.toString() ??
+        '-';
+    if (uName == '-' && bookingJson != null && bookingJson['iphone'] is Map) {
+      final iph = bookingJson['iphone'] as Map;
+      uName = "${iph['name'] ?? 'iPhone'} (${iph['serial_number'] ?? '-'})";
+    }
+
+    final double amt = (summary['amount_paid'] as num?)?.toDouble() ??
+        (summary['amount'] as num?)?.toDouble() ??
+        (payment['amount'] as num?)?.toDouble() ??
+        (json['amount'] as num?)?.toDouble() ??
+        0.0;
+
+    final double cRecv = (summary['cash_received'] as num?)?.toDouble() ??
+        (payment['pay'] as num?)?.toDouble() ??
+        (json['pay'] as num?)?.toDouble() ??
+        amt;
+
+    final double chg = (summary['change'] as num?)?.toDouble() ??
+        (payment['change'] as num?)?.toDouble() ??
+        (json['change'] as num?)?.toDouble() ??
+        0.0;
+
+    final String pMethod = summary['payment_method']?.toString() ??
+        payment['payment_method']?.toString() ??
+        json['payment_method']?.toString() ??
+        'Tunai (Cash)';
+
+    final String pType = summary['payment_type']?.toString() ??
+        payment['type']?.toString() ??
+        json['type']?.toString() ??
+        'payment';
+
+    final String pTypeLabel = summary['payment_type_label']?.toString() ??
+        payment['type_label']?.toString() ??
+        (pType == 'dp' ? 'Uang Muka (DP)' : 'Pelunasan Sewa');
+
+    final double tAmount = (summary['total_amount'] as num?)?.toDouble() ??
+        (summary['price'] as num?)?.toDouble() ??
+        (bookingJson?['price'] as num?)?.toDouble() ??
+        amt;
+
+    final double tPaid = (summary['total_paid'] as num?)?.toDouble() ??
+        (payment['amount'] as num?)?.toDouble() ??
+        amt;
+
+    final double rPayment = (summary['remaining_payment'] as num?)?.toDouble() ?? 0.0;
+
+    final String pStatus = summary['payment_status']?.toString() ??
+        bookingJson?['payment_status']?.toString() ??
+        (rPayment <= 0 ? 'paid' : 'partial');
+
+    final bool settled = summary['is_settled'] == true || pStatus == 'paid';
+
+    DateTime pAt = DateTime.now();
+    final pAtRaw = summary['paid_at'] ?? payment['paid_at'] ?? json['paid_at'];
+    if (pAtRaw != null) {
+      try {
+        pAt = DateTime.parse(pAtRaw.toString());
+      } catch (_) {}
+    }
+
+    final String? pAtFormatted = summary['paid_at_formatted']?.toString() ??
+        payment['paid_at_formatted']?.toString();
+
+    final String? nt = summary['note']?.toString() ?? payment['note']?.toString() ?? json['note']?.toString();
+
+    BookingModel? upBooking;
+    if (bookingJson != null) {
+      try {
+        upBooking = BookingModel.fromJson(bookingJson);
+      } catch (_) {}
+    }
+
+    return BookingPaymentResult(
+      bookingCode: bCode,
+      receiptNumber: rNum,
+      paymentCode: pCode,
+      customerName: cName,
+      customerPhone: cPhone,
+      unitName: uName,
+      amount: amt,
+      cashReceived: cRecv,
+      change: chg,
+      paymentMethod: pMethod,
+      paymentType: pType,
+      paymentTypeLabel: pTypeLabel,
+      totalAmount: tAmount,
+      totalPaid: tPaid,
+      remainingPayment: rPayment,
+      paymentStatus: pStatus,
+      isSettled: settled,
+      paidAt: pAt,
+      paidAtFormatted: pAtFormatted,
+      note: nt,
+      updatedBooking: upBooking,
+    );
   }
 }

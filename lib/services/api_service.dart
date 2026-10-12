@@ -25,6 +25,7 @@ class ApiService {
 
   static const String _prefKeyBaseUrl = 'api_base_url';
   static const String _prefKeyAuthToken = 'api_auth_token';
+  static const String _prefKeyUserProfile = 'api_user_profile';
 
   static String get _initialBaseUrl {
     if (!kIsWeb) {
@@ -160,15 +161,68 @@ class ApiService {
     }).catchError((_) {});
   }
 
-  void saveAuthToken(String? token) {
+  Future<void> saveAuthToken(String? token) async {
     authToken = token;
-    SharedPreferences.getInstance().then((prefs) {
+    try {
+      final prefs = await SharedPreferences.getInstance();
       if (token == null) {
-        prefs.remove(_prefKeyAuthToken);
+        await prefs.remove(_prefKeyAuthToken);
       } else {
-        prefs.setString(_prefKeyAuthToken, token);
+        await prefs.setString(_prefKeyAuthToken, token);
       }
-    }).catchError((_) {});
+    } catch (_) {}
+  }
+
+  Future<void> saveUserProfile(Map<String, dynamic>? profile) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (profile == null) {
+        await prefs.remove(_prefKeyUserProfile);
+      } else {
+        await prefs.setString(_prefKeyUserProfile, jsonEncode(profile));
+      }
+    } catch (_) {}
+  }
+
+  Future<Map<String, dynamic>?> loadCachedUserProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_prefKeyUserProfile);
+      if (raw != null && raw.trim().isNotEmpty) {
+        return jsonDecode(raw) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> clearAuth() async {
+    authToken = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefKeyAuthToken);
+      await prefs.remove(_prefKeyUserProfile);
+    } catch (_) {}
+  }
+
+  Future<bool> logoutApi() async {
+    if (authToken == null || authToken!.isEmpty) return true;
+
+    for (final base in candidateUrls) {
+      try {
+        for (final endpoint in ['/auth/logout', '/logout']) {
+          final uri = Uri.parse('$base$endpoint');
+          final response = await http.post(
+            uri,
+            headers: _buildHeaders(isJson: true),
+          ).timeout(const Duration(seconds: 3));
+
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            return true;
+          }
+        }
+      } catch (_) {}
+    }
+    return false;
   }
 
   List<String> get candidateUrls {
@@ -358,22 +412,34 @@ class ApiService {
   }
 
   /// Ambil data user yang sedang login
-  /// GET /api/v1/me
+  /// GET /api/v1/auth/me, /api/v1/me, atau /api/v1/auth/user
   Future<Map<String, dynamic>?> getMe() async {
+    if (authToken == null || authToken!.isEmpty) return null;
+
     for (final base in candidateUrls) {
       try {
-        final uri = Uri.parse('$base/me');
-        final response = await http.get(
-          uri,
-          headers: _buildHeaders(),
-        ).timeout(const Duration(seconds: 5));
+        for (final endpoint in ['/auth/me', '/me', '/auth/user', '/user']) {
+          final uri = Uri.parse('$base$endpoint');
+          final response = await http.get(
+            uri,
+            headers: _buildHeaders(),
+          ).timeout(const Duration(seconds: 3));
 
-        if (response.statusCode == 200) {
-          final json = jsonDecode(response.body);
-          if (json['success'] == true && json['data'] != null) {
-            return json;
+          if (response.statusCode == 200) {
+            final json = jsonDecode(response.body);
+            if (json['success'] == true && json['data'] != null) {
+              _saveWorkingUrl(base);
+              return json;
+            }
+          } else if (response.statusCode == 401 || response.statusCode == 403) {
+            _saveWorkingUrl(base);
+            throw ApiException('Sesi login telah berakhir atau tidak valid.', statusCode: response.statusCode);
+          } else if (response.statusCode == 404) {
+            continue;
           }
         }
+      } on ApiException {
+        rethrow;
       } catch (_) {}
     }
     return null;
@@ -569,6 +635,7 @@ class ApiService {
     required double price,
     required double depositAmount,
     required String jaminanType,
+    bool kia = false,
     String pickupType = 'Outlet',
     String paymentStatus = 'paid',
     required double amountPaid,
@@ -595,6 +662,7 @@ class ApiService {
       'deposit_amount': depositAmount,
       'deposit': depositAmount,
       'jaminan_type': jaminanType,
+      'kia': kia,
       'pickup_type': pickupType,
       'payment_status': paymentStatus,
       'amount_paid': amountPaid,
@@ -727,12 +795,31 @@ class ApiService {
 
         if (response.statusCode == 200 || response.statusCode == 201) {
           _saveWorkingUrl(base);
-          return jsonDecode(response.body) as Map<String, dynamic>;
-        }
-
-        if (response.statusCode >= 400 && response.statusCode < 500) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
           return null;
         }
+
+        if (response.statusCode >= 400) {
+          String message = 'Pembayaran gagal (HTTP ${response.statusCode})';
+          Map<String, dynamic>? errors;
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map) {
+              if (errBody['message'] != null && errBody['message'].toString().trim().isNotEmpty) {
+                message = errBody['message'].toString();
+              }
+              if (errBody['errors'] is Map<String, dynamic>) {
+                errors = errBody['errors'] as Map<String, dynamic>;
+              }
+            }
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode, errors: errors);
+        }
+      } on ApiException {
+        rethrow;
       } catch (_) {
         // Coba kandidat URL berikutnya hanya jika koneksi fisik gagal
       }
@@ -799,6 +886,7 @@ class ApiService {
     required String bookingCode,
     required Map<String, dynamic> payload,
   }) async {
+    dynamic lastError;
     for (final base in candidateUrls) {
       try {
         final uri = Uri.parse('$base/returns/complete/$bookingCode');
@@ -810,13 +898,44 @@ class ApiService {
 
         if (response.statusCode == 200 || response.statusCode == 201) {
           _saveWorkingUrl(base);
-          return jsonDecode(response.body) as Map<String, dynamic>;
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
         }
 
         if (response.statusCode >= 400 && response.statusCode < 500) {
-          return null;
+          try {
+            final decoded = jsonDecode(response.body);
+            if (decoded is Map<String, dynamic>) {
+              final msg = decoded['message'] ?? 'Gagal memproses pengembalian unit.';
+              throw ApiException(msg.toString(), statusCode: response.statusCode, errors: decoded['errors'] as Map<String, dynamic>?);
+            }
+          } on ApiException {
+            rethrow;
+          } catch (_) {
+            throw ApiException('Permintaan pengembalian gagal (${response.statusCode}).', statusCode: response.statusCode);
+          }
+        } else if (response.statusCode >= 500) {
+          try {
+            final decoded = jsonDecode(response.body);
+            final msg = decoded is Map ? decoded['message'] : null;
+            if (msg != null) {
+              throw ApiException(msg.toString(), statusCode: response.statusCode);
+            }
+          } on ApiException {
+            rethrow;
+          } catch (_) {}
         }
-      } catch (_) {}
+      } catch (e) {
+        lastError = e;
+        if (e is ApiException) {
+          rethrow;
+        }
+      }
+    }
+    if (lastError is ApiException) {
+      throw lastError;
     }
     return null;
   }

@@ -426,6 +426,8 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                                         borderRadius: BorderRadius.circular(10),
                                         child: Image.network(
                                           resolvedUrl,
+                                          cacheWidth: 300,
+                                          cacheHeight: 300,
                                           fit: BoxFit.contain,
                                           errorBuilder: (ctx, err, stack) => const Center(
                                             child: Icon(Icons.broken_image_outlined, color: Colors.grey),
@@ -1190,6 +1192,8 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
                                 )
                               : Image.network(
                                   _resolveImageUrl(_selectedPosterUrl!),
+                                  cacheWidth: 320,
+                                  cacheHeight: 320,
                                   fit: BoxFit.contain,
                                   errorBuilder: (ctx, err, stack) => const Center(
                                     child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 36),

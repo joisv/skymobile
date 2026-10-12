@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
 import '../../models/booking_model.dart';
@@ -24,6 +25,7 @@ class UnitSelectionScreen extends StatefulWidget {
 
 class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounceTimer;
   List<IphoneModel> _units = [];
   bool _isLoading = true;
   IphoneModel? _selectedUnit;
@@ -41,8 +43,16 @@ class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String val) {
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) _loadUnits();
+    });
   }
 
   Future<void> _loadUnits() async {
@@ -292,13 +302,14 @@ class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
                   ? IconButton(
                       icon: const Icon(Icons.clear, size: 16),
                       onPressed: () {
+                        _searchDebounceTimer?.cancel();
                         _searchController.clear();
                         _loadUnits();
                       },
                     )
                   : null,
             ),
-            onChanged: (_) => _loadUnits(),
+            onChanged: _onSearchChanged,
           ),
           const SizedBox(height: 8),
 

@@ -266,25 +266,23 @@ class DashboardSkeleton extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Left Column (~66% width)
+        // Left Column (~70% width)
         Expanded(
-          flex: 66,
+          flex: 70,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildTabletWelcomeBannerSkeleton(),
-              const SizedBox(height: 20),
               _buildTabletMetricsRowSkeleton(),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               _buildTabletQueueSkeleton(),
             ],
           ),
         ),
-        const SizedBox(width: 20),
+        const SizedBox(width: 16),
 
-        // Right Column (~34% width / Sidebar)
+        // Right Column (~30% width / Sidebar)
         Expanded(
-          flex: 34,
+          flex: 30,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -300,49 +298,6 @@ class DashboardSkeleton extends StatelessWidget {
     );
   }
 
-  Widget _buildTabletWelcomeBannerSkeleton() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.cardBorder),
-      ),
-      child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SkeletonBox(width: 150, height: 22, borderRadius: 20),
-                SizedBox(height: 12),
-                Row(
-                  children: [
-                    SkeletonText(width: 200, height: 22),
-                    SizedBox(width: 8),
-                    SkeletonBox(width: 52, height: 20, borderRadius: 6),
-                  ],
-                ),
-                SizedBox(height: 8),
-                SkeletonText(width: 380, height: 12),
-              ],
-            ),
-          ),
-          SizedBox(width: 16),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SkeletonBox(width: 140, height: 48, borderRadius: 12),
-              SizedBox(width: 12),
-              SkeletonCircle(size: 40),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildTabletMetricsRowSkeleton() {
     return Column(
@@ -385,23 +340,25 @@ class DashboardSkeleton extends StatelessWidget {
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              SkeletonText(width: 75, height: 11),
-              SkeletonBox(width: 28, height: 28, borderRadius: 8),
+              Flexible(child: SkeletonText(width: 50, height: 11)),
+              SizedBox(width: 4),
+              SkeletonBox(width: 24, height: 24, borderRadius: 8),
             ],
           ),
           const SizedBox(height: 10),
-          const SkeletonText(width: 65, height: 22),
+          const SkeletonText(width: 55, height: 22),
           const SizedBox(height: 8),
           if (hasProgress) ...[
             const SkeletonBox(width: double.infinity, height: 5, borderRadius: 4),
             const SizedBox(height: 4),
-            const SkeletonText(width: 85, height: 10),
+            const SkeletonText(width: 60, height: 10),
           ] else ...[
-            const Row(
+            const Wrap(
+              spacing: 4,
+              runSpacing: 4,
               children: [
-                SkeletonBox(width: 46, height: 16, borderRadius: 4),
-                SizedBox(width: 4),
-                SkeletonBox(width: 46, height: 16, borderRadius: 4),
+                SkeletonBox(width: 40, height: 16, borderRadius: 4),
+                SkeletonBox(width: 40, height: 16, borderRadius: 4),
               ],
             ),
           ],
@@ -424,32 +381,57 @@ class DashboardSkeleton extends StatelessWidget {
                 SkeletonBox(width: 70, height: 22, borderRadius: 12),
               ],
             ),
-            Row(
-              children: [
-                SkeletonBox(width: 60, height: 26, borderRadius: 16),
-                SizedBox(width: 6),
-                SkeletonBox(width: 75, height: 26, borderRadius: 16),
-                SizedBox(width: 6),
-                SkeletonBox(width: 75, height: 26, borderRadius: 16),
-                SizedBox(width: 8),
-                SkeletonBox(width: 85, height: 26, borderRadius: 16),
-              ],
+            Flexible(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SkeletonBox(width: 60, height: 26, borderRadius: 16),
+                    SizedBox(width: 6),
+                    SkeletonBox(width: 75, height: 26, borderRadius: 16),
+                    SizedBox(width: 6),
+                    SkeletonBox(width: 75, height: 26, borderRadius: 16),
+                    SizedBox(width: 8),
+                    SkeletonBox(width: 85, height: 26, borderRadius: 16),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 14),
-        _buildTabletQueueCardSkeleton(),
-        const SizedBox(height: 12),
-        _buildTabletQueueCardSkeleton(),
-        const SizedBox(height: 12),
-        _buildTabletQueueCardSkeleton(),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                children: [
+                  _buildTabletQueueCardSkeleton(),
+                  const SizedBox(height: 12),
+                  _buildTabletQueueCardSkeleton(),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                children: [
+                  _buildTabletQueueCardSkeleton(),
+                  const SizedBox(height: 12),
+                  _buildTabletQueueCardSkeleton(),
+                ],
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
 
   Widget _buildTabletQueueCardSkeleton() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
@@ -458,17 +440,21 @@ class DashboardSkeleton extends StatelessWidget {
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  SkeletonBox(width: 65, height: 20, borderRadius: 4),
-                  SizedBox(width: 8),
-                  SkeletonText(width: 90, height: 11),
+                  SkeletonBox(width: 50, height: 18, borderRadius: 4),
+                  SizedBox(width: 6),
+                  SkeletonText(width: 60, height: 11),
                 ],
               ),
-              SkeletonBox(width: 85, height: 20, borderRadius: 4),
+              SkeletonBox(width: 65, height: 18, borderRadius: 4),
             ],
           ),
           SizedBox(height: 12),
@@ -483,12 +469,13 @@ class DashboardSkeleton extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        SkeletonText(width: 130, height: 15),
-                        SkeletonText(width: 65, height: 12),
+                        Flexible(flex: 3, child: SkeletonText(width: 90, height: 14)),
+                        SizedBox(width: 4),
+                        Flexible(flex: 2, child: SkeletonText(width: 50, height: 12)),
                       ],
                     ),
                     SizedBox(height: 4),
-                    SkeletonText(width: 180, height: 11),
+                    SkeletonText(width: 110, height: 11),
                   ],
                 ),
               ),
@@ -497,15 +484,19 @@ class DashboardSkeleton extends StatelessWidget {
           SizedBox(height: 12),
           Divider(height: 1),
           SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SkeletonText(width: 120, height: 12),
+              SkeletonText(width: 80, height: 12),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  SkeletonCircle(size: 26),
-                  SizedBox(width: 8),
-                  SkeletonBox(width: 120, height: 32, borderRadius: 20),
+                  SkeletonCircle(size: 24),
+                  SizedBox(width: 6),
+                  SkeletonBox(width: 70, height: 26, borderRadius: 16),
                 ],
               ),
             ],

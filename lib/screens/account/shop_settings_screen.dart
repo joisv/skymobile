@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
 import '../../models/admin_user_model.dart';
+import '../../models/receipt_format_settings.dart';
+import '../../services/printer_storage_service.dart';
 import '../../theme/app_theme.dart';
+import '../receipt/widgets/thermal_receipt_paper_preview.dart';
 
 class ShopSettingsScreen extends StatefulWidget {
   final BookingRepository repository;
@@ -17,17 +20,21 @@ class ShopSettingsScreen extends StatefulWidget {
 
 class _ShopSettingsScreenState extends State<ShopSettingsScreen> {
   final _formKey = GlobalKey<FormState>();
+  final PrinterStorageService _printerStorageService = PrinterStorageService();
 
   late final TextEditingController _shopNameController;
   late final TextEditingController _outletNameController;
   late final TextEditingController _addressController;
   late final TextEditingController _phoneController;
   late final TextEditingController _footerController;
-  late final TextEditingController _wifiNameController;
-  late final TextEditingController _wifiPasswordController;
 
   ShopSettingsModel _settings = ShopSettingsModel.defaultSettings();
+  ReceiptFormatSettings _formatSettings = const ReceiptFormatSettings();
   bool _isLoading = true;
+
+  void _onFieldChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
@@ -37,24 +44,35 @@ class _ShopSettingsScreenState extends State<ShopSettingsScreen> {
     _addressController = TextEditingController();
     _phoneController = TextEditingController();
     _footerController = TextEditingController();
-    _wifiNameController = TextEditingController();
-    _wifiPasswordController = TextEditingController();
+
+    _shopNameController.addListener(_onFieldChanged);
+    _outletNameController.addListener(_onFieldChanged);
+    _addressController.addListener(_onFieldChanged);
+    _phoneController.addListener(_onFieldChanged);
+    _footerController.addListener(_onFieldChanged);
+
     _loadSettings();
   }
 
   Future<void> _loadSettings() async {
     try {
-      final settings = await widget.repository.getShopSettings();
+      final futures = await Future.wait([
+        widget.repository.getShopSettings(),
+        _printerStorageService.getReceiptFormatSettings(),
+      ]);
+
+      final settings = futures[0] as ShopSettingsModel;
+      final format = futures[1] as ReceiptFormatSettings;
+
       if (mounted) {
         setState(() {
           _settings = settings;
+          _formatSettings = format;
           _shopNameController.text = settings.shopName;
           _outletNameController.text = settings.outletName;
           _addressController.text = settings.address;
           _phoneController.text = settings.phoneNumber;
           _footerController.text = settings.footerNote;
-          _wifiNameController.text = settings.wifiName;
-          _wifiPasswordController.text = settings.wifiPassword;
           _isLoading = false;
         });
       }
@@ -67,13 +85,17 @@ class _ShopSettingsScreenState extends State<ShopSettingsScreen> {
 
   @override
   void dispose() {
+    _shopNameController.removeListener(_onFieldChanged);
+    _outletNameController.removeListener(_onFieldChanged);
+    _addressController.removeListener(_onFieldChanged);
+    _phoneController.removeListener(_onFieldChanged);
+    _footerController.removeListener(_onFieldChanged);
+
     _shopNameController.dispose();
     _outletNameController.dispose();
     _addressController.dispose();
     _phoneController.dispose();
     _footerController.dispose();
-    _wifiNameController.dispose();
-    _wifiPasswordController.dispose();
     super.dispose();
   }
 
@@ -90,15 +112,30 @@ class _ShopSettingsScreenState extends State<ShopSettingsScreen> {
       address: _addressController.text.trim(),
       phoneNumber: _phoneController.text.trim(),
       footerNote: _footerController.text.trim(),
-      wifiName: _wifiNameController.text.trim(),
-      wifiPassword: _wifiPasswordController.text.trim(),
     );
 
     final saved = await widget.repository.updateShopSettings(updated);
 
+    final currentFormat = await _printerStorageService.getReceiptFormatSettings();
+    final updatedFormat = currentFormat.copyWith(
+      businessName: _shopNameController.text.trim(),
+      branchName: _outletNameController.text.trim(),
+      businessTagline: _addressController.text.trim().isNotEmpty
+          ? _addressController.text.trim()
+          : currentFormat.businessTagline,
+      contactInfo: _phoneController.text.trim().isNotEmpty
+          ? 'CS: ${_phoneController.text.trim()} (WA)'
+          : currentFormat.contactInfo,
+      footerLine1: _footerController.text.trim().isNotEmpty
+          ? _footerController.text.trim()
+          : currentFormat.footerLine1,
+    );
+    await _printerStorageService.saveReceiptFormatSettings(updatedFormat);
+
     if (mounted) {
       setState(() {
         _settings = saved;
+        _formatSettings = updatedFormat;
         _isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -116,7 +153,8 @@ class _ShopSettingsScreenState extends State<ShopSettingsScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: Text('Pengaturan Nama Toko & Outlet',
+        title: Text(
+          'Pengaturan Nama Toko & Outlet',
           style: TextStyle(
             color: AppTheme.textPrimary,
             fontWeight: FontWeight.bold,
@@ -139,7 +177,7 @@ class _ShopSettingsScreenState extends State<ShopSettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Preview Header Resi Thermal Card
+              // Realistic Simulated Thermal Receipt Paper Preview Card
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -147,55 +185,14 @@ class _ShopSettingsScreenState extends State<ShopSettingsScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppTheme.cardBorder),
                 ),
-                child: Column(
-                  children: [
-                    Text(
-                      'PREVIEW HEADER RESI CETAK',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
-                        color: AppTheme.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _shopNameController.text.toUpperCase(),
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      _outletNameController.text,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                    Text(
-                      _addressController.text,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        color: AppTheme.textMuted,
-                      ),
-                    ),
-                    Text(
-                      'Telp/WA: ${_phoneController.text}',
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        color: AppTheme.textMuted,
-                      ),
-                    ),
-                  ],
+                child: ThermalReceiptPaperPreview(
+                  formatSettings: _formatSettings,
+                  shopName: _shopNameController.text,
+                  outletName: _outletNameController.text,
+                  address: _addressController.text,
+                  phoneNumber: _phoneController.text,
+                  footerNote: _footerController.text,
+                  maxHeight: 380,
                 ),
               ),
               const SizedBox(height: 20),
@@ -249,23 +246,7 @@ class _ShopSettingsScreenState extends State<ShopSettingsScreen> {
                 hint: 'Terima kasih telah menyewa di SKYRental',
                 icon: Icons.receipt_long_outlined,
                 maxLines: 2,
-              ),
-              const SizedBox(height: 24),
-
-              // Bagian WiFi Outlet (Fasilitas Pelanggan Saat Ambil Unit)
-              _buildSectionTitle('WIFI OUTLET (FASILITAS PELANGGAN)'),
-              _buildTextField(
-                controller: _wifiNameController,
-                label: 'Nama Jaringan WiFi (SSID)',
-                hint: 'SKYRENTAL_GUEST',
-                icon: Icons.wifi_rounded,
-              ),
-              const SizedBox(height: 14),
-              _buildTextField(
-                controller: _wifiPasswordController,
-                label: 'Kata Sandi WiFi',
-                hint: 'rentaliphoneoke',
-                icon: Icons.wifi_password_rounded,
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 32),
 

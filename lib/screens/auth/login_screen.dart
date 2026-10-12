@@ -309,23 +309,24 @@ class _LoginScreenState extends State<LoginScreen> {
                     // Brand Logo & Header
                     Center(
                       child: Container(
-                        width: 72,
-                        height: 72,
+                        width: 80,
+                        height: 80,
                         decoration: BoxDecoration(
-                          color: AppTheme.primary,
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: AppTheme.primary.withValues(alpha: 0.3),
+                              color: AppTheme.primary.withValues(alpha: 0.15),
                               blurRadius: 16,
                               offset: const Offset(0, 8),
                             ),
                           ],
                         ),
-                        child: const Icon(
-                          Icons.phone_iphone_rounded,
-                          color: Colors.white,
-                          size: 40,
+                        clipBehavior: Clip.antiAlias,
+                        padding: const EdgeInsets.all(4),
+                        child: Image.asset(
+                          'assets/images/brand_logo.png',
+                          fit: BoxFit.contain,
                         ),
                       ),
                     ),

@@ -19,10 +19,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (_) {
     // Already initialized or platform channel unavailable
   }
-  debugPrint('[FCM] Background message received: ${message.messageId}');
-  debugPrint('[FCM] Background title: ${message.notification?.title}');
-  debugPrint('[FCM] Background body: ${message.notification?.body}');
-  debugPrint('[FCM] Background data: ${message.data}');
+  if (kDebugMode) {
+    debugPrint('[FCM] Background message received: ${message.messageId}');
+  }
 }
 
 /// Minimal, self-contained Firebase Cloud Messaging (FCM) Service.
@@ -60,11 +59,15 @@ class FcmService {
     final bookingId = data['booking_id'];
     final route = data['route'];
 
-    debugPrint('[FCM] Navigating for notification type: $type, data: $data');
+    if (kDebugMode) {
+      debugPrint('[FCM] Navigating for notification type: $type');
+    }
 
     final navState = navigatorKey.currentState;
     if (navState == null) {
-      debugPrint('[FCM] Navigator state not ready for navigation.');
+      if (kDebugMode) {
+        debugPrint('[FCM] Navigator state not ready for navigation.');
+      }
       return;
     }
 
@@ -121,24 +124,32 @@ class FcmService {
         provisional: false,
         sound: true,
       );
-      debugPrint('[FCM] Permission status: ${settings.authorizationStatus}');
+      if (kDebugMode) {
+        debugPrint('[FCM] Permission status: ${settings.authorizationStatus}');
+      }
 
       // 4. Retrieve Device FCM Token
       try {
         _fcmToken = await messaging.getToken();
-        debugPrint('[FCM] Device Token: $_fcmToken');
+        if (kDebugMode) {
+          debugPrint('[FCM] Device Token acquired: ${_fcmToken != null && _fcmToken!.length > 10 ? _fcmToken!.substring(0, 10) + '...' : 'none'}');
+        }
         if (_fcmToken != null && _fcmToken!.isNotEmpty && AuthService().isAuthenticated) {
           unawaited(ApiService().registerDeviceTokenApi(_fcmToken!, platform: 'android'));
         }
       } catch (e) {
-        debugPrint('[FCM] Error retrieving device token: $e');
+        if (kDebugMode) {
+          debugPrint('[FCM] Error retrieving device token: $e');
+        }
       }
 
       // 5. Handle Token Refresh
       _tokenRefreshSubscription = messaging.onTokenRefresh.listen((newToken) {
         final oldToken = _fcmToken;
         _fcmToken = newToken;
-        debugPrint('[FCM] Token refreshed: $newToken');
+        if (kDebugMode) {
+          debugPrint('[FCM] Token refreshed: ${newToken.length > 10 ? newToken.substring(0, 10) + '...' : 'none'}');
+        }
         onTokenRefreshed?.call(newToken);
 
         if (AuthService().isAuthenticated) {
@@ -147,7 +158,9 @@ class FcmService {
             platform: 'android',
             oldToken: oldToken,
           ).catchError((e) {
-            debugPrint('[FCM] Error syncing refreshed token to backend: $e');
+            if (kDebugMode) {
+              debugPrint('[FCM] Error syncing refreshed token to backend: $e');
+            }
             return false;
           });
         }
@@ -155,16 +168,16 @@ class FcmService {
 
       // 6. Handle Foreground Notifications
       _foregroundSubscription = FirebaseMessaging.onMessage.listen((message) {
-        debugPrint('[FCM] Foreground notification received: ${message.messageId}');
-        debugPrint('[FCM] Title: ${message.notification?.title}, Body: ${message.notification?.body}');
-        debugPrint('[FCM] Data: ${message.data}');
+        if (kDebugMode) {
+          debugPrint('[FCM] Foreground notification received: ${message.messageId}');
+        }
         onForegroundMessage?.call(message);
 
         // Display in-app notification banner so foreground device immediately shows the alert
         final navContext = navigatorKey.currentContext;
         final title = message.notification?.title ?? '';
         final body = message.notification?.body ?? '';
-        if (navContext != null && (title.isNotEmpty || body.isNotEmpty)) {
+        if (navContext != null && navContext.mounted && (title.isNotEmpty || body.isNotEmpty)) {
           ScaffoldMessenger.maybeOf(navContext)?.showSnackBar(
             SnackBar(
               content: Row(
@@ -208,7 +221,9 @@ class FcmService {
 
       // 7. Handle Notifications Clicked When App In Background
       _openedAppSubscription = FirebaseMessaging.onMessageOpenedApp.listen((message) {
-        debugPrint('[FCM] Notification opened from background: ${message.messageId}');
+        if (kDebugMode) {
+          debugPrint('[FCM] Notification opened from background: ${message.messageId}');
+        }
         onNotificationOpened?.call(message);
         handleNotificationNavigation(message.data);
       });
@@ -216,7 +231,9 @@ class FcmService {
       // 8. Handle Notification Clicked When App Was Completely Terminated
       _initialMessage = await messaging.getInitialMessage();
       if (_initialMessage != null) {
-        debugPrint('[FCM] App opened from terminated state via notification: ${_initialMessage!.messageId}');
+        if (kDebugMode) {
+          debugPrint('[FCM] App opened from terminated state via notification: ${_initialMessage!.messageId}');
+        }
         onNotificationOpened?.call(_initialMessage!);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           handleNotificationNavigation(_initialMessage!.data);
@@ -224,9 +241,13 @@ class FcmService {
       }
 
       _isInitialized = true;
-      debugPrint('[FCM] FcmService initialized successfully.');
+      if (kDebugMode) {
+        debugPrint('[FCM] FcmService initialized successfully.');
+      }
     } catch (e, stack) {
-      debugPrint('[FCM] Warning: FcmService initialization encountered an issue: $e\n$stack');
+      if (kDebugMode) {
+        debugPrint('[FCM] Warning: FcmService initialization encountered an issue: $e\n$stack');
+      }
       // Gracefully continue without breaking app startup (especially during widget testing or offline mode)
     }
   }
