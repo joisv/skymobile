@@ -64,8 +64,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         _currentIndex = index;
         _loadedIndices.add(index);
       });
-      // Ketika kembali ke tab Dashboard, cek apakah cache sudah expired (>= 5 menit)
+      // Ketika kembali ke tab Dashboard, cek apakah cache sudah expired (>= 5 menit) dan pastikan keyboard tidak terbuka
       if (index == 0) {
+        _dashboardKey.currentState?.unfocusSearch();
         _dashboardKey.currentState?.checkAndRefreshIfExpired();
       }
     }

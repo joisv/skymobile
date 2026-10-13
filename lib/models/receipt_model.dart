@@ -155,6 +155,93 @@ class ReceiptModel {
     return '$left$spaces$right';
   }
 
+  /// Memformat durasi sewa menggunakan nilai durasi dan unit yang sesuai (Jam, Hari, Minggu, Bulan).
+  static String formatRentalDurationText(String rawDuration) {
+    final trimmed = rawDuration.trim();
+    if (trimmed.isEmpty) return '1 Hari';
+    final lower = trimmed.toLowerCase();
+    if (lower.contains('jam') ||
+        lower.contains('hari') ||
+        lower.contains('minggu') ||
+        lower.contains('bulan')) {
+      return trimmed;
+    }
+    final numVal = int.tryParse(trimmed);
+    if (numVal != null) {
+      if (numVal % 24 == 0 && numVal >= 24) {
+        final days = numVal ~/ 24;
+        if (days % 30 == 0) return '${days ~/ 30} Bulan';
+        if (days % 7 == 0) return '${days ~/ 7} Minggu';
+        return '$days Hari';
+      }
+      return '$numVal Hari';
+    }
+    return trimmed;
+  }
+
+  /// Memformat baris key-value dengan pembungkusan (wrapping) jika nilainya panjang
+  /// sehingga teks tidak terpotong pada printer thermal 32 karakter (misal nama pelanggan / nomor HP panjang).
+  static List<String> _formatKeyValueMultiLine(String label, String value, int width) {
+    final result = <String>[];
+    final cleanVal = value.trim();
+    if (cleanVal.isEmpty) {
+      result.add(_twoColumn(label, '-', width));
+      return result;
+    }
+
+    final maxRightWidth = width - label.length - 1;
+    if (cleanVal.length <= maxRightWidth) {
+      result.add(_twoColumn(label, cleanVal, width));
+      return result;
+    }
+
+    final words = cleanVal.split(' ');
+    String currentRight = '';
+    bool isFirstLine = true;
+
+    for (final word in words) {
+      final lineCap = isFirstLine ? maxRightWidth : (width - label.length);
+      if (currentRight.isEmpty) {
+        if (word.length <= lineCap) {
+          currentRight = word;
+        } else {
+          var rem = word;
+          while (rem.isNotEmpty) {
+            final cap = isFirstLine ? maxRightWidth : (width - label.length);
+            final chunk = rem.length > cap ? rem.substring(0, cap) : rem;
+            if (isFirstLine) {
+              result.add(_twoColumn(label, chunk, width));
+              isFirstLine = false;
+            } else {
+              result.add((' ' * label.length) + chunk);
+            }
+            rem = rem.length > cap ? rem.substring(cap) : '';
+          }
+        }
+      } else if (currentRight.length + 1 + word.length <= lineCap) {
+        currentRight += ' $word';
+      } else {
+        if (isFirstLine) {
+          result.add(_twoColumn(label, currentRight, width));
+          isFirstLine = false;
+        } else {
+          result.add((' ' * label.length) + currentRight);
+        }
+        currentRight = word;
+      }
+    }
+
+    if (currentRight.isNotEmpty) {
+      if (isFirstLine) {
+        result.add(_twoColumn(label, currentRight, width));
+      } else {
+        result.add((' ' * label.length) + currentRight);
+      }
+    }
+
+    return result;
+  }
+
   static String _formatRupiah(double amount) {
     final intVal = amount.round();
     final str = intVal.toString();
@@ -278,28 +365,42 @@ class ReceiptModel {
       lines.add(divider);
     }
 
-    // 2. Informasi Transaksi
+    // 2. Informasi Transaksi & Pelanggan
     final dateStr =
         '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    if (fmt.showDateTime) lines.add(_twoColumn('Tgl       :', dateStr, width));
-    if (fmt.showReceiptNumber) lines.add(_twoColumn('No. Struk :', receiptNumber, width));
-    if (fmt.showAdminName && !isCompact) lines.add(_twoColumn('Admin     :', adminName, width));
-    if (fmt.showTransactionType && !isCompact) {
-      lines.add(_twoColumn('Tipe Resi :', customTypeLabel ?? type.label, width));
-    }
-    if (!fmt.compactSpacing) lines.add(subDivider);
 
-    // 3. Data Pelanggan & Unit
     if (isCompact) {
-      // Mode Ringkas (Eco): Menggabungkan baris untuk efisiensi tinggi
-      if (fmt.showCustomerName) {
-        final cust = fmt.showCustomerPhone ? '$customerName ($customerPhone)' : customerName;
-        lines.add(_twoColumn('Pelanggan :', cust, width));
-      }
+      // Mode Ringkas (Echo Mode): Sesuai spesifikasi tata letak
+      // 0. Tanggal (mempertahankan format tanggal yang sudah ada)
+      if (fmt.showDateTime) lines.add(_twoColumn('Tgl       :', dateStr, width));
+
+      // 1. Nomor Struk / Pengenal Struk
+      if (fmt.showReceiptNumber) lines.add(_twoColumn('No. Struk :', receiptNumber, width));
+
+      // 2. Kode Booking (sebelum nama pelanggan)
       if (fmt.showBookingCodeText) lines.add(_twoColumn('Kode Book :', bookingCode, width));
+
+      // 3. Pemisah Visual antara bagian kode booking dan informasi pelanggan
+      lines.add(subDivider);
+
+      // 4. Nama Pelanggan
+      if (fmt.showCustomerName) {
+        lines.addAll(_formatKeyValueMultiLine('Pelanggan :', customerName, width));
+      }
+
+      // 5. Nomor Telepon Pelanggan (baris terpisah tepat di bawah nama pelanggan)
+      if (fmt.showCustomerPhone) {
+        lines.addAll(_formatKeyValueMultiLine('Kontak    :', customerPhone, width));
+      }
+
+      // 6. Durasi Sewa (menggunakan durasi aktual dan unit yang sesuai: Jam, Hari, Minggu, Bulan)
+      if (fmt.showRentalDuration) {
+        lines.add(_twoColumn('Durasi    :', formatRentalDurationText(rentalDuration), width));
+      }
+
+      // Detail Unit Tambahan
       if (fmt.showUnitName) {
-        final u = fmt.showRentalDuration ? '$unitName ($rentalDuration)' : unitName;
-        lines.add(_twoColumn('Unit      :', u, width));
+        lines.add(_twoColumn('Unit      :', unitName, width));
       }
       if (fmt.showSerialNumber && serialNumber != null && serialNumber!.isNotEmpty) {
         lines.add(_twoColumn('Serial No :', serialNumber!, width));
@@ -310,10 +411,19 @@ class ReceiptModel {
       if (fmt.showRentalDates && rentalDates != null && rentalDates!.isNotEmpty) {
         lines.add(_twoColumn('Periode   :', rentalDates!, width));
       }
+      lines.add(subDivider);
     } else {
       // Mode Standar / Lengkap
-      if (fmt.showCustomerName) lines.add(_twoColumn('Pelanggan :', customerName, width));
-      if (fmt.showCustomerPhone) lines.add(_twoColumn('Kontak    :', customerPhone, width));
+      if (fmt.showDateTime) lines.add(_twoColumn('Tgl       :', dateStr, width));
+      if (fmt.showReceiptNumber) lines.add(_twoColumn('No. Struk :', receiptNumber, width));
+      if (fmt.showAdminName) lines.add(_twoColumn('Admin     :', adminName, width));
+      if (fmt.showTransactionType) {
+        lines.add(_twoColumn('Tipe Resi :', customTypeLabel ?? type.label, width));
+      }
+      if (!fmt.compactSpacing) lines.add(subDivider);
+
+      if (fmt.showCustomerName) lines.addAll(_formatKeyValueMultiLine('Pelanggan :', customerName, width));
+      if (fmt.showCustomerPhone) lines.addAll(_formatKeyValueMultiLine('Kontak    :', customerPhone, width));
       if (fmt.showBookingCodeText) lines.add(_twoColumn('Kode Book :', bookingCode, width));
       if (fmt.showUnitName) lines.add(_twoColumn('Unit      :', unitName, width));
       if (fmt.showAssetCode && assetCode != null && assetCode!.isNotEmpty) {
@@ -322,12 +432,12 @@ class ReceiptModel {
       if (fmt.showSerialNumber && serialNumber != null && serialNumber!.isNotEmpty) {
         lines.add(_twoColumn('Serial No :', serialNumber!, width));
       }
-      if (fmt.showRentalDuration) lines.add(_twoColumn('Durasi    :', rentalDuration, width));
+      if (fmt.showRentalDuration) lines.add(_twoColumn('Durasi    :', formatRentalDurationText(rentalDuration), width));
       if (fmt.showRentalDates && rentalDates != null && rentalDates!.isNotEmpty) {
         lines.add(_twoColumn('Periode   :', rentalDates!, width));
       }
+      if (!fmt.compactSpacing) lines.add(subDivider);
     }
-    if (!fmt.compactSpacing) lines.add(subDivider);
 
     // 4. Rincian Biaya
     if (fmt.showRentFee) {

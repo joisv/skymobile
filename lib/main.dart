@@ -33,6 +33,7 @@ class SkyRentalAdminApp extends StatelessWidget {
       builder: (context, _) {
         return MaterialApp(
           navigatorKey: FcmService.navigatorKey,
+          navigatorObservers: [AppRoutes.routeObserver],
           title: 'SkyRental',
           debugShowCheckedModeBanner: false,
           theme: ThemeService().lightTheme,

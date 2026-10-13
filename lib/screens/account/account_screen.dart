@@ -871,7 +871,7 @@ class _AccountScreenState extends State<AccountScreen> {
   Widget _buildTabletLayout(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: const AppHeader(isTablet: true),
+      appBar: AppHeader(isTablet: true, showBackButton: Navigator.canPop(context)),
       body: SafeArea(
         top: false,
         child: Padding(
@@ -2739,7 +2739,7 @@ class _AccountScreenState extends State<AccountScreen> {
   Widget _buildMobileLayout(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: const AppHeader(isTablet: false),
+      appBar: AppHeader(isTablet: false, showBackButton: Navigator.canPop(context)),
       body: RefreshIndicator(
         onRefresh: _initData,
         child: ListView(

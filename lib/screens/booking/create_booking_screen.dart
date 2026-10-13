@@ -118,7 +118,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
   bool _isUnitAvailableForBooking(IphoneModel unit) {
     final s = unit.status.toLowerCase().trim();
-    if (!['ready', 'tersedia'].contains(s)) return false;
+    if (['maintenance', 'perbaikan', 'perawatan', 'lost', 'hilang', 'retired', 'nonaktif', 'in_transit', 'transferred', 'mutasi'].contains(s)) {
+      return false;
+    }
     return widget.repository.isUnitAvailableForPeriod(unit, _startDateTime, _endDateTime);
   }
 
@@ -410,16 +412,18 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     }
 
     final unitStatus = _selectedUnit!.status.toLowerCase().trim();
-    if (['rented', 'disewa'].contains(unitStatus) || widget.repository.isUnitCurrentlyRented(_selectedUnit!.assetCode)) {
-      _showRentedUnitWarningDialog(_selectedUnit!);
-      return false;
-    }
-    if (['maintenance', 'perawatan'].contains(unitStatus)) {
+    if (['maintenance', 'perbaikan', 'perawatan', 'lost', 'hilang', 'retired', 'nonaktif'].contains(unitStatus)) {
       _showMaintenanceUnitWarningDialog(_selectedUnit!);
       return false;
     }
     if (!_isUnitAvailableForBooking(_selectedUnit!)) {
-      _showScheduleConflictWarningDialog(_selectedUnit!);
+      final isCurrentlyRented = ['rented', 'disewa'].contains(unitStatus) ||
+          widget.repository.isUnitCurrentlyRented(_selectedUnit!.assetCode);
+      if (isCurrentlyRented && _startDateTime.isBefore(DateTime.now())) {
+        _showRentedUnitWarningDialog(_selectedUnit!);
+      } else {
+        _showScheduleConflictWarningDialog(_selectedUnit!);
+      }
       return false;
     }
     if (!_isCustomDurationMode && _selectedDurationOption == null) {
@@ -691,17 +695,18 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     }
 
     final unitStatus = _selectedUnit!.status.toLowerCase().trim();
-    if (['rented', 'disewa'].contains(unitStatus) ||
-        widget.repository.isUnitCurrentlyRented(_selectedUnit!.assetCode)) {
-      _showRentedUnitWarningDialog(_selectedUnit!);
-      return;
-    }
-    if (['maintenance', 'perawatan'].contains(unitStatus)) {
+    if (['maintenance', 'perbaikan', 'perawatan', 'lost', 'hilang', 'retired', 'nonaktif'].contains(unitStatus)) {
       _showMaintenanceUnitWarningDialog(_selectedUnit!);
       return;
     }
     if (!_isUnitAvailableForBooking(_selectedUnit!)) {
-      _showScheduleConflictWarningDialog(_selectedUnit!);
+      final isCurrentlyRented = ['rented', 'disewa'].contains(unitStatus) ||
+          widget.repository.isUnitCurrentlyRented(_selectedUnit!.assetCode);
+      if (isCurrentlyRented && _startDateTime.isBefore(DateTime.now())) {
+        _showRentedUnitWarningDialog(_selectedUnit!);
+      } else {
+        _showScheduleConflictWarningDialog(_selectedUnit!);
+      }
       return;
     }
 
@@ -1918,43 +1923,45 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           children: sortedUnits.map((unit) {
             final isSelected = _selectedUnit?.id == unit.id;
             final unitStatus = unit.status.toLowerCase().trim();
-            final isRented = ['rented', 'disewa'].contains(unitStatus) ||
-                widget.repository.isUnitCurrentlyRented(unit.assetCode);
-            final isMaintenance = ['maintenance', 'perawatan'].contains(unitStatus);
+            final isMaintenance = ['maintenance', 'perbaikan', 'perawatan', 'lost', 'hilang', 'retired', 'nonaktif'].contains(unitStatus);
             final isPeriodAvailable = _isUnitAvailableForBooking(unit);
-            final isScheduleConflict = !isRented && !isMaintenance && !isPeriodAvailable;
-            final isUnavailable = isRented || isMaintenance || isScheduleConflict;
+
+            final isCurrentlyRented = ['rented', 'disewa'].contains(unitStatus) ||
+                widget.repository.isUnitCurrentlyRented(unit.assetCode);
+            final isOverlappingCurrentRental = isCurrentlyRented && _startDateTime.isBefore(DateTime.now());
+            final isScheduleConflict = !isMaintenance && !isPeriodAvailable && !isOverlappingCurrentRental;
+            final isUnavailable = !isPeriodAvailable;
 
             final badgeLabel = isSelected
                 ? 'Terpilih'
-                : (isRented
-                    ? 'Sedang Disewa'
+                : (isPeriodAvailable
+                    ? 'Tersedia'
                     : (isMaintenance
                         ? 'Perawatan'
-                        : (isScheduleConflict ? 'Sudah Dibooking' : 'Tersedia')));
+                        : (isOverlappingCurrentRental ? 'Sedang Disewa' : 'Sudah Dibooking')));
 
             final badgeColor = isSelected
                 ? AppTheme.secondary
-                : (isRented
-                    ? const Color(0xFFB45309)
+                : (isPeriodAvailable
+                    ? const Color(0xFF047857)
                     : (isMaintenance
                         ? const Color(0xFFDC2626)
-                        : (isScheduleConflict ? const Color(0xFFD97706) : const Color(0xFF047857))));
+                        : (isOverlappingCurrentRental ? const Color(0xFFB45309) : const Color(0xFFD97706))));
 
             final card = SizedBox(
               width: itemWidth,
               child: InkWell(
                 onTap: () {
-                  if (isRented) {
-                    _showRentedUnitWarningDialog(unit);
-                    return;
-                  }
                   if (isMaintenance) {
                     _showMaintenanceUnitWarningDialog(unit);
                     return;
                   }
-                  if (isScheduleConflict) {
-                    _showScheduleConflictWarningDialog(unit);
+                  if (!isPeriodAvailable) {
+                    if (isOverlappingCurrentRental) {
+                      _showRentedUnitWarningDialog(unit);
+                    } else {
+                      _showScheduleConflictWarningDialog(unit);
+                    }
                     return;
                   }
                   setState(() {
@@ -1980,18 +1987,18 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: isRented
+                          color: isOverlappingCurrentRental
                               ? const Color(0xFFFEF3C7)
                               : (isScheduleConflict ? const Color(0xFFFEF3C7) : AppTheme.surfaceContainer),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(
-                          isRented
+                          isOverlappingCurrentRental
                               ? Icons.lock_clock_rounded
                               : (isMaintenance
                                   ? Icons.build_rounded
                                   : (isScheduleConflict ? Icons.calendar_month_rounded : Icons.phone_iphone_rounded)),
-                          color: isRented
+                          color: isOverlappingCurrentRental
                               ? const Color(0xFFB45309)
                               : (isMaintenance
                                   ? const Color(0xFFDC2626)
@@ -2015,7 +2022,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? AppTheme.secondary.withValues(alpha: 0.12)
-                                        : (isRented
+                                        : (isOverlappingCurrentRental
                                             ? const Color(0xFFFEF3C7)
                                             : (isMaintenance
                                                 ? const Color(0xFFFEE2E2)
@@ -2024,7 +2031,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                                     border: Border.all(
                                       color: isSelected
                                           ? AppTheme.secondary.withValues(alpha: 0.3)
-                                          : (isRented
+                                          : (isOverlappingCurrentRental
                                               ? const Color(0xFFFDE68A)
                                               : (isMaintenance
                                                   ? const Color(0xFFFECACA)

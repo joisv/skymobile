@@ -101,6 +101,7 @@ class BookingModel {
   final List<dynamic>? returns;
   final String? userName;
   final String? userId;
+  final DateTime? createdAt;
 
   const BookingModel({
     required this.id,
@@ -133,6 +134,7 @@ class BookingModel {
     this.returns,
     this.userName,
     this.userId,
+    this.createdAt,
   }) : _explicitLateFee = estimatedLateFee;
 
   bool get canPickup => status == BookingStatus.confirmed;
@@ -349,6 +351,14 @@ class BookingModel {
           json['created_by']?.toString(),
       userId: json['user_id']?.toString() ??
           (json['user'] is Map ? (json['user'] as Map)['id']?.toString() : null),
+      createdAt: () {
+        try {
+          final cDate = json['created_at']?.toString() ?? json['created']?.toString();
+          return (cDate != null && cDate.isNotEmpty) ? DateTime.tryParse(cDate) : null;
+        } catch (_) {
+          return null;
+        }
+      }(),
     );
   }
 
@@ -383,6 +393,7 @@ class BookingModel {
     List<dynamic>? returns,
     String? userName,
     String? userId,
+    DateTime? createdAt,
   }) {
     return BookingModel(
       id: id ?? this.id,
@@ -415,6 +426,7 @@ class BookingModel {
       returns: returns ?? this.returns,
       userName: userName ?? this.userName,
       userId: userId ?? this.userId,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }

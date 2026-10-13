@@ -150,6 +150,8 @@ class _BookingListScreenState extends State<BookingListScreen> with SingleTicker
   @override
   Widget build(BuildContext context) {
     final hasActiveFilter = _filterParams.hasActiveFilter || _searchController.text.isNotEmpty;
+    final mediaSize = MediaQuery.sizeOf(context);
+    final isTablet = mediaSize.width >= 900 || mediaSize.shortestSide >= 600;
 
     return Scaffold(
       appBar: AppBar(
@@ -264,8 +266,10 @@ class _BookingListScreenState extends State<BookingListScreen> with SingleTicker
           ),
         ],
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
+      floatingActionButton: isTablet
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           FloatingActionButton.small(

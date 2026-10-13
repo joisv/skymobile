@@ -24,7 +24,7 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => DashboardScreenState();
 }
 
-class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
+class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver, RouteAware {
   bool _isLoading = true;
   Map<String, dynamic> _dashboardData = {};
   List<IphoneModel> _readyInventory = [];
@@ -32,6 +32,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
   String _selectedQueueFilter = 'semua'; // 'semua', 'pickup', 'return'
   String _selectedSort = 'created_at'; // 'created_at', 'start_booking_date', 'end_booking_date', 'status', 'price'
   final TextEditingController _queueSearchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _queueSearchQuery = '';
 
   @override
@@ -52,6 +53,25 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     }
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      AppRoutes.routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPopNext() {
+    super.didPopNext();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unfocusSearch();
+      }
+    });
+  }
+
   void _onAuthChanged() {
     if (!AuthService().isAuthenticated) {
       widget.repository.invalidateDashboardCache();
@@ -62,6 +82,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unfocusSearch();
       checkAndRefreshIfExpired();
     }
   }
@@ -74,10 +95,29 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
 
   @override
   void dispose() {
+    AppRoutes.routeObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     _queueSearchController.dispose();
+    _searchFocusNode.dispose();
     AuthService().removeListener(_onAuthChanged);
     super.dispose();
+  }
+
+  /// Memastikan field pencarian dashboard tidak fokus dan virtual keyboard tidak terbuka otomatis
+  void unfocusSearch() {
+    _searchFocusNode.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  /// Navigasi ke rute lain dengan memastikan keyboard tidak terbuka saat kembali
+  Future<T?> _navigateAndRefresh<T>(String routeName, {Object? arguments}) async {
+    unfocusSearch();
+    final result = await Navigator.pushNamed<T>(context, routeName, arguments: arguments);
+    if (mounted) {
+      unfocusSearch();
+      _loadDashboard();
+    }
+    return result;
   }
 
   /// Cek apakah cache dashboard sudah kedaluwarsa (>= 5 menit) dan muat ulang secara otomatis jika perlu
@@ -267,28 +307,28 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
         final isPortraitTablet = constraints.maxWidth >= 600 && constraints.maxWidth < 900 && constraints.maxHeight > constraints.maxWidth && constraints.maxHeight <= 1600;
         final isTablet = isLandscapeTablet || isPortraitTablet;
 
+        Widget bodyContent;
+        if (_isLoading) {
+          bodyContent = DashboardSkeleton(isTablet: isTablet);
+        } else if (isTablet) {
+          bodyContent = _buildTabletLayout(metrics, allQueue, pickupItems, returnItems, displayItems);
+        } else {
+          bodyContent = RefreshIndicator(
+            onRefresh: () => _loadDashboard(forceRefresh: true),
+            color: AppTheme.accent,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 100),
+              child: _buildMobileLayout(metrics, allQueue, pickupItems, returnItems, displayItems),
+            ),
+          );
+        }
+
         return Scaffold(
           backgroundColor: AppTheme.background,
           appBar: AppHeader(isTablet: isTablet),
-          body: RefreshIndicator(
-            onRefresh: () => _loadDashboard(forceRefresh: true),
-            color: AppTheme.accent,
-            child: _isLoading
-                ? DashboardSkeleton(isTablet: isTablet)
-                : SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.only(
-                      bottom: isTablet ? 40 : 100,
-                      left: isTablet ? 24 : 0,
-                      right: isTablet ? 24 : 0,
-                      top: isTablet ? 20 : 0,
-                    ),
-                    child: isTablet
-                        ? _buildTabletLayout(metrics, allQueue, pickupItems, returnItems, displayItems)
-                        : _buildMobileLayout(metrics, allQueue, pickupItems, returnItems, displayItems),
-                  ),
-          ),
-          floatingActionButton: _buildStitchFloatingActionButton(),
+          body: bodyContent,
+          floatingActionButton: isTablet ? null : _buildStitchFloatingActionButton(),
         );
       },
     );
@@ -581,48 +621,69 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
   ) {
     final totalUnits = (metrics['totalUnits'] as num?)?.toInt() ?? 30;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (_dashboardData['isOnline'] == false)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: _buildOfflineBanner(),
-          ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Left Column (~66% width: Metrik Operasional & Antrean Transaksi 2 Kolom)
-            Expanded(
-              flex: 66,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildTabletMetricsSection(metrics, allQueue, pickupItems, returnItems),
-                  const SizedBox(height: 20),
-                  _buildTabletQueueSection(allQueue, pickupItems, returnItems, displayItems),
-                ],
-              ),
+    return Padding(
+      padding: const EdgeInsets.only(
+        bottom: 40,
+        left: 24,
+        right: 24,
+        top: 20,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_dashboardData['isOnline'] == false)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: _buildOfflineBanner(),
             ),
-            const SizedBox(width: 16),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Left Column (~66% width: Metrik Operasional & Antrean Transaksi 2 Kolom) - SCROLLABLE MAIN CONTENT
+                Expanded(
+                  flex: 66,
+                  child: RefreshIndicator(
+                    onRefresh: () => _loadDashboard(forceRefresh: true),
+                    color: AppTheme.accent,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildTabletMetricsSection(metrics, allQueue, pickupItems, returnItems),
+                          const SizedBox(height: 20),
+                          _buildTabletQueueSection(allQueue, pickupItems, returnItems, displayItems),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
 
-            // Right Column (~34% width: Aksi Cepat Kasir, Printer, Stok Siap Sewa)
-            Expanded(
-              flex: 34,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildTabletQuickActionsCard(),
-                  const SizedBox(height: 12),
-                  _buildTabletPrinterCard(),
-                  const SizedBox(height: 12),
-                  _buildTabletReadyStockCard(totalUnits),
-                ],
-              ),
+                // Right Column (~34% width: Aksi Cepat Kasir, Printer, Stok Siap Sewa) - STICKY
+                Expanded(
+                  flex: 34,
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildTabletQuickActionsCard(),
+                        const SizedBox(height: 12),
+                        _buildTabletPrinterCard(),
+                        const SizedBox(height: 12),
+                        _buildTabletReadyStockCard(totalUnits),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -986,6 +1047,8 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
       ),
       child: TextField(
         controller: _queueSearchController,
+        focusNode: _searchFocusNode,
+        autofocus: false,
         onChanged: (val) {
           setState(() {
             _queueSearchQuery = val;
@@ -1280,7 +1343,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
           ],
         ),
         child: InkWell(
-          onTap: () => Navigator.pushNamed(context, AppRoutes.bookingDetail, arguments: b).then((_) => _loadDashboard()),
+          onTap: () => _navigateAndRefresh(AppRoutes.bookingDetail, arguments: b),
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -1489,8 +1552,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                         ),
                         ElevatedButton(
                           onPressed: () {
-                            Navigator.pushNamed(
-                              context,
+                            _navigateAndRefresh(
                               AppRoutes.paymentDeposit,
                               arguments: {
                                 'booking': b,
@@ -1498,7 +1560,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                                 'initialAmount': b.estimatedLateFee > 0 ? b.estimatedLateFee : 50000.0,
                                 'isReturnFlow': true,
                               },
-                            ).then((_) => _loadDashboard());
+                            );
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFB91C1C),
@@ -1555,7 +1617,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
           ],
         ),
         child: InkWell(
-          onTap: () => Navigator.pushNamed(context, AppRoutes.bookingDetail, arguments: b).then((_) => _loadDashboard()),
+          onTap: () => _navigateAndRefresh(AppRoutes.bookingDetail, arguments: b),
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -1731,11 +1793,10 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                         ),
                         ElevatedButton(
                           onPressed: () {
-                            Navigator.pushNamed(
-                              context,
+                            _navigateAndRefresh(
                               AppRoutes.bookingDetail,
                               arguments: b,
-                            ).then((_) => _loadDashboard());
+                            );
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFE0F2FE),
@@ -1791,7 +1852,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
         ],
       ),
       child: InkWell(
-        onTap: () => Navigator.pushNamed(context, AppRoutes.bookingDetail, arguments: b).then((_) => _loadDashboard()),
+        onTap: () => _navigateAndRefresh(AppRoutes.bookingDetail, arguments: b),
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -1989,7 +2050,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
             height: 40,
             child: ElevatedButton.icon(
               onPressed: () {
-                Navigator.pushNamed(context, AppRoutes.createBooking).then((_) => _loadDashboard());
+                _navigateAndRefresh(AppRoutes.createBooking);
               },
               icon: const Icon(Icons.add_circle_outline_rounded, size: 16, color: Colors.white),
               label: const Text(
@@ -2022,7 +2083,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                   height: 36,
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      Navigator.pushNamed(context, AppRoutes.qrScanner).then((_) => _loadDashboard());
+                      _navigateAndRefresh(AppRoutes.qrScanner);
                     },
                     icon: const Icon(Icons.qr_code_scanner_rounded, size: 14, color: Color(0xFF0369A1)),
                     label: const FittedBox(
@@ -2054,7 +2115,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                   height: 36,
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      Navigator.pushNamed(context, AppRoutes.unitStatus).then((_) => _loadDashboard());
+                      _navigateAndRefresh(AppRoutes.unitStatus);
                     },
                     icon: Icon(Icons.inventory_2_outlined, size: 14, color: AppTheme.textPrimary),
                     label: FittedBox(
@@ -2082,42 +2143,6 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
               ),
             ],
           ),
-          if (AuthService().isAffiliate || AuthService().isAffiliateAdmin || AuthService().isSuperAdmin) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              height: 36,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pushNamed(context, AppRoutes.iphoneTransfer).then((_) => _loadDashboard());
-                },
-                icon: Icon(
-                  _pendingTransferCount > 0 ? Icons.local_shipping_rounded : Icons.swap_horiz_rounded,
-                  size: 14,
-                  color: _pendingTransferCount > 0 ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
-                ),
-                label: Text(
-                  _pendingTransferCount > 0
-                      ? 'Terima Transfer iPhone ($_pendingTransferCount)'
-                      : 'Transfer iPhone',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.bold,
-                    color: _pendingTransferCount > 0 ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _pendingTransferCount > 0 ? const Color(0xFFDCFCE7) : const Color(0xFFEFF6FF),
-                  foregroundColor: _pendingTransferCount > 0 ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -2216,8 +2241,12 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
               // Device Detail Box
               InkWell(
                 onTap: () async {
+                  unfocusSearch();
                   await Navigator.pushNamed(context, AppRoutes.printerSettings);
-                  if (mounted) setState(() {});
+                  if (mounted) {
+                    unfocusSearch();
+                    setState(() {});
+                  }
                 },
                 borderRadius: BorderRadius.circular(10),
                 child: Container(
@@ -2513,7 +2542,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
             height: 38,
             child: OutlinedButton(
               onPressed: () {
-                Navigator.pushNamed(context, AppRoutes.unitStatus).then((_) => _loadDashboard());
+                _navigateAndRefresh(AppRoutes.unitStatus);
               },
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: AppTheme.cardBorder),
@@ -3007,7 +3036,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 ] else ...[
                   const SizedBox(height: 14),
                   ElevatedButton.icon(
-                    onPressed: () => Navigator.pushNamed(context, AppRoutes.createBooking).then((_) => _loadDashboard()),
+                    onPressed: () => _navigateAndRefresh(AppRoutes.createBooking),
                     icon: const Icon(Icons.add, size: 16),
                     label: const Text('Buat Booking Baru'),
                     style: ElevatedButton.styleFrom(
@@ -3063,8 +3092,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
               paymentStatus: b.paymentStatus,
               jaminanType: b.jaminanType,
               onDetail: () {
-                Navigator.pushNamed(context, AppRoutes.bookingDetail, arguments: b)
-                    .then((_) => _loadDashboard());
+                _navigateAndRefresh(AppRoutes.bookingDetail, arguments: b);
               },
               onDelete: () => _confirmDeleteBooking(b),
             );
@@ -3522,7 +3550,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
       padding: const EdgeInsets.only(bottom: 8),
       child: FloatingActionButton.extended(
         onPressed: () {
-          Navigator.pushNamed(context, AppRoutes.createBooking).then((_) => _loadDashboard());
+          _navigateAndRefresh(AppRoutes.createBooking);
         },
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,

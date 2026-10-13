@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import '../models/admin_user_model.dart';
 import '../models/affiliate_model.dart';
 import '../models/affiliate_revenue_model.dart';
@@ -108,6 +109,9 @@ class BookingRepository {
   final List<ReceiptModel> _receipts = [];
   Map<String, int>? _unitSummaryCache;
   bool _hasFetchedFromApi = false;
+
+  @visibleForTesting
+  List<BookingModel> get rawBookings => _bookings;
 
   bool get _isTestEnvironment {
     try {
@@ -1573,7 +1577,11 @@ class BookingRepository {
       if (excludeBookingId != null && b.id == excludeBookingId) {
         continue;
       }
-      if (b.iphone.id != unit.id && b.iphone.assetCode.toLowerCase().trim() != unit.assetCode.toLowerCase().trim()) {
+      final unitAsset = unit.assetCode.toLowerCase().trim();
+      final bAsset = b.iphone.assetCode.toLowerCase().trim();
+      final isSameUnit = b.iphone.id == unit.id ||
+          (unitAsset.isNotEmpty && unitAsset != '-' && bAsset == unitAsset);
+      if (!isSameUnit) {
         continue;
       }
 
@@ -1582,9 +1590,17 @@ class BookingRepository {
         continue;
       }
 
+      // Skip bookings that have already been returned or cancelled
+      if (b.returns != null && b.returns!.isNotEmpty) {
+        continue;
+      }
+      if (b.status == BookingStatus.returned || b.status == BookingStatus.cancelled) {
+        continue;
+      }
+
       // Check if pending has expired (> 30 mins)
       if (bStatus == 'pending') {
-        final bCreated = b.startDate;
+        final bCreated = b.createdAt ?? b.startDate;
         if (now.difference(bCreated).inMinutes > 30) {
           continue;
         }
@@ -1736,9 +1752,15 @@ class BookingRepository {
         final normStatus = unit.status.toLowerCase();
         final normFilter = statusFilter.toLowerCase();
         if (normFilter == 'tersedia') {
-          if (normStatus != 'tersedia' && normStatus != 'ready') return false;
-          if (forBooking && startDate != null && endDate != null && !isUnitAvailableForPeriod(unit, startDate, endDate)) {
-            return false;
+          if (forBooking && startDate != null && endDate != null) {
+            if (['maintenance', 'perbaikan', 'perawatan', 'lost', 'hilang', 'retired', 'nonaktif', 'in_transit', 'transferred', 'mutasi'].contains(normStatus)) {
+              return false;
+            }
+            if (!isUnitAvailableForPeriod(unit, startDate, endDate)) {
+              return false;
+            }
+          } else {
+            if (normStatus != 'tersedia' && normStatus != 'ready') return false;
           }
         } else if (normFilter == 'disewa') {
           final isConflicted = forBooking && startDate != null && endDate != null && !isUnitAvailableForPeriod(unit, startDate, endDate);

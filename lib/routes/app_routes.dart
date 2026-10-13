@@ -6,7 +6,6 @@ import '../models/iphone_model.dart';
 import '../models/payment_model.dart';
 import '../models/receipt_model.dart';
 import '../models/user_role_model.dart';
-import '../screens/account/account_screen.dart';
 import '../screens/account/change_password_screen.dart';
 import '../screens/account/roles_permissions_screen.dart';
 import '../screens/account/shop_settings_screen.dart';
@@ -45,6 +44,8 @@ import '../screens/unit_status/unit_status_list_screen.dart';
 import '../services/auth_service.dart';
 
 class AppRoutes {
+  static final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
+
   static const String mainNavigation = '/';
   static const String bookingList = '/booking-list';
   static const String createBooking = '/bookings/create';
@@ -563,7 +564,10 @@ class AppRoutes {
 
       case account:
         return MaterialPageRoute(
-          builder: (_) => AccountScreen(repository: repository),
+          builder: (_) => MainNavigationScreen(
+            repository: repository,
+            initialIndex: 3,
+          ),
           settings: settings,
         );
 

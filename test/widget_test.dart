@@ -1368,8 +1368,8 @@ void main() {
     expect(find.byKey(const Key('tablet_queue_column_left')), findsOneWidget);
     expect(find.byKey(const Key('tablet_queue_column_right')), findsOneWidget);
 
-    // 5. Verify Floating Action Button Buat Booking is present on tablet
-    expect(find.widgetWithText(FloatingActionButton, 'Buat Booking'), findsOneWidget);
+    // 5. Verify Floating Action Button Buat Booking is hidden on tablet
+    expect(find.widgetWithText(FloatingActionButton, 'Buat Booking'), findsNothing);
 
     // 6. Check no overflow exceptions were logged
     expect(tester.takeException(), isNull);
@@ -1407,8 +1407,8 @@ void main() {
     expect(find.byKey(const Key('tablet_queue_column_left')), findsOneWidget);
     expect(find.byKey(const Key('tablet_queue_column_right')), findsOneWidget);
 
-    // Verify Floating Action Button Buat Booking is present on tablet portrait
-    expect(find.widgetWithText(FloatingActionButton, 'Buat Booking'), findsOneWidget);
+    // Verify Floating Action Button Buat Booking is hidden on tablet portrait
+    expect(find.widgetWithText(FloatingActionButton, 'Buat Booking'), findsNothing);
 
     // Check no overflow exceptions were logged
     expect(tester.takeException(), isNull);
