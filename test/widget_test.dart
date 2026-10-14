@@ -4067,7 +4067,7 @@ void main() {
           throwsA(predicate((e) => e.toString().contains('Akses ditolak: Unit iPhone ini tidak terdaftar'))),
         );
 
-        // Super-admin should be rejected when attempting to book branch-owned unit
+        // Super-admin has global access and can successfully book branch-owned unit
         AuthService().setCurrentUserForTest(const AdminUserModel(
           id: 1,
           name: 'Super Admin',
@@ -4078,21 +4078,20 @@ void main() {
           shiftName: 'Pagi',
           roles: ['super-admin'],
         ));
-        expect(
-          () => repository.createBooking(
-            customerName: 'Customer Super Branch',
-            customerPhone: '081234567890',
-            customerEmail: 'super@test.local',
-            iphone: crossAffiliateUnit,
-            startDate: DateTime(2026, 10, 20, 10, 0),
-            endDate: DateTime(2026, 10, 21, 10, 0),
-            durationDays: 24,
-            price: 100000,
-            deposit: 0,
-            jaminanType: 'KTP Asli',
-          ),
-          throwsA(predicate((e) => e.toString().contains('Akses ditolak: Super Admin hanya dapat membuat booking'))),
+        final superBooking = await repository.createBooking(
+          customerName: 'Customer Super Branch',
+          customerPhone: '081234567890',
+          customerEmail: 'super@test.local',
+          iphone: crossAffiliateUnit,
+          startDate: DateTime(2026, 10, 20, 10, 0),
+          endDate: DateTime(2026, 10, 21, 10, 0),
+          durationDays: 24,
+          price: 100000,
+          deposit: 0,
+          jaminanType: 'KTP Asli',
         );
+        expect(superBooking, isNotNull);
+        expect(superBooking.iphone.name, equals(crossAffiliateUnit.name));
       });
 
       testWidgets('CreateBookingScreen: Section 2 shows warning dialog when tapping scheduled unit', (WidgetTester tester) async {
@@ -4163,7 +4162,7 @@ void main() {
         expect(find.text('Jadwal Sudah Dibooking'), findsNothing);
       });
 
-      testWidgets('CreateBookingScreen: Super-admin sees ONLY units where affiliate_id IS NULL in Section 2', (tester) async {
+      testWidgets('CreateBookingScreen: Super-admin sees all units including affiliate/transferred in Section 2', (tester) async {
         const superAdminUser = AdminUserModel(
           id: 1,
           name: 'Super Admin SKYRental',
@@ -4209,10 +4208,14 @@ void main() {
         expect(find.textContaining('P9ZX44MN67'), findsOneWidget);
         expect(find.textContaining('F2LY32SJLKJH'), findsOneWidget);
 
-        // Verify branch/affiliate-owned units (affiliateId != null) are strictly EXCLUDED
-        expect(find.textContaining('F2LNK98XK0G'), findsNothing); // affiliateId == 1
-        expect(find.textContaining('X9M456KL8N'), findsNothing); // affiliateId == 1
-        expect(find.textContaining('K7T890PL2M'), findsNothing); // affiliateId == 2
+        // Verify branch/affiliate-owned units (affiliateId != null) are ALSO visible to super-admin
+        expect(find.textContaining('F2LNK98XK0G'), findsOneWidget); // affiliateId == 1
+
+        // Verify branch unit on another branch (affiliateId == 3) can be searched and found by super-admin
+        final searchField = find.byType(TextField);
+        await tester.enterText(searchField, 'F2LNK92YK2J');
+        await tester.pumpAndSettle();
+        expect(find.textContaining('F2LNK92YK2J'), findsOneWidget);
       });
 
       testWidgets('CreateBookingScreen: Affiliate Admin sees ONLY units belonging to their own affiliate in Section 2', (tester) async {

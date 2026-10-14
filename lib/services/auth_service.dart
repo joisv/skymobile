@@ -67,6 +67,14 @@ class AuthService implements Listenable {
     if (isSuperAdmin) return false;
     final role = _currentUser!.role.toLowerCase().trim();
     final roles = _currentUser!.roles.map((r) => r.toLowerCase().trim()).toList();
+
+    // Pure admin role retains global visibility across all branches and is not affiliate-scoped
+    final hasPureAdmin = role == 'admin' || roles.contains('admin') || _currentUser!.email.toLowerCase().trim() == 'admin@skyrental.id';
+    final hasExplicitAffiliate = role.contains('affiliate') || roles.any((r) => r.contains('affiliate'));
+    if (hasPureAdmin && !hasExplicitAffiliate) {
+      return false;
+    }
+
     if (roles.any((r) => r.contains('affiliate') || r.contains('cabang'))) {
       return true;
     }
@@ -79,10 +87,17 @@ class AuthService implements Listenable {
 
   bool get isAffiliate {
     if (isSuperAdmin) return false;
+    final role = _currentUser?.role.toLowerCase().trim() ?? '';
+    final roles = _currentUser?.roles.map((r) => r.toLowerCase().trim()).toList() ?? [];
+    final hasPureAdmin = role == 'admin' || roles.contains('admin') || (_currentUser?.email.toLowerCase().trim() == 'admin@skyrental.id');
+    final hasExplicitAffiliate = role.contains('affiliate') || roles.any((r) => r.contains('affiliate'));
+    if (hasPureAdmin && !hasExplicitAffiliate) {
+      return false;
+    }
     return isAffiliateAdmin ||
-        (_currentUser?.role.toLowerCase().contains('affiliate') ?? false) ||
-        (_currentUser?.role.toLowerCase().contains('cabang') ?? false) ||
-        (_currentUser?.roles.any((r) => r.toLowerCase().contains('affiliate') || r.toLowerCase().contains('cabang')) ?? false);
+        role.contains('affiliate') ||
+        role.contains('cabang') ||
+        roles.any((r) => r.contains('affiliate') || r.contains('cabang'));
   }
 
   bool get isAdmin {
@@ -107,6 +122,7 @@ class AuthService implements Listenable {
   /// !$user->hasRole('super-admin') && ($user->hasRole('affiliate-admin') || $user->hasRole('affiliate') || (!empty($user->affiliate_id) && !$user->hasRole('admin')))
   bool get isAffiliateScoped {
     if (isSuperAdmin) return false;
+    if (isAdmin && !isAffiliateAdmin && !isAffiliate) return false;
     if (isAffiliateAdmin || isAffiliate) return true;
     if (affiliateId != null && !isAdmin) return true;
     return false;

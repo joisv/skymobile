@@ -497,9 +497,7 @@ class BookingRepository {
 
     bool matchesFilters(IphoneModel unit) {
       if (forBooking) {
-        if (AuthService().isSuperAdmin) {
-          if (unit.affiliateId != null) return false;
-        } else if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
+        if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
           if (unit.affiliateId != AuthService().affiliateId) return false;
         }
       } else if (effectiveAffiliateId != null) {
@@ -530,7 +528,7 @@ class BookingRepository {
 
     // 1. Ambil unit dari REST API Skyrent backend jika server tersedia
     try {
-      final unassignedOnly = forBooking && AuthService().isSuperAdmin;
+      final unassignedOnly = false;
       if (onlyAvailable) {
         // Endpoint /iphones/available — hanya unit tersedia
         final apiUnits = await ApiService().getAvailableIphones(
@@ -584,11 +582,7 @@ class BookingRepository {
     String paymentMethod = 'Tunai',
     String? notes,
   }) async {
-    if (AuthService().isSuperAdmin) {
-      if (iphone.affiliateId != null) {
-        throw Exception('Akses ditolak: Super Admin hanya dapat membuat booking untuk unit iPhone pusat (tanpa affiliate/cabang).');
-      }
-    } else if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
+    if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
       if (iphone.affiliateId != null && iphone.affiliateId != AuthService().affiliateId) {
         throw Exception('Akses ditolak: Unit iPhone ini tidak terdaftar pada cabang/affiliate Anda.');
       }
@@ -607,9 +601,9 @@ class BookingRepository {
     }
 
     final normalizedAssetCode = iphone.assetCode.toLowerCase().trim();
-    if (isUnitCurrentlyRented(normalizedAssetCode)) {
+    if (isUnitCurrentlyRented(normalizedAssetCode, unitId: iphone.id, serialNumber: iphone.serialNumber)) {
       throw Exception(
-        'Unit iPhone ${iphone.name} (${iphone.assetCode}) saat ini sedang disewa dalam transaksi sewa aktif dan belum dikembalikan.',
+        'Unit iPhone ${iphone.name} (${iphone.assetCode.isNotEmpty && iphone.assetCode != '-' ? iphone.assetCode : iphone.serialNumber}) saat ini sedang disewa dalam transaksi sewa aktif dan belum dikembalikan.',
       );
     }
 
@@ -1563,6 +1557,9 @@ class BookingRepository {
     if (['maintenance', 'perbaikan', 'perawatan', 'lost', 'hilang', 'retired', 'nonaktif', 'in_transit', 'transferred', 'mutasi'].contains(rawStatus)) {
       return false;
     }
+    if (!unit.isAvailable) {
+      return false;
+    }
 
     DateTime startDt = start;
     DateTime endDt = end;
@@ -1640,20 +1637,34 @@ class BookingRepository {
     return true;
   }
 
-  /// Memeriksa apakah unit iPhone dengan assetCode tertentu saat ini sedang disewa aktif di antrean transaksi
-  bool isUnitCurrentlyRented(String assetCode) {
+  /// Memeriksa apakah unit iPhone tertentu saat ini sedang disewa aktif di antrean transaksi
+  bool isUnitCurrentlyRented(String assetCode, {int? unitId, String? serialNumber}) {
     final normalized = assetCode.toLowerCase().trim();
-    if (normalized.isEmpty) return false;
+    final normalizedSerial = serialNumber?.toLowerCase().trim();
+    if ((normalized.isEmpty || normalized == '-') &&
+        (unitId == null || unitId <= 0) &&
+        (normalizedSerial == null || normalizedSerial.isEmpty || normalizedSerial == '-')) {
+      return false;
+    }
     final source = _bookings;
     return source.any((b) {
-      final sameUnit = b.iphone.assetCode.toLowerCase().trim() == normalized;
+      final matchId = unitId != null && unitId > 0 && b.iphone.id == unitId;
+      final matchSerial = normalizedSerial != null &&
+          normalizedSerial.isNotEmpty &&
+          normalizedSerial != '-' &&
+          b.iphone.serialNumber.toLowerCase().trim() == normalizedSerial;
+      final matchAsset = normalized.isNotEmpty &&
+          normalized != '-' &&
+          b.iphone.assetCode.toLowerCase().trim() == normalized;
+      final sameUnit = matchId || matchSerial || matchAsset;
+      if (!sameUnit) return false;
+
       final bookingStatus = b.status.name.toLowerCase().trim();
       final unitStatus = b.iphone.status.toLowerCase().trim();
-      return sameUnit &&
-          (bookingStatus == 'rented' ||
-              bookingStatus == 'disewa' ||
-              unitStatus == 'rented' ||
-              unitStatus == 'disewa');
+      return bookingStatus == 'rented' ||
+          bookingStatus == 'disewa' ||
+          unitStatus == 'rented' ||
+          unitStatus == 'disewa';
     });
   }
 
@@ -1675,7 +1686,7 @@ class BookingRepository {
     final effectiveAffiliateId = AuthService().isAffiliateScoped ? AuthService().affiliateId : affiliateId;
 
     try {
-      final unassignedOnly = forBooking && AuthService().isSuperAdmin;
+      final unassignedOnly = false;
       final res = await ApiService().getAllIphonesApi(
         query: query,
         status: statusFilter,
@@ -1696,9 +1707,9 @@ class BookingRepository {
         final list = raw.map((j) {
           var u = IphoneModel.fromJson(j as Map<String, dynamic>);
           final isAlreadyLate = u.status.toLowerCase() == 'terlambat' || u.status.toLowerCase() == 'overdue' || u.status.toLowerCase() == 'late';
-          if (!isAlreadyLate && (u.status.toLowerCase() == 'disewa' || u.status.toLowerCase() == 'rented' || isUnitCurrentlyRented(u.assetCode)) &&
+          if (!isAlreadyLate && (u.status.toLowerCase() == 'disewa' || u.status.toLowerCase() == 'rented' || isUnitCurrentlyRented(u.assetCode, unitId: u.id, serialNumber: u.serialNumber)) &&
               (u.customerName == null || u.customerName!.isEmpty)) {
-            final b = getActiveBookingForUnitSync(u.assetCode);
+            final b = getActiveBookingForUnitSync(u.assetCode, unitId: u.id, serialNumber: u.serialNumber);
             if (b != null) {
               u = u.copyWith(
                 status: 'disewa',
@@ -1735,8 +1746,8 @@ class BookingRepository {
     final rawSource = _inventory;
     final source = rawSource.map((unit) {
       final isAlreadyLate = unit.status.toLowerCase() == 'terlambat' || unit.status.toLowerCase() == 'overdue' || unit.status.toLowerCase() == 'late';
-      if (!isAlreadyLate && isUnitCurrentlyRented(unit.assetCode)) {
-        final b = getActiveBookingForUnitSync(unit.assetCode);
+      if (!isAlreadyLate && isUnitCurrentlyRented(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber)) {
+        final b = getActiveBookingForUnitSync(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber);
         return unit.copyWith(
           status: 'disewa',
           customerName: unit.customerName ?? b?.customerName,
@@ -1795,9 +1806,7 @@ class BookingRepository {
       }
 
       if (forBooking) {
-        if (AuthService().isSuperAdmin) {
-          if (unit.affiliateId != null) return false;
-        } else if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
+        if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
           if (unit.affiliateId != AuthService().affiliateId) return false;
         }
       } else {
@@ -1883,7 +1892,7 @@ class BookingRepository {
     }
 
     try {
-      final unassignedOnly = forBooking && AuthService().isSuperAdmin;
+      final unassignedOnly = false;
       final res = await ApiService().getAllIphonesApi(
         query: query,
         status: statusFilter,
@@ -1906,9 +1915,9 @@ class BookingRepository {
         final list = raw.map((j) {
           var u = IphoneModel.fromJson(j as Map<String, dynamic>);
           final isAlreadyLate = u.status.toLowerCase() == 'terlambat' || u.status.toLowerCase() == 'overdue' || u.status.toLowerCase() == 'late';
-          if (!isAlreadyLate && (u.status.toLowerCase() == 'disewa' || u.status.toLowerCase() == 'rented' || isUnitCurrentlyRented(u.assetCode)) &&
+          if (!isAlreadyLate && (u.status.toLowerCase() == 'disewa' || u.status.toLowerCase() == 'rented' || isUnitCurrentlyRented(u.assetCode, unitId: u.id, serialNumber: u.serialNumber)) &&
               (u.customerName == null || u.customerName!.isEmpty)) {
-            final b = getActiveBookingForUnitSync(u.assetCode);
+            final b = getActiveBookingForUnitSync(u.assetCode, unitId: u.id, serialNumber: u.serialNumber);
             if (b != null) {
               u = u.copyWith(
                 status: 'disewa',
@@ -2079,7 +2088,7 @@ class BookingRepository {
     // Update references in active bookings
     for (int i = 0; i < _bookings.length; i++) {
       if ((_bookings[i].iphone.id > 0 && _bookings[i].iphone.id == unit.id) ||
-          _bookings[i].iphone.assetCode.toLowerCase() == unit.assetCode.toLowerCase()) {
+          (unit.assetCode.isNotEmpty && unit.assetCode != '-' && _bookings[i].iphone.assetCode.toLowerCase() == unit.assetCode.toLowerCase())) {
         _bookings[i] = _bookings[i].copyWith(iphone: savedUnit);
       }
     }
@@ -2089,8 +2098,11 @@ class BookingRepository {
   }
 
   /// Hapus unit dari inventaris
-  Future<void> deleteInventoryUnit(String assetCode) async {
-    _inventory.removeWhere((u) => u.assetCode.toLowerCase() == assetCode.toLowerCase());
+  Future<void> deleteInventoryUnit(String idOrAssetCode, {int? unitId}) async {
+    _inventory.removeWhere((u) =>
+        (unitId != null && unitId > 0 && u.id == unitId) ||
+        (idOrAssetCode.isNotEmpty && idOrAssetCode != '-' && u.assetCode.toLowerCase() == idOrAssetCode.toLowerCase()) ||
+        (u.id.toString() == idOrAssetCode));
     _unitSummaryCache = null;
   }
 
@@ -2171,17 +2183,38 @@ class BookingRepository {
   }
 
   /// Mencari data booking aktif yang sedang menyewa unit ini (sinkron)
-  BookingModel? getActiveBookingForUnitSync(String assetCode) {
+  BookingModel? getActiveBookingForUnitSync(String assetCode, {int? unitId, String? serialNumber}) {
     final normalized = assetCode.toLowerCase().trim();
+    final normalizedSerial = serialNumber?.toLowerCase().trim();
+    if ((normalized.isEmpty || normalized == '-') &&
+        (unitId == null || unitId <= 0) &&
+        (normalizedSerial == null || normalizedSerial.isEmpty || normalizedSerial == '-')) {
+      return null;
+    }
     try {
       final source = _bookings;
       return source.firstWhere(
-        (b) =>
-            b.iphone.assetCode.toLowerCase().trim() == normalized &&
-            (b.status == BookingStatus.rented ||
-                b.status == BookingStatus.confirmed ||
-                b.iphone.status.toLowerCase() == 'disewa' ||
-                b.iphone.status.toLowerCase() == 'rented'),
+        (b) {
+          final matchId = unitId != null && unitId > 0 && b.iphone.id == unitId;
+          final matchSerial = normalizedSerial != null &&
+              normalizedSerial.isNotEmpty &&
+              normalizedSerial != '-' &&
+              b.iphone.serialNumber.toLowerCase().trim() == normalizedSerial;
+          final matchAsset = normalized.isNotEmpty &&
+              normalized != '-' &&
+              b.iphone.assetCode.toLowerCase().trim() == normalized;
+          final sameUnit = matchId || matchSerial || matchAsset;
+          if (!sameUnit) return false;
+
+          final bookingStatus = b.status.name.toLowerCase().trim();
+          final unitStatus = b.iphone.status.toLowerCase().trim();
+          return b.status == BookingStatus.rented ||
+              b.status == BookingStatus.confirmed ||
+              bookingStatus == 'rented' ||
+              bookingStatus == 'disewa' ||
+              unitStatus == 'rented' ||
+              unitStatus == 'disewa';
+        },
       );
     } catch (_) {
       return null;
@@ -2189,19 +2222,21 @@ class BookingRepository {
   }
 
   /// Mencari data booking aktif yang sedang menyewa unit ini
-  Future<BookingModel?> getActiveBookingForUnit(String assetCode) async {
-    return getActiveBookingForUnitSync(assetCode);
+  Future<BookingModel?> getActiveBookingForUnit(String assetCode, {int? unitId, String? serialNumber}) async {
+    return getActiveBookingForUnitSync(assetCode, unitId: unitId, serialNumber: serialNumber);
   }
 
   /// Memperbarui status unit di inventory
   Future<IphoneModel> updateUnitStatus(
-    String assetCode,
+    String idOrAssetCode,
     String newStatus, {
     int? batteryHealth,
+    int? unitId,
+    String? serialNumber,
   }) async {
     try {
       await ApiService().updateUnitStatusApi(
-        assetCode,
+        idOrAssetCode,
         newStatus,
         batteryHealth: batteryHealth,
       );
@@ -2209,7 +2244,10 @@ class BookingRepository {
 
     final source = _inventory;
     final idx = source.indexWhere(
-      (u) => u.assetCode.toLowerCase() == assetCode.toLowerCase(),
+      (u) =>
+          (unitId != null && unitId > 0 && u.id == unitId) ||
+          (idOrAssetCode.isNotEmpty && idOrAssetCode != '-' && (u.assetCode.toLowerCase() == idOrAssetCode.toLowerCase() || u.id.toString() == idOrAssetCode)) ||
+          (serialNumber != null && serialNumber.isNotEmpty && serialNumber != '-' && u.serialNumber.toLowerCase() == serialNumber.toLowerCase()),
     );
     if (idx != -1) {
       final current = source[idx];
@@ -2220,7 +2258,10 @@ class BookingRepository {
       source[idx] = updated;
 
       final bIdx = _bookings.indexWhere(
-        (b) => b.iphone.assetCode.toLowerCase() == assetCode.toLowerCase(),
+        (b) =>
+            (unitId != null && unitId > 0 && b.iphone.id == unitId) ||
+            (idOrAssetCode.isNotEmpty && idOrAssetCode != '-' && (b.iphone.assetCode.toLowerCase() == idOrAssetCode.toLowerCase() || b.iphone.id.toString() == idOrAssetCode)) ||
+            (serialNumber != null && serialNumber.isNotEmpty && serialNumber != '-' && b.iphone.serialNumber.toLowerCase() == serialNumber.toLowerCase()),
       );
       if (bIdx != -1) {
         _bookings[bIdx] = _bookings[bIdx].copyWith(
@@ -2234,12 +2275,12 @@ class BookingRepository {
     }
 
     return IphoneModel(
-      id: 0,
-      name: 'iPhone',
+      id: unitId ?? (int.tryParse(idOrAssetCode) ?? 0),
+      name: 'iPhone Unit',
       storage: '128GB',
       color: 'Default',
-      serialNumber: '-',
-      assetCode: assetCode,
+      serialNumber: serialNumber ?? '-',
+      assetCode: idOrAssetCode,
       status: newStatus,
       batteryHealth: batteryHealth ?? 100,
     );
@@ -2249,9 +2290,12 @@ class BookingRepository {
   Future<List<BookingModel>> getUnitRentalSchedule(
     String assetCode, {
     String? timeframeFilter,
+    int? unitId,
+    String? serialNumber,
   }) async {
+    final lookupKey = (unitId != null && unitId > 0) ? unitId.toString() : assetCode;
     try {
-      final res = await ApiService().getUnitScheduleApi(assetCode, timeframe: timeframeFilter);
+      final res = await ApiService().getUnitScheduleApi(lookupKey, timeframe: timeframeFilter);
       if (res != null && res['data'] is List) {
         final list = (res['data'] as List)
             .map((item) => BookingModel.fromJson(item as Map<String, dynamic>))
@@ -2261,10 +2305,16 @@ class BookingRepository {
     } catch (_) {}
 
     final normalizedCode = assetCode.trim().toLowerCase();
+    final normalizedSerial = serialNumber?.trim().toLowerCase();
 
-    // Filter booking berdasarkan kode aset dari database lokal
+    // Filter booking berdasarkan id unit, nomor seri, atau kode aset dari database lokal
     List<BookingModel> list = _bookings.where((b) {
-      return b.iphone.assetCode.toLowerCase() == normalizedCode;
+      if (unitId != null && unitId > 0 && b.iphone.id == unitId) return true;
+      if (normalizedSerial != null && normalizedSerial.isNotEmpty && normalizedSerial != '-' && b.iphone.serialNumber.toLowerCase() == normalizedSerial) return true;
+      if (normalizedCode.isNotEmpty && normalizedCode != '-') {
+        return b.iphone.assetCode.toLowerCase() == normalizedCode;
+      }
+      return false;
     }).toList();
 
     if (list.isEmpty && _isTestEnvironment) {

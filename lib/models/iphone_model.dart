@@ -70,6 +70,7 @@ class IphoneModel {
   final String? description;
   final int? galleryId;
   final DateTime? createdDate;
+  final bool isAvailable;
 
   const IphoneModel({
     required this.id,
@@ -92,6 +93,7 @@ class IphoneModel {
     this.description,
     this.galleryId,
     this.createdDate,
+    this.isAvailable = true,
   });
 
   String get fullName => '$name $storage';
@@ -198,6 +200,7 @@ class IphoneModel {
     String? description,
     int? galleryId,
     DateTime? createdDate,
+    bool? isAvailable,
   }) {
     return IphoneModel(
       id: id ?? this.id,
@@ -220,6 +223,7 @@ class IphoneModel {
       description: description ?? this.description,
       galleryId: galleryId ?? this.galleryId,
       createdDate: createdDate ?? this.createdDate,
+      isAvailable: isAvailable ?? this.isAvailable,
     );
   }
 
@@ -294,6 +298,12 @@ class IphoneModel {
         ? 'disewa'
         : rawStatus;
 
+    final rawAvailable = json['is_available'] is bool
+        ? json['is_available'] as bool
+        : (json['is_available'] != null
+            ? (json['is_available'].toString() == '1' || json['is_available'].toString().toLowerCase() == 'true')
+            : (effectiveStatus.toLowerCase() == 'ready' || effectiveStatus.toLowerCase() == 'tersedia'));
+
     return IphoneModel(
       id: json['id'] is int
           ? json['id'] as int
@@ -319,6 +329,7 @@ class IphoneModel {
       description: json['description']?.toString(),
       galleryId: rawGalleryId,
       createdDate: parsedDate,
+      isAvailable: rawAvailable,
     );
   }
 
@@ -341,6 +352,7 @@ class IphoneModel {
       'customer_name': customerName,
       'booking_code': bookingCode,
       'return_schedule_text': returnScheduleText,
+      'is_available': isAvailable,
       if (slug != null) 'slug': slug,
       if (description != null) 'description': description,
       if (galleryId != null) 'gallery_id': galleryId,

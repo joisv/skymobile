@@ -49,8 +49,8 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   };
   final Map<String, int> _affiliateUnitCounts = {};
 
-  // Cache active bookings for rented units: assetCode -> BookingModel
-  final Map<String, BookingModel?> _activeBookings = {};
+  // Cache active bookings for rented units: unitId -> BookingModel
+  final Map<int, BookingModel?> _activeBookings = {};
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -140,10 +140,10 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
 
         for (final unit in pagedResult.units) {
           final s = unit.status.toLowerCase();
-          if (s == 'disewa' || s == 'rented' || widget.repository.isUnitCurrentlyRented(unit.assetCode) || (unit.customerName != null && unit.customerName!.isNotEmpty)) {
-            final booking = widget.repository.getActiveBookingForUnitSync(unit.assetCode);
+          if (s == 'disewa' || s == 'rented' || widget.repository.isUnitCurrentlyRented(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber) || (unit.customerName != null && unit.customerName!.isNotEmpty)) {
+            final booking = widget.repository.getActiveBookingForUnitSync(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber);
             if (booking != null) {
-              _activeBookings[unit.assetCode] = booking;
+              _activeBookings[unit.id] = booking;
             }
           }
         }
@@ -213,13 +213,14 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         }
       }
 
+      _activeBookings.clear();
       // Pre-fetch active booking for units that are rented/disewa secara instan dari sinkronisasi memori
       for (final unit in pagedResult.units) {
         final s = unit.status.toLowerCase();
-        if (s == 'disewa' || s == 'rented' || widget.repository.isUnitCurrentlyRented(unit.assetCode) || (unit.customerName != null && unit.customerName!.isNotEmpty)) {
-          final booking = widget.repository.getActiveBookingForUnitSync(unit.assetCode);
+        if (s == 'disewa' || s == 'rented' || widget.repository.isUnitCurrentlyRented(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber) || (unit.customerName != null && unit.customerName!.isNotEmpty)) {
+          final booking = widget.repository.getActiveBookingForUnitSync(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber);
           if (booking != null) {
-            _activeBookings[unit.assetCode] = booking;
+            _activeBookings[unit.id] = booking;
           }
         }
       }
@@ -380,12 +381,12 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   Future<void> _handlePengembalian(IphoneModel unit) async {
-    var activeBooking = _activeBookings[unit.assetCode] ??
-        widget.repository.getActiveBookingForUnitSync(unit.assetCode);
+    var activeBooking = _activeBookings[unit.id] ??
+        widget.repository.getActiveBookingForUnitSync(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber);
     if (activeBooking == null) {
-      activeBooking = await widget.repository.getActiveBookingForUnit(unit.assetCode);
+      activeBooking = await widget.repository.getActiveBookingForUnit(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber);
       if (activeBooking != null) {
-        _activeBookings[unit.assetCode] = activeBooking;
+        _activeBookings[unit.id] = activeBooking;
       }
     }
 
@@ -526,7 +527,12 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
 
     if (confirmed == true && mounted) {
       try {
-        await widget.repository.updateUnitStatus(unit.assetCode, 'tersedia');
+        await widget.repository.updateUnitStatus(
+          unit.id > 0 ? unit.id.toString() : unit.assetCode,
+          'tersedia',
+          unitId: unit.id,
+          serialNumber: unit.serialNumber,
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -550,7 +556,8 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   void _showUnitDetail(IphoneModel unit) {
-    final activeBooking = _activeBookings[unit.assetCode];
+    final activeBooking = _activeBookings[unit.id] ??
+        widget.repository.getActiveBookingForUnitSync(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber);
     if (activeBooking != null) {
       Navigator.pushNamed(
         context,
@@ -601,11 +608,16 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     );
 
     if (confirm == true) {
-      await widget.repository.updateUnitStatus(unit.assetCode, 'tersedia');
+      await widget.repository.updateUnitStatus(
+        unit.id > 0 ? unit.id.toString() : unit.assetCode,
+        'tersedia',
+        unitId: unit.id,
+        serialNumber: unit.serialNumber,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Unit ${unit.assetCode} berhasil kembali ke status Tersedia'),
+          content: Text('Unit ${unit.fullName} berhasil kembali ke status Tersedia'),
           backgroundColor: const Color(0xFF059669),
         ),
       );
@@ -764,11 +776,14 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     );
 
     if (confirm == true) {
-      await widget.repository.deleteInventoryUnit(unit.assetCode);
+      await widget.repository.deleteInventoryUnit(
+        unit.id > 0 ? unit.id.toString() : unit.assetCode,
+        unitId: unit.id,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Unit ${unit.assetCode} berhasil dihapus'),
+          content: Text('Unit ${unit.fullName} berhasil dihapus'),
           backgroundColor: Colors.red,
         ),
       );
@@ -1589,7 +1604,8 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   // =========================================================================
 
   Widget _buildUnitCard(IphoneModel unit) {
-    final activeBooking = _activeBookings[unit.assetCode] ?? widget.repository.getActiveBookingForUnitSync(unit.assetCode);
+    final activeBooking = _activeBookings[unit.id] ??
+        widget.repository.getActiveBookingForUnitSync(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber);
     final statusLower = unit.status.toLowerCase();
     final isOverdue = statusLower == 'terlambat' ||
         statusLower == 'overdue' ||

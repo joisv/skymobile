@@ -129,10 +129,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
     // Enforce affiliate scoping for Section 2:
     // 1. Affiliate / Affiliate Admin: only show iPhones where iphone.affiliate_id matches user's affiliate_id
-    // 2. Super Admin: show ONLY iPhones where affiliate_id IS NULL (unassigned/global iPhones)
-    if (AuthService().isSuperAdmin) {
-      incomingUnits = incomingUnits.where((u) => u.affiliateId == null).toList();
-    } else if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
+    // 2. Super Admin & Admin: have global visibility (can view unassigned & all affiliate/transferred iPhones)
+    if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
       incomingUnits = incomingUnits.where((u) {
         if (u.affiliateId == null) return false;
         return u.affiliateId == AuthService().affiliateId;
