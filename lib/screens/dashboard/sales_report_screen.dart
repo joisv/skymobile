@@ -35,6 +35,8 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   DateTimeRange? _customDateRange;
   bool _simulateEmpty = false;
 
+  int? _selectedAffiliateId;
+
   int _currentPage = 1;
   int _lastPage = 1;
   int _totalTransactions = 0;
@@ -50,10 +52,34 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     'Semua',
   ];
 
+  bool get _canSelectBranch {
+    final auth = AuthService();
+    return auth.isSuperAdmin || (auth.isAdmin && (auth.affiliateId == null || auth.affiliateId == 4));
+  }
+
+  String get _selectedBranchName {
+    if (_selectedAffiliateId == null) {
+      return 'Semua Cabang (Gabungan)';
+    }
+    final match = _affiliates.where((a) => a.id == _selectedAffiliateId).firstOrNull;
+    if (match != null) {
+      return match.name;
+    }
+    if (_selectedAffiliateId == 4) {
+      return 'Genteng Pusat';
+    }
+    return 'Cabang #$_selectedAffiliateId';
+  }
+
   @override
   void initState() {
     super.initState();
     _selectedPeriod = widget.initialPeriod ?? 'Hari Ini';
+    if (_canSelectBranch) {
+      _selectedAffiliateId = 4; // Genteng Pusat (Central Store) by default
+    } else if (AuthService().affiliateId != null) {
+      _selectedAffiliateId = AuthService().affiliateId;
+    }
     _loadReport();
   }
 
@@ -106,10 +132,11 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
         endDate: end,
         page: page,
         perPage: _perPage,
+        affiliateId: _selectedAffiliateId,
       );
 
-      List<AffiliateModel> affiliateList = [];
-      if (AuthService().isSuperAdmin) {
+      List<AffiliateModel> affiliateList = _affiliates;
+      if (_canSelectBranch && affiliateList.isEmpty) {
         try {
           affiliateList = await widget.repository.getAffiliates(forceRefresh: false);
         } catch (_) {}
@@ -165,7 +192,10 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   }
 
   void _showClosingReportDialog() {
-    final escPosText = widget.repository.exportClosingReportEscPos(_reportData);
+    final escPosText = widget.repository.exportClosingReportEscPos(
+      _reportData,
+      branchName: _selectedBranchName,
+    );
 
     showDialog(
       context: context,
@@ -243,7 +273,10 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   }
 
   void _showCsvExportDialog() {
-    final csvText = widget.repository.exportSalesReportCsv(_reportData);
+    final csvText = widget.repository.exportSalesReportCsv(
+      _reportData,
+      branchName: _selectedBranchName,
+    );
 
     showDialog(
       context: context,
@@ -309,7 +342,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
 
     final msg = '''
 *LAPORAN OPERASIONAL SKYRENTAL*
-Outlet: POS Station #01
+Outlet: $_selectedBranchName
 Periode: $_selectedPeriod
 Tanggal: ${Formatters.date(DateTime.now())}
 
@@ -458,7 +491,9 @@ Status Kasir: Telah Ditutup & Sesuai.
 
     final modelCountRaw = (_reportData['modelRentalCount'] is Map) ? (_reportData['modelRentalCount'] as Map) : {};
     final modelCount = modelCountRaw.map((key, value) => MapEntry(key.toString(), (value as num).toInt()));
-    final transactions = (_reportData['transactions'] as List<PaymentTransactionModel>?) ?? [];
+    final transactions = (_reportData['transactions'] is List)
+        ? (_reportData['transactions'] as List).whereType<PaymentTransactionModel>().toList()
+        : <PaymentTransactionModel>[];
 
     final double totalRev = (summary['totalRevenue'] as num?)?.toDouble() ??
         (summary['total_revenue'] as num?)?.toDouble() ??
@@ -646,6 +681,201 @@ Status Kasir: Telah Ditutup & Sesuai.
     );
   }
 
+  Widget _buildBranchSelector({required bool isMobile}) {
+    if (!_canSelectBranch) {
+      if (AuthService().affiliateId == null) {
+        return const SizedBox.shrink();
+      }
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 10, vertical: isMobile ? 4 : 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFCBD5E1)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.storefront_rounded, size: isMobile ? 12 : 14, color: const Color(0xFF475569)),
+            const SizedBox(width: 4),
+            Text(
+              _selectedBranchName,
+              style: TextStyle(
+                fontSize: isMobile ? 10.5 : 11.5,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF334155),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final currentName = _selectedBranchName;
+    final isCombined = _selectedAffiliateId == null;
+    const int allBranchesId = 0;
+
+    return PopupMenuButton<int>(
+      tooltip: 'Pilih Cabang / Outlet',
+      initialValue: _selectedAffiliateId ?? allBranchesId,
+      onSelected: (int selectedId) {
+        final int? newAffiliateId = selectedId == allBranchesId ? null : selectedId;
+        if (_selectedAffiliateId == newAffiliateId) return;
+        setState(() {
+          _selectedAffiliateId = newAffiliateId;
+          _currentPage = 1;
+        });
+        _loadReport(page: 1);
+      },
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      elevation: 4,
+      itemBuilder: (context) {
+        final items = <PopupMenuEntry<int>>[];
+
+        // Option 1: Semua Cabang (Gabungan)
+        items.add(
+          PopupMenuItem<int>(
+            value: allBranchesId,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.hub_outlined,
+                  size: 18,
+                  color: isCombined ? AppTheme.accent : const Color(0xFF64748B),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Semua Cabang (Gabungan)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isCombined ? FontWeight.bold : FontWeight.normal,
+                      color: isCombined ? AppTheme.accent : const Color(0xFF1E293B),
+                    ),
+                  ),
+                ),
+                if (isCombined)
+                  Icon(Icons.check, size: 16, color: AppTheme.accent),
+              ],
+            ),
+          ),
+        );
+
+        items.add(const PopupMenuDivider());
+
+        // Branches
+        final branchList = List<AffiliateModel>.from(_affiliates);
+        if (branchList.isEmpty) {
+          // Fallback if _affiliates not yet populated
+          items.add(
+            PopupMenuItem<int>(
+              value: 4,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.storefront_rounded,
+                    size: 18,
+                    color: _selectedAffiliateId == 4 ? AppTheme.primary : const Color(0xFF64748B),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Genteng Pusat (Pusat)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: _selectedAffiliateId == 4 ? FontWeight.bold : FontWeight.normal,
+                        color: _selectedAffiliateId == 4 ? AppTheme.primary : const Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                  if (_selectedAffiliateId == 4)
+                    Icon(Icons.check, size: 16, color: AppTheme.primary),
+                ],
+              ),
+            ),
+          );
+        } else {
+          for (final aff in branchList) {
+            final isSelected = _selectedAffiliateId == aff.id;
+            final isPusat = aff.id == 4 || aff.code == 'GTG' || aff.name.toLowerCase().contains('pusat');
+            items.add(
+              PopupMenuItem<int>(
+                value: aff.id,
+                child: Row(
+                  children: [
+                    Icon(
+                      isPusat ? Icons.storefront_rounded : Icons.store_outlined,
+                      size: 18,
+                      color: isSelected ? (isPusat ? AppTheme.primary : AppTheme.accent) : const Color(0xFF64748B),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        aff.name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected ? const Color(0xFF0F172A) : const Color(0xFF1E293B),
+                        ),
+                      ),
+                    ),
+                    if (isSelected)
+                      Icon(Icons.check, size: 16, color: isPusat ? AppTheme.primary : AppTheme.accent),
+                  ],
+                ),
+              ),
+            );
+          }
+        }
+
+        return items;
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 12, vertical: isMobile ? 6 : 7),
+        decoration: BoxDecoration(
+          color: isCombined ? const Color(0xFFF8FAFC) : const Color(0xFFEFF6FF),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isCombined ? const Color(0xFFCBD5E1) : const Color(0xFF93C5FD),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isCombined ? Icons.hub_outlined : Icons.storefront_rounded,
+              size: isMobile ? 14 : 16,
+              color: isCombined ? const Color(0xFF475569) : AppTheme.primary,
+            ),
+            const SizedBox(width: 6),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: isMobile ? 150 : 200),
+              child: Text(
+                currentName,
+                style: TextStyle(
+                  fontSize: isMobile ? 11 : 12,
+                  fontWeight: FontWeight.w700,
+                  color: isCombined ? const Color(0xFF334155) : const Color(0xFF1E3A8A),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.arrow_drop_down,
+              size: 16,
+              color: isCombined ? const Color(0xFF64748B) : AppTheme.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // =========================================================================
   // SUB-HEADER & FILTER SECTION (TABLET)
   // =========================================================================
@@ -686,150 +916,157 @@ Status Kasir: Telah Ditutup & Sesuai.
             ],
           ),
         ),
-        const SizedBox(width: 16),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Segmented Period Filter
-            Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: _periodOptions.map((period) {
-                  final isSelected = _selectedPeriod == period && _customDateRange == null;
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedPeriod = period;
-                        _customDateRange = null;
-                        _currentPage = 1;
-                      });
-                      _loadReport(page: 1);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: isSelected ? const Color(0xFF0F172A) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        period,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                          color: isSelected ? Colors.white : const Color(0xFF475569),
+        const SizedBox(width: 12),
+        Flexible(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildBranchSelector(isMobile: false),
+                const SizedBox(width: 8),
+                // Segmented Period Filter
+                Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _periodOptions.map((period) {
+                      final isSelected = _selectedPeriod == period && _customDateRange == null;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedPeriod = period;
+                            _customDateRange = null;
+                            _currentPage = 1;
+                          });
+                          _loadReport(page: 1);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFF0F172A) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            period,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                              color: isSelected ? Colors.white : const Color(0xFF475569),
+                            ),
+                          ),
                         ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Date Range Picker Button
+                InkWell(
+                  onTap: _pickCustomDateRange,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _customDateRange != null ? AppTheme.accent : const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.calendar_today_outlined,
+                          size: 14,
+                          color: _customDateRange != null ? AppTheme.accent : const Color(0xFF64748B),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          dateLabel,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _customDateRange != null ? AppTheme.accent : const Color(0xFF334155),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Unduh Rekap Button
+                PopupMenuButton<String>(
+                  tooltip: 'Unduh & Ekspor Rekap',
+                  onSelected: (val) {
+                    if (val == 'escpos') _showClosingReportDialog();
+                    if (val == 'csv') _showCsvExportDialog();
+                    if (val == 'wa') _shareToWhatsApp();
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'escpos',
+                      child: Row(
+                        children: [
+                          Icon(Icons.print_rounded, size: 18, color: AppTheme.primary),
+                          const SizedBox(width: 8),
+                          const Text('Cetak Tutup Kasir (58mm)'),
+                        ],
                       ),
                     ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(width: 8),
-
-            // Date Range Picker Button
-            InkWell(
-              onTap: _pickCustomDateRange,
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _customDateRange != null ? AppTheme.accent : const Color(0xFFE2E8F0)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.calendar_today_outlined,
-                      size: 14,
-                      color: _customDateRange != null ? AppTheme.accent : const Color(0xFF64748B),
+                    PopupMenuItem(
+                      value: 'csv',
+                      child: Row(
+                        children: [
+                          Icon(Icons.table_chart_outlined, size: 18, color: AppTheme.accent),
+                          const SizedBox(width: 8),
+                          const Text('Ekspor Data CSV'),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      dateLabel,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: _customDateRange != null ? AppTheme.accent : const Color(0xFF334155),
+                    const PopupMenuItem(
+                      value: 'wa',
+                      child: Row(
+                        children: [
+                          Icon(Icons.chat_outlined, size: 18, color: Color(0xFF10B981)),
+                          SizedBox(width: 8),
+                          Text('Salin Ringkasan WhatsApp'),
+                        ],
                       ),
                     ),
                   ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-
-            // Unduh Rekap Button
-            PopupMenuButton<String>(
-              tooltip: 'Unduh & Ekspor Rekap',
-              onSelected: (val) {
-                if (val == 'escpos') _showClosingReportDialog();
-                if (val == 'csv') _showCsvExportDialog();
-                if (val == 'wa') _shareToWhatsApp();
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'escpos',
-                  child: Row(
-                    children: [
-                      Icon(Icons.print_rounded, size: 18, color: AppTheme.primary),
-                      const SizedBox(width: 8),
-                      const Text('Cetak Tutup Kasir (58mm)'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'csv',
-                  child: Row(
-                    children: [
-                      Icon(Icons.table_chart_outlined, size: 18, color: AppTheme.accent),
-                      const SizedBox(width: 8),
-                      const Text('Ekspor Data CSV'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'wa',
-                  child: Row(
-                    children: [
-                      Icon(Icons.chat_outlined, size: 18, color: Color(0xFF10B981)),
-                      SizedBox(width: 8),
-                      Text('Salin Ringkasan WhatsApp'),
-                    ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.file_download_outlined, size: 16, color: Color(0xFF334155)),
+                        SizedBox(width: 6),
+                        Text(
+                          'Unduh Rekap',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFCBD5E1)),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.file_download_outlined, size: 16, color: Color(0xFF334155)),
-                    SizedBox(width: 6),
-                    Text(
-                      'Unduh Rekap',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF334155),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
-          ],
+          ),
         ),
       ],
     );
@@ -883,6 +1120,8 @@ Status Kasir: Telah Ditutup & Sesuai.
             color: Color(0xFF64748B),
           ),
         ),
+        const SizedBox(height: 10),
+        _buildBranchSelector(isMobile: true),
         const SizedBox(height: 12),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -2391,63 +2630,72 @@ Status Kasir: Telah Ditutup & Sesuai.
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2FF),
-                      borderRadius: BorderRadius.circular(10),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEEF2FF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.storefront_rounded,
+                        color: Color(0xFF4F46E5),
+                        size: 20,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.storefront_rounded,
-                      color: Color(0xFF4F46E5),
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Penghasilan Cabang & Affiliate',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEEF2FF),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: const Color(0xFFC7D2FE)),
-                            ),
-                            child: const Text(
-                              'Super-Admin',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF4F46E5),
+                          Row(
+                            children: [
+                              const Flexible(
+                                child: Text(
+                                  'Penghasilan Cabang & Affiliate',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEEF2FF),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFFC7D2FE)),
+                                ),
+                                child: const Text(
+                                  'Super-Admin',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF4F46E5),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Breakdown omzet & transaksi dari tiap-tiap cabang affiliate',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
-                      const SizedBox(height: 2),
-                      const Text(
-                        'Breakdown omzet & transaksi dari tiap-tiap cabang affiliate',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               TextButton.icon(
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFF4F46E5),

@@ -508,6 +508,7 @@ class ApiService {
     DateTime? endDate,
     int? page,
     int? perPage,
+    int? affiliateId,
   }) async {
     for (final base in candidateUrls) {
       try {
@@ -518,6 +519,7 @@ class ApiService {
         if (endDate != null) queryParams['end_date'] = endDate.toIso8601String();
         if (page != null) queryParams['page'] = page.toString();
         if (perPage != null) queryParams['per_page'] = perPage.toString();
+        if (affiliateId != null) queryParams['affiliate_id'] = affiliateId.toString();
 
         final uri = Uri.parse('$base/reports/sales').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
         final response = await http.get(

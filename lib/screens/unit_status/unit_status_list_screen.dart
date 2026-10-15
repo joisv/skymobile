@@ -47,7 +47,6 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     'maintenance': 0,
     'dibooking': 0,
   };
-  final Map<String, int> _affiliateUnitCounts = {};
 
   // Cache active bookings for rented units: unitId -> BookingModel
   final Map<int, BookingModel?> _activeBookings = {};
@@ -160,7 +159,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         return;
       }
 
-      // Ambil data halaman pertama, cabang, dan ringkasan status secara paralel (concurrent)
+      // Ambil data halaman pertama dan cabang secara paralel (concurrent)
       final results = await Future.wait([
         widget.repository.getInventoryUnitsPaginated(
           query: _searchController.text.isNotEmpty ? _searchController.text : null,
@@ -174,12 +173,11 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
           forceRefresh: forceRefresh,
         ),
         widget.repository.getAffiliates(forceRefresh: forceRefresh),
-        widget.repository.getUnitStatusSummary(forceRefresh: forceRefresh),
       ]);
 
       final pagedResult = results[0] as PaginatedIphonesResult;
       var affiliates = results[1] as List<AffiliateModel>;
-      final summary = results[2] as Map<String, int>;
+      final summary = pagedResult.summary ?? _summary;
 
       // If affiliates list from repository is empty, infer from inventory units so dropdown is populated
       if (affiliates.isEmpty) {
@@ -2467,7 +2465,9 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   // =========================================================================
 
   Widget _buildBranchDropdown({bool isCompact = false}) {
-    final totalUnits = _summary['total'] ?? _units.length;
+    final totalUnits = _affiliates.isNotEmpty
+        ? _affiliates.fold<int>(0, (sum, a) => sum + a.iphonesCount)
+        : (_summary['total'] ?? _units.length);
     final isAffAdmin = AuthService().isAffiliate || AuthService().isAffiliateAdmin || (AuthService().affiliateId != null && !AuthService().isSuperAdmin);
 
     final items = <DropdownMenuItem<String>>[
@@ -2485,7 +2485,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
           ),
         ),
       ..._affiliates.map((aff) {
-        final count = _affiliateUnitCounts[aff.name] ?? _units.length;
+        final count = aff.iphonesCount;
         return DropdownMenuItem<String>(
           value: aff.name,
           child: Text(

@@ -92,12 +92,14 @@ class PaginatedIphonesResult {
   final int total;
   final int currentPage;
   final int lastPage;
+  final Map<String, int>? summary;
 
   const PaginatedIphonesResult({
     required this.units,
     required this.total,
     required this.currentPage,
     required this.lastPage,
+    this.summary,
   });
 }
 
@@ -1952,6 +1954,7 @@ class BookingRepository {
           total: total,
           currentPage: currentPage,
           lastPage: lastPage,
+          summary: _unitSummaryCache,
         );
 
         if (isDefaultFirstPage) {
@@ -1988,6 +1991,7 @@ class BookingRepository {
       total: total,
       currentPage: page,
       lastPage: lastPage,
+      summary: _unitSummaryCache,
     );
 
     if (isDefaultFirstPage) {
@@ -2633,6 +2637,7 @@ class BookingRepository {
     DateTime? endDate,
     int page = 1,
     int perPage = 20,
+    int? affiliateId,
   }) async {
     try {
       final res = await ApiService().getSalesReportApi(
@@ -2642,6 +2647,7 @@ class BookingRepository {
         endDate: endDate,
         page: page,
         perPage: perPage,
+        affiliateId: affiliateId,
       );
       if (res != null) {
         // Adapt API response to PaymentTransactionModel objects
@@ -2770,6 +2776,28 @@ class BookingRepository {
     List<PaymentTransactionModel> finalTxs = allTransactions.where((tx) {
       return !tx.transactionDate.isBefore(filterStart) && !tx.transactionDate.isAfter(filterEnd);
     }).toList();
+
+    if (affiliateId != null) {
+      final isCentral = affiliateId == 4;
+      finalTxs = finalTxs.where((tx) {
+        final booking = _bookings.where((b) => b.id == tx.bookingId).firstOrNull;
+        if (booking != null) {
+          final ip = booking.iphone;
+          if (isCentral) {
+            return ip.affiliateId == null || ip.affiliateId == 4;
+          }
+          return ip.affiliateId == affiliateId;
+        }
+        final ip = _inventory.where((i) => i.name == tx.iphoneName).firstOrNull;
+        if (ip != null) {
+          if (isCentral) {
+            return ip.affiliateId == null || ip.affiliateId == 4;
+          }
+          return ip.affiliateId == affiliateId;
+        }
+        return isCentral;
+      }).toList();
+    }
 
     if (paymentMethod != null &&
         paymentMethod.isNotEmpty &&
@@ -2933,9 +2961,15 @@ class BookingRepository {
   }
 
   /// Ekspor laporan penjualan ke format CSV teks
-  String exportSalesReportCsv(Map<String, dynamic> reportData) {
-    final transactions = (reportData['transactions'] as List<PaymentTransactionModel>?) ?? [];
+  String exportSalesReportCsv(Map<String, dynamic> reportData, {String? branchName}) {
+    final transactions = (reportData['transactions'] is List)
+        ? (reportData['transactions'] as List).whereType<PaymentTransactionModel>().toList()
+        : <PaymentTransactionModel>[];
+    final outletName = branchName ?? reportData['branch_name']?.toString();
     final buffer = StringBuffer();
+    if (outletName != null && outletName.isNotEmpty) {
+      buffer.writeln('# Cabang/Outlet: $outletName');
+    }
     buffer.writeln('No,Kode Booking,Pelanggan,Nomor HP,Unit iPhone,Metode Pembayaran,Nominal Bayar,Deposit,Status Bayar,Tanggal');
 
     for (int i = 0; i < transactions.length; i++) {
@@ -2949,7 +2983,7 @@ class BookingRepository {
   }
 
   /// Ekspor ringkasan laporan tutup kasir ke format thermal ESC/POS 58mm (tepat 32 kolom)
-  String exportClosingReportEscPos(Map<String, dynamic> reportData) {
+  String exportClosingReportEscPos(Map<String, dynamic> reportData, {String? branchName}) {
     const int width = 32;
     final divider = '=' * width;
     final subDivider = '-' * width;
@@ -2994,11 +3028,13 @@ class BookingRepository {
         (summary['transaction_count'] as num?)?.toInt() ??
         0;
 
+    final outletName = (branchName ?? reportData['branch_name']?.toString() ?? 'SEMUA CABANG').toUpperCase();
+
     final lines = <String>[];
     lines.add(divider);
     lines.add(center('SKYRENTAL OUTLET'));
     lines.add(center('LAPORAN PENUTUPAN KASIR'));
-    lines.add(center('OUTLET MALIOBORO'));
+    lines.add(center('OUTLET $outletName'));
     lines.add(divider);
 
     final now = DateTime.now();
