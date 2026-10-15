@@ -42,18 +42,7 @@ class ApiService {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getString(_prefKeyBaseUrl);
       if (saved != null && saved.trim().isNotEmpty) {
-        final cleanSaved = saved.trim();
-        // Discard old development URLs so production app connects to https://skyrental.id
-        if (cleanSaved.contains('127.0.0.1') ||
-            cleanSaved.contains('localhost') ||
-            cleanSaved.contains('192.168.') ||
-            cleanSaved.contains('10.0.2.2') ||
-            cleanSaved.contains('skyrent.test')) {
-          baseUrl = productionBaseUrl;
-          await prefs.setString(_prefKeyBaseUrl, productionBaseUrl);
-        } else {
-          baseUrl = cleanSaved;
-        }
+        baseUrl = saved.trim();
       } else {
         baseUrl = productionBaseUrl;
       }

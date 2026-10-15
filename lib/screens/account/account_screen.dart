@@ -19,6 +19,8 @@ import '../receipt/receipt_format_settings_screen.dart';
 import '../receipt/reprint_receipt_list_screen.dart';
 import '../receipt/widgets/thermal_receipt_paper_preview.dart';
 import '../../models/receipt_format_settings.dart';
+import '../../services/app_update_service.dart';
+import '../../widgets/app_update_dialog.dart';
 import 'roles_permissions_screen.dart';
 import 'theme_settings_screen.dart';
 import '../../widgets/app_header.dart';
@@ -370,6 +372,101 @@ class _AccountScreenState extends State<AccountScreen> {
     );
   }
 
+  bool _isCheckingUpdate = false;
+
+  Future<void> _checkForUpdatesManually() async {
+    if (_isCheckingUpdate) return;
+    setState(() => _isCheckingUpdate = true);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            ),
+            SizedBox(width: 12),
+            Text('Memeriksa rilis APK terbaru dari server...'),
+          ],
+        ),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    try {
+      final updateService = AppUpdateService();
+      final updateInfo = await updateService.checkForUpdate(forceRefreshVersion: true);
+      if (!mounted) return;
+
+      if (updateInfo.updateAvailable) {
+        await AppUpdateDialog.show(context, updateInfo);
+      } else {
+        final versionInfo = await updateService.getCurrentVersionInfo(forceRefresh: true);
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 24),
+                SizedBox(width: 10),
+                Text('Aplikasi Terkini', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  updateInfo.message ??
+                      'Aplikasi SkyMobile Anda sudah menggunakan versi terbaru.',
+                  style: const TextStyle(fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('• Build aplikasi: v${versionInfo.version} (Build ${versionInfo.buildNumber})', style: const TextStyle(fontSize: 11.5, color: Color(0xFF475569))),
+                      Text('• Build server: ${updateInfo.latestBuild > 0 ? "v${updateInfo.latestVersion} (Build ${updateInfo.latestBuild})" : "Tidak ada"}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF475569))),
+                      Text('• Server: ${ApiService().baseUrl}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF475569))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal memeriksa pembaruan: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isCheckingUpdate = false);
+      }
+    }
+  }
 
   void _showAboutDialogModal() {
     showModalBottomSheet(
@@ -516,6 +613,30 @@ class _AccountScreenState extends State<AccountScreen> {
                         const SizedBox(width: 10),
                         _buildMetricBox('Backend API', 'https://skyrental.id', Icons.cloud_done_rounded, const Color(0xFF0284C7)),
                       ],
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: BorderSide(color: AppTheme.accent),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          _checkForUpdatesManually();
+                        },
+                        icon: Icon(Icons.system_update_rounded, size: 18, color: AppTheme.accent),
+                        label: Text(
+                          'Periksa Pembaruan Aplikasi',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.accent,
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 22),
 
@@ -1324,6 +1445,15 @@ class _AccountScreenState extends State<AccountScreen> {
                   trailingBadgeColor: const Color(0xFF475569),
                 ),
                 _buildTabletSidebarItem(
+                  key: 'appUpdates',
+                  icon: Icons.system_update_rounded,
+                  title: 'Pembaruan Aplikasi',
+                  subtitle: 'Periksa update APK resmi',
+                  trailingBadge: 'APK',
+                  trailingBadgeColor: const Color(0xFF2563EB),
+                  onTap: _checkForUpdatesManually,
+                ),
+                _buildTabletSidebarItem(
                   key: 'aboutApp',
                   icon: Icons.info_outline_rounded,
                   title: 'Tentang SKYRental POS',
@@ -1400,6 +1530,7 @@ class _AccountScreenState extends State<AccountScreen> {
     required String subtitle,
     String? trailingBadge,
     Color? trailingBadgeColor,
+    VoidCallback? onTap,
   }) {
     final isSelected = _selectedMenuKey == key;
     final themeColor = AppTheme.accent;
@@ -1409,7 +1540,7 @@ class _AccountScreenState extends State<AccountScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _selectMenu(key),
+        onTap: onTap ?? () => _selectMenu(key),
         borderRadius: BorderRadius.circular(10),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 2),
@@ -2267,6 +2398,58 @@ class _AccountScreenState extends State<AccountScreen> {
         ),
         const SizedBox(height: 16),
 
+        // 1b. Card: OTA APK App Updates
+        _buildDetailCard(
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                ),
+                child: const Icon(Icons.system_update_rounded, color: Color(0xFF2563EB), size: 24),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pembaruan Aplikasi Internal (OTA APK)',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Periksa rilis APK terbaru dari server skyrental.id tanpa melalui Google Play Store.',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2563EB),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: _checkForUpdatesManually,
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Periksa Pembaruan', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
         // 2. Card: 5 Modul Utama Sesuai Spesifikasi PRD
         _buildDetailCard(
           child: Column(
@@ -2931,6 +3114,16 @@ class _AccountScreenState extends State<AccountScreen> {
                 trailingBadge: ApiService().baseUrl.startsWith('https://') ? 'PROD / HTTPS' : 'LAN / LOCAL',
                 trailingBadgeColor: ApiService().baseUrl.startsWith('https://') ? Colors.green : Colors.blue,
                 onTap: _showServerConfigDialog,
+              ),
+              const Divider(height: 1, indent: 56),
+              _buildMenuItem(
+                icon: Icons.system_update_rounded,
+                iconColor: AppTheme.accent,
+                title: 'Periksa Pembaruan Aplikasi',
+                subtitle: 'Cek rilis APK terbaru dari server',
+                trailingBadge: 'APK',
+                trailingBadgeColor: AppTheme.accent,
+                onTap: _checkForUpdatesManually,
               ),
               const Divider(height: 1, indent: 56),
               _buildMenuItem(

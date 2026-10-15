@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../data/booking_repository.dart';
+import '../services/app_update_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_update_dialog.dart';
 import 'account/account_screen.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'dashboard/sales_report_screen.dart';
@@ -32,6 +34,29 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _currentIndex = widget.initialIndex;
     _screens = List<Widget?>.filled(4, null);
     _loadedIndices.add(_currentIndex);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForUpdatesSilently();
+    });
+  }
+
+  Future<void> _checkForUpdatesSilently() async {
+    try {
+      if (AppUpdateDialog.isShowing) return;
+      final updateService = AppUpdateService();
+      final updateInfo = await updateService.checkForUpdate(forceRefreshVersion: true);
+      if (!mounted) return;
+
+      if (updateInfo.updateAvailable) {
+        final shouldPrompt = await updateService.shouldPromptUpdate(updateInfo);
+        if (shouldPrompt && mounted) {
+          await AppUpdateDialog.show(context, updateInfo);
+        }
+      }
+    } catch (e) {
+      // Silent check does not interrupt user on failure/offline
+      debugPrint('Silent update check exception: $e');
+    }
   }
 
   Widget _buildTabScreen(int index) {
