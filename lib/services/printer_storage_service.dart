@@ -271,6 +271,7 @@ class PrinterStorageService {
 
     // 2. Simpan ke file untuk testing & desktop
     if (Platform.environment.containsKey('FLUTTER_TEST') && customPath == null) return;
+    if ((Platform.isAndroid || Platform.isIOS) && customPath == null) return;
     try {
       final file = File(customPath ?? _defaultStoragePath);
       final data = {

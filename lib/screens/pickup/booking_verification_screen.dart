@@ -560,7 +560,10 @@ class _BookingVerificationScreenState extends State<BookingVerificationScreen> {
           Divider(height: 1, color: AppTheme.cardBorder),
           const SizedBox(height: 12),
           _buildInfoRow('Unit Dipesan', iphone.fullName, isHighlight: true),
-          _buildInfoRow('Warna / Storage', '${iphone.color} • ${iphone.storage}'),
+          _buildInfoRow(
+            iphone.storage.isNotEmpty ? 'Warna / Storage' : 'Warna Unit',
+            iphone.storage.isNotEmpty ? '${iphone.color} • ${iphone.storage}' : iphone.color,
+          ),
           _buildInfoRow('Mulai Sewa', Formatters.dateTime(_currentBooking!.startDate)),
           _buildInfoRow('Selesai Sewa', Formatters.dateTime(_currentBooking!.endDate)),
           _buildInfoRow('Durasi Rental', '${_currentBooking!.durationDays} Hari'),

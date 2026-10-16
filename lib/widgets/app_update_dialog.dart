@@ -1,17 +1,21 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../models/app_update_model.dart';
 import '../services/app_update_service.dart';
+import '../services/theme_service.dart';
 import '../theme/app_theme.dart';
 
 class AppUpdateDialog extends StatefulWidget {
   final AppUpdateInfo updateInfo;
+  final String? currentVersion;
   final VoidCallback? onDismissed;
 
   const AppUpdateDialog({
     super.key,
     required this.updateInfo,
+    this.currentVersion,
     this.onDismissed,
   });
 
@@ -21,6 +25,7 @@ class AppUpdateDialog extends StatefulWidget {
   static Future<void> show(
     BuildContext context,
     AppUpdateInfo updateInfo, {
+    String? currentVersion,
     VoidCallback? onDismissed,
   }) async {
     if (_isShowing) {
@@ -32,9 +37,14 @@ class AppUpdateDialog extends StatefulWidget {
       await showDialog<void>(
         context: context,
         barrierDismissible: !updateInfo.isMandatory,
-        builder: (ctx) => AppUpdateDialog(
-          updateInfo: updateInfo,
-          onDismissed: onDismissed,
+        barrierColor: Colors.black.withValues(alpha: 0.45),
+        builder: (ctx) => BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+          child: AppUpdateDialog(
+            updateInfo: updateInfo,
+            currentVersion: currentVersion,
+            onDismissed: onDismissed,
+          ),
         ),
       );
     } finally {
@@ -58,6 +68,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> with WidgetsBindingOb
   File? _downloadedFile;
   bool _needsPermission = false;
   bool _launchedInstaller = false;
+  String _currentVersion = '';
 
   @visibleForTesting
   bool get launchedInstaller => _launchedInstaller;
@@ -76,6 +87,23 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> with WidgetsBindingOb
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _totalBytes = widget.updateInfo.fileSize;
+    _currentVersion = widget.currentVersion ?? widget.updateInfo.currentVersion;
+    if (_currentVersion.isEmpty) {
+      _loadCurrentVersion();
+    }
+  }
+
+  Future<void> _loadCurrentVersion() async {
+    try {
+      final info = await _updateService.getCurrentVersionInfo();
+      if (mounted && info.version.isNotEmpty) {
+        setState(() {
+          _currentVersion = info.version;
+        });
+      }
+    } catch (e) {
+      debugPrint('Notice: Error loading current version in dialog: $e');
+    }
   }
 
   @override
@@ -276,9 +304,52 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> with WidgetsBindingOb
     }
   }
 
+  String _formatVersionString(String version) {
+    final trimmed = version.trim();
+    if (trimmed.isEmpty) return 'v1.0.0';
+    if (trimmed.startsWith('v') || trimmed.startsWith('V')) {
+      return trimmed;
+    }
+    return 'v$trimmed';
+  }
+
+  List<String> _parseReleaseNotes(String? rawNotes) {
+    if (rawNotes == null || rawNotes.trim().isEmpty) {
+      return [];
+    }
+    final lines = rawNotes
+        .split(RegExp(r'[\r\n]+'))
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+
+    final cleaned = <String>[];
+    for (var line in lines) {
+      line = line.replaceFirst(RegExp(r'^[-*•]\s*'), '');
+      line = line.replaceFirst(RegExp(r'^\d+[\.\)]\s*'), '');
+      if (line.trim().isNotEmpty) {
+        cleaned.add(line.trim());
+      }
+    }
+    if (cleaned.isEmpty && rawNotes.trim().isNotEmpty) {
+      cleaned.add(rawNotes.trim());
+    }
+    return cleaned;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isMandatory = widget.updateInfo.isMandatory;
+    final isDark = ThemeService().isDarkMode;
+    final primaryAccent = isMandatory ? AppTheme.error : AppTheme.accent;
+    final releaseNotes = _parseReleaseNotes(widget.updateInfo.releaseNotes);
+
+    final String displayCurrentVersion = _formatVersionString(
+      _currentVersion.isNotEmpty
+          ? _currentVersion
+          : (widget.updateInfo.currentBuild > 0 ? '1.0.0' : '-'),
+    );
+    final String displayLatestVersion = _formatVersionString(widget.updateInfo.latestVersion);
 
     return PopScope(
       canPop: !isMandatory && !_isDownloading,
@@ -289,408 +360,521 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> with WidgetsBindingOb
         }
       },
       child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        elevation: 8,
-        backgroundColor: AppTheme.surface,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Container(
           width: double.infinity,
-          constraints: const BoxConstraints(maxWidth: 440),
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header Icon and Badge
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          constraints: const BoxConstraints(maxWidth: 390),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: isMandatory
-                          ? const Color(0xFFFEF2F2)
-                          : const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
+                  // 1. Header Icon inside Circular Outline with Soft Blue Accent
+                  Center(
+                    child: Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
                         color: isMandatory
-                            ? const Color(0xFFFECACA)
-                            : const Color(0xFFBFDBFE),
-                        width: 1.2,
+                            ? AppTheme.errorContainer
+                            : primaryAccent.withValues(alpha: 0.10),
+                        border: Border.all(
+                          color: isMandatory
+                              ? AppTheme.errorBorder
+                              : primaryAccent.withValues(alpha: 0.25),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Icon(
+                        _downloadedFile != null &&
+                                _downloadedFile!.existsSync() &&
+                                _errorMessage == null
+                            ? Icons.install_mobile_rounded
+                            : (isMandatory
+                                ? Icons.warning_amber_rounded
+                                : Icons.download_rounded),
+                        color: primaryAccent,
+                        size: 28,
                       ),
                     ),
-                    child: Icon(
-                      isMandatory
-                          ? Icons.warning_amber_rounded
-                          : Icons.system_update_rounded,
-                      color: isMandatory
-                          ? const Color(0xFFDC2626)
-                          : const Color(0xFF2563EB),
-                      size: 26,
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 2. Title and Description
+                  Text(
+                    'Update Aplikasi Tersedia',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18.5,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.3,
+                      color: AppTheme.textPrimary,
                     ),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 6),
+                  Text(
+                    'Versi terbaru SkyRental telah tersedia. Perbarui aplikasi untuk mendapatkan fitur terbaru, peningkatan performa, dan perbaikan bug.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.4,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 3. Mandatory Alert Banner (if mandatory)
+                  if (isMandatory) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warningContainer,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.warningBorder),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded, size: 16, color: AppTheme.onWarningContainer),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Versi ini wajib dipasang untuk terus menggunakan SKYRental.',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.onWarningContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+
+                  // 4. Version Comparison Panel
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF0F172A).withValues(alpha: 0.6)
+                          : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: Row(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                isMandatory ? 'Pembaruan Wajib' : 'Pembaruan Tersedia',
+                        // Left: Current Version
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'VERSI SAAT INI',
                                 style: TextStyle(
-                                  fontSize: 17,
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                  color: AppTheme.textMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                displayCurrentVersion,
+                                style: TextStyle(
+                                  fontSize: 13.5,
                                   fontWeight: FontWeight.bold,
                                   color: AppTheme.textPrimary,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
+                            ],
+                          ),
+                        ),
+                        // Center Arrow
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: Container(
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isDark
+                                  ? const Color(0xFF1E293B)
+                                  : const Color(0xFFF1F5F9),
                             ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isMandatory
-                                    ? const Color(0xFFFEE2E2)
-                                    : const Color(0xFFDBEAFE),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                'v${widget.updateInfo.latestVersion}',
+                            child: Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 14,
+                              color: AppTheme.textMuted,
+                            ),
+                          ),
+                        ),
+                        // Right: Latest Version
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                'VERSI TERBARU',
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 9.5,
                                   fontWeight: FontWeight.w700,
-                                  color: isMandatory
-                                      ? const Color(0xFF991B1B)
-                                      : const Color(0xFF1E40AF),
+                                  letterSpacing: 0.6,
+                                  color: primaryAccent,
                                 ),
+                              ),
+                              const SizedBox(height: 3),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                decoration: BoxDecoration(
+                                  color: primaryAccent.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: primaryAccent.withValues(alpha: 0.28),
+                                  ),
+                                ),
+                                child: Text(
+                                  displayLatestVersion,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: primaryAccent,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (widget.updateInfo.latestBuild > 0 ||
+                                  widget.updateInfo.formattedSize.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Build ${widget.updateInfo.latestBuild}${widget.updateInfo.formattedSize.isNotEmpty ? " • ${widget.updateInfo.formattedSize}" : ""}',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.textMuted,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 5. Release Notes Section
+                  if (releaseNotes.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.auto_awesome_rounded,
+                          size: 14,
+                          color: primaryAccent,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'YANG BARU',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 120),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? const Color(0xFF0F172A).withValues(alpha: 0.5)
+                            : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: releaseNotes.map((note) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2.5),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 13.5,
+                                      color: primaryAccent,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Expanded(
+                                    child: Text(
+                                      note,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        height: 1.35,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+
+                  // 6. Error Banner
+                  if (_errorMessage != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(9),
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorContainer,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.errorBorder),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.error_outline_rounded, size: 15, color: AppTheme.error),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: AppTheme.onErrorContainer,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  // 7. Download Progress Indicator
+                  if (_isDownloading) ...[
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                            value: _progress > 0 ? _progress : null,
+                            minHeight: 7,
+                            backgroundColor: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                            valueColor: AlwaysStoppedAnimation<Color>(primaryAccent),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _statusMessage,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppTheme.textSecondary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${_formatBytes(_receivedBytes)} / ${_formatBytes(_totalBytes)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.textPrimary,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Build ${widget.updateInfo.latestBuild} • ${widget.updateInfo.formattedSize}',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            color: AppTheme.textSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Mandatory Alert Banner
-              if (isMandatory) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFFBEB),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFFDE68A)),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFFB45309)),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Versi ini wajib dipasang untuk terus menggunakan SKYRental.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF92400E),
-                          ),
-                        ),
+                    const SizedBox(height: 14),
+                  ] else if (_statusMessage.isNotEmpty) ...[
+                    Text(
+                      _statusMessage,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: AppTheme.textSecondary,
+                        fontStyle: FontStyle.italic,
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
-              // Release Notes Container
-              if (widget.updateInfo.releaseNotes != null &&
-                  widget.updateInfo.releaseNotes!.trim().isNotEmpty) ...[
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 160),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.background,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.cardBorder),
-                  ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Catatan Rilis:',
-                          style: TextStyle(
-                            fontSize: 12,
+                  // 8. Unknown Sources Permission Banner
+                  if (_needsPermission) ...[
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.infoContainer,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.infoBorder),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'Izin Sumber Tidak Dikenal Diperlukan',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.onInfoContainer,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Android memerlukan izin untuk mengizinkan aplikasi ini memasang berkas APK pembaruan.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.onInfoContainer.withValues(alpha: 0.9),
+                              height: 1.3,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryAccent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: _requestInstallPermission,
+                            icon: const Icon(Icons.settings_rounded, size: 15),
+                            label: const Text('Buka Pengaturan Izin', style: TextStyle(fontSize: 11.5)),
+                          ),
+                          if (_downloadedFile != null) ...[
+                            const SizedBox(height: 6),
+                            OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: () => _launchInstaller(_downloadedFile!.path),
+                              child: const Text('Saya Sudah Memberi Izin, Lanjutkan', style: TextStyle(fontSize: 11.5)),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+
+                  // 9. Primary Action Button (Perbarui Sekarang / Pasang Sekarang)
+                  if (!_isDownloading && !_needsPermission) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 46,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryAccent,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14.5,
                             fontWeight: FontWeight.w700,
-                            color: AppTheme.textPrimary,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          widget.updateInfo.releaseNotes!.trim(),
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            height: 1.45,
-                            color: AppTheme.textSecondary,
-                          ),
+                        onPressed: _downloadedFile != null &&
+                                _downloadedFile!.existsSync() &&
+                                _errorMessage == null
+                            ? () => _launchInstaller(_downloadedFile!.path)
+                            : _startUpdateFlow,
+                        icon: Icon(
+                          _downloadedFile != null &&
+                                  _downloadedFile!.existsSync() &&
+                                  _errorMessage == null
+                              ? Icons.install_mobile_rounded
+                              : Icons.download_rounded,
+                          size: 19,
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // Error Box
-              if (_errorMessage != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF2F2),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFFECACA)),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.error_outline_rounded, size: 16, color: Color(0xFFDC2626)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            color: Color(0xFF991B1B),
-                            height: 1.3,
-                          ),
+                        label: Text(
+                          _downloadedFile != null &&
+                                  _downloadedFile!.existsSync() &&
+                                  _errorMessage == null
+                              ? 'Pasang Sekarang'
+                              : 'Perbarui Sekarang',
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
-
-              // Download / Progress Section
-              if (_isDownloading) ...[
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: LinearProgressIndicator(
-                        value: _progress > 0 ? _progress : null,
-                        minHeight: 8,
-                        backgroundColor: const Color(0xFFE2E8F0),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          isMandatory ? const Color(0xFFDC2626) : const Color(0xFF2563EB),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _statusMessage,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: AppTheme.textSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        Text(
-                          '${_formatBytes(_receivedBytes)} / ${_formatBytes(_totalBytes)}',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                      ],
                     ),
                   ],
-                ),
-                const SizedBox(height: 16),
-              ] else if (_statusMessage.isNotEmpty) ...[
-                Text(
-                  _statusMessage,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
 
-              // Permission Request Banner (if install unknown apps not enabled)
-              if (_needsPermission) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFBFDBFE)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'Izin Sumber Tidak Dikenal Diperlukan',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E40AF),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Android memerlukan izin untuk mengizinkan aplikasi ini memasang berkas APK pembaruan.',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: Color(0xFF1E3A8A),
-                          height: 1.3,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2563EB),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                        ),
-                        onPressed: _requestInstallPermission,
-                        icon: const Icon(Icons.settings_rounded, size: 16),
-                        label: const Text('Buka Pengaturan Izin', style: TextStyle(fontSize: 12)),
-                      ),
-                      if (_downloadedFile != null) ...[
-                        const SizedBox(height: 6),
-                        OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  // 10. Secondary Action Button (Nanti)
+                  if (!isMandatory && !_isDownloading && !_needsPermission) ...[
+                    const SizedBox(height: 4),
+                    Center(
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.textSecondary,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                          minimumSize: const Size(80, 36),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          onPressed: () => _launchInstaller(_downloadedFile!.path),
-                          child: const Text('Saya Sudah Memberi Izin, Lanjutkan', style: TextStyle(fontSize: 12)),
                         ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
-
-              // Dialog Action Buttons
-              if (!_isDownloading && !_needsPermission)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (!isMandatory) ...[
-                      TextButton(
                         onPressed: _onDismiss,
                         child: Text(
-                          'Nanti Saja',
+                          'Nanti',
                           style: TextStyle(
-                            color: AppTheme.textSecondary,
+                            fontSize: 13.5,
                             fontWeight: FontWeight.w600,
+                            color: AppTheme.textSecondary,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                    ],
-                    if (isMandatory)
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFDC2626),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          onPressed: _downloadedFile != null &&
-                                  _downloadedFile!.existsSync() &&
-                                  _errorMessage == null
-                              ? () => _launchInstaller(_downloadedFile!.path)
-                              : _startUpdateFlow,
-                          icon: Icon(
-                            _downloadedFile != null &&
-                                    _downloadedFile!.existsSync() &&
-                                    _errorMessage == null
-                                ? Icons.install_mobile_rounded
-                                : Icons.download_rounded,
-                            size: 18,
-                          ),
-                          label: Text(
-                            _downloadedFile != null &&
-                                    _downloadedFile!.existsSync() &&
-                                    _errorMessage == null
-                                ? 'Pasang Sekarang'
-                                : 'Perbarui Sekarang',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                    else
-                      Flexible(
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2563EB),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          onPressed: _downloadedFile != null &&
-                                  _downloadedFile!.existsSync() &&
-                                  _errorMessage == null
-                              ? () => _launchInstaller(_downloadedFile!.path)
-                              : _startUpdateFlow,
-                          icon: Icon(
-                            _downloadedFile != null &&
-                                    _downloadedFile!.existsSync() &&
-                                    _errorMessage == null
-                                ? Icons.install_mobile_rounded
-                                : Icons.download_rounded,
-                            size: 18,
-                          ),
-                          label: Text(
-                            _downloadedFile != null &&
-                                    _downloadedFile!.existsSync() &&
-                                    _errorMessage == null
-                                ? 'Pasang Sekarang'
-                                : 'Perbarui Sekarang',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
+                    ),
                   ],
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
         ),
       ),

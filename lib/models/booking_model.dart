@@ -297,7 +297,7 @@ class BookingModel {
       iphoneModel = const IphoneModel(
         id: 0,
         name: 'iPhone Unit',
-        storage: '128GB',
+        storage: '',
         color: 'Default',
         serialNumber: '-',
         assetCode: '-',

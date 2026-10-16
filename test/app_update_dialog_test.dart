@@ -32,18 +32,22 @@ void main() {
 
   testWidgets('AppUpdateDialog renders release info and controls correctly', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         home: Scaffold(
           body: AppUpdateDialog(updateInfo: testUpdateInfo),
         ),
       ),
     );
 
-    expect(find.text('Pembaruan Tersedia'), findsOneWidget);
+    expect(find.text('Update Aplikasi Tersedia'), findsOneWidget);
+    expect(find.text('VERSI SAAT INI'), findsOneWidget);
+    expect(find.text('VERSI TERBARU'), findsOneWidget);
     expect(find.text('v1.1.0'), findsOneWidget);
     expect(find.text('Build 2 • 10.00 MB'), findsOneWidget);
+    expect(find.text('YANG BARU'), findsOneWidget);
+    expect(find.text('Fitur baru dan perbaikan stabilitas'), findsOneWidget);
     expect(find.text('Perbarui Sekarang'), findsOneWidget);
-    expect(find.text('Nanti Saja'), findsOneWidget);
+    expect(find.text('Nanti'), findsOneWidget);
   });
 
   testWidgets('AppUpdateDialog.show manages _isShowing mutex and prevents duplicate dialogs', (tester) async {
@@ -74,8 +78,8 @@ void main() {
     expect(AppUpdateDialog.isShowing, isTrue);
     expect(find.byType(AppUpdateDialog), findsOneWidget);
 
-    // Dismiss dialog via "Nanti Saja"
-    await tester.tap(find.text('Nanti Saja'));
+    // Dismiss dialog via "Nanti"
+    await tester.tap(find.text('Nanti'));
     await tester.pumpAndSettle();
 
     // Dialog is closed and mutex is released
@@ -152,5 +156,145 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('AppUpdateDialog mandatory update mode hides "Nanti" and displays warning banner', (tester) async {
+    const mandatoryUpdateInfo = AppUpdateInfo(
+      updateAvailable: true,
+      isMandatory: true,
+      currentBuild: 1,
+      latestBuild: 3,
+      latestVersion: '1.2.0',
+      minSupportedBuild: 2,
+      title: 'Update Aplikasi Wajib',
+      releaseNotes: 'Security patch penting',
+      fileSize: 5242880,
+      formattedSize: '5.00 MB',
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AppUpdateDialog(
+            updateInfo: mandatoryUpdateInfo,
+            currentVersion: '1.0.5',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Update Aplikasi Tersedia'), findsOneWidget);
+    expect(find.text('Versi ini wajib dipasang untuk terus menggunakan SKYRental.'), findsOneWidget);
+    expect(find.text('v1.0.5'), findsOneWidget);
+    expect(find.text('v1.2.0'), findsOneWidget);
+    expect(find.text('Perbarui Sekarang'), findsOneWidget);
+    expect(find.text('Nanti'), findsNothing);
+  });
+
+  testWidgets('AppUpdateDialog parses various release note bullet formats cleanly', (tester) async {
+    const customUpdateInfo = AppUpdateInfo(
+      updateAvailable: true,
+      isMandatory: false,
+      currentBuild: 2,
+      latestBuild: 4,
+      latestVersion: '2.0.0',
+      releaseNotes: '- Integrasi printer thermal Bluetooth baru\n* Peningkatan kecepatan loading booking\n1. Perbaikan bug filter unit status\n• Optimasi sinkronisasi data kasir',
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AppUpdateDialog(
+            updateInfo: customUpdateInfo,
+            currentVersion: '1.9.0',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('YANG BARU'), findsOneWidget);
+    expect(find.text('Integrasi printer thermal Bluetooth baru'), findsOneWidget);
+    expect(find.text('Peningkatan kecepatan loading booking'), findsOneWidget);
+    expect(find.text('Perbaikan bug filter unit status'), findsOneWidget);
+    expect(find.text('Optimasi sinkronisasi data kasir'), findsOneWidget);
+  });
+
+  testWidgets('AppUpdateDialog handles empty release notes gracefully without breaking layout', (tester) async {
+    const noNotesUpdateInfo = AppUpdateInfo(
+      updateAvailable: true,
+      isMandatory: false,
+      currentBuild: 1,
+      latestBuild: 2,
+      latestVersion: '1.0.1',
+      releaseNotes: '',
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AppUpdateDialog(
+            updateInfo: noNotesUpdateInfo,
+            currentVersion: '1.0.0',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Update Aplikasi Tersedia'), findsOneWidget);
+    expect(find.text('YANG BARU'), findsNothing);
+    expect(find.text('Perbarui Sekarang'), findsOneWidget);
+    expect(find.text('Nanti'), findsOneWidget);
+  });
+
+  testWidgets('AppUpdateDialog renders responsively without overflow on small screen (360x640)', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    const longNotesInfo = AppUpdateInfo(
+      updateAvailable: true,
+      isMandatory: false,
+      currentBuild: 1,
+      latestBuild: 5,
+      latestVersion: '1.5.0',
+      releaseNotes: '1. Fitur A\n2. Fitur B\n3. Fitur C\n4. Fitur D\n5. Fitur E\n6. Fitur F',
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AppUpdateDialog(
+            updateInfo: longNotesInfo,
+            currentVersion: '1.0.0',
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Update Aplikasi Tersedia'), findsOneWidget);
+    expect(find.text('Perbarui Sekarang'), findsOneWidget);
+  });
+
+  testWidgets('AppUpdateDialog renders in dark theme mode without contrast issues', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: const Scaffold(
+          body: AppUpdateDialog(
+            updateInfo: testUpdateInfo,
+            currentVersion: '1.0.0',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Update Aplikasi Tersedia'), findsOneWidget);
+    expect(find.text('v1.0.0'), findsOneWidget);
+    expect(find.text('v1.1.0'), findsOneWidget);
+    expect(find.text('Perbarui Sekarang'), findsOneWidget);
   });
 }

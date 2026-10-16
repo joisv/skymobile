@@ -150,10 +150,14 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     }
 
     try {
-      final data = await widget.repository.getOperationalDashboardData(forceRefresh: forceRefresh);
+      final activeBranchId = AuthService().isAffiliateScoped ? AuthService().affiliateId : (AuthService().affiliateId ?? 4);
+      final data = await widget.repository.getOperationalDashboardData(affiliateId: activeBranchId, forceRefresh: forceRefresh);
       List<IphoneModel> readyUnits = [];
       try {
-        readyUnits = await widget.repository.getAllInventoryUnits(statusFilter: 'tersedia');
+        readyUnits = await widget.repository.getAllInventoryUnits(
+          statusFilter: 'tersedia',
+          affiliateId: activeBranchId,
+        );
       } catch (_) {
         readyUnits = [];
       }
@@ -285,10 +289,19 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     if (_queueSearchQuery.trim().isNotEmpty) {
       final q = _queueSearchQuery.trim().toLowerCase();
       displayItems = baseItems.where((b) {
+        final matchSerial = b.iphone.serialNumber.isNotEmpty &&
+            b.iphone.serialNumber != '-' &&
+            b.iphone.serialNumber.toLowerCase().contains(q);
+        final matchAsset = b.iphone.assetCode.isNotEmpty &&
+            b.iphone.assetCode != '-' &&
+            b.iphone.assetCode.toLowerCase().contains(q);
         return b.customerName.toLowerCase().contains(q) ||
             b.bookingCode.toLowerCase().contains(q) ||
             b.customerPhone.toLowerCase().contains(q) ||
-            b.iphone.modelName.toLowerCase().contains(q);
+            b.iphone.modelName.toLowerCase().contains(q) ||
+            b.iphone.name.toLowerCase().contains(q) ||
+            matchSerial ||
+            matchAsset;
       }).toList();
     } else {
       displayItems = List<BookingModel>.from(baseItems);
@@ -1056,7 +1069,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
         },
         style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
         decoration: InputDecoration(
-          hintText: 'Cari customer, kode booking, nomor WA, unit iPhone...',
+          hintText: 'Cari customer, kode booking, nomor WA, unit iPhone, S/N...',
           hintStyle: TextStyle(
             fontSize: 12,
             color: AppTheme.textSecondary.withValues(alpha: 0.7),
@@ -2489,7 +2502,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                           ),
                           const SizedBox(height: 1),
                           Text(
-                            '$storage • $colors',
+                            storage.isNotEmpty ? '$storage • $colors' : colors,
                             style: TextStyle(
                               fontSize: 9.5,
                               color: AppTheme.textSecondary,

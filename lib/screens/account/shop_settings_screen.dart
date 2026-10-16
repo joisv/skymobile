@@ -106,45 +106,57 @@ class _ShopSettingsScreenState extends State<ShopSettingsScreen> {
 
     setState(() => _isLoading = true);
 
-    final updated = _settings.copyWith(
-      shopName: _shopNameController.text.trim(),
-      outletName: _outletNameController.text.trim(),
-      address: _addressController.text.trim(),
-      phoneNumber: _phoneController.text.trim(),
-      footerNote: _footerController.text.trim(),
-    );
-
-    final saved = await widget.repository.updateShopSettings(updated);
-
-    final currentFormat = await _printerStorageService.getReceiptFormatSettings();
-    final updatedFormat = currentFormat.copyWith(
-      businessName: _shopNameController.text.trim(),
-      branchName: _outletNameController.text.trim(),
-      businessTagline: _addressController.text.trim().isNotEmpty
-          ? _addressController.text.trim()
-          : currentFormat.businessTagline,
-      contactInfo: _phoneController.text.trim().isNotEmpty
-          ? 'CS: ${_phoneController.text.trim()} (WA)'
-          : currentFormat.contactInfo,
-      footerLine1: _footerController.text.trim().isNotEmpty
-          ? _footerController.text.trim()
-          : currentFormat.footerLine1,
-    );
-    await _printerStorageService.saveReceiptFormatSettings(updatedFormat);
-
-    if (mounted) {
-      setState(() {
-        _settings = saved;
-        _formatSettings = updatedFormat;
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pengaturan toko dan outlet berhasil disimpan!'),
-          backgroundColor: Colors.green,
-        ),
+    try {
+      final updated = _settings.copyWith(
+        shopName: _shopNameController.text.trim(),
+        outletName: _outletNameController.text.trim(),
+        address: _addressController.text.trim(),
+        phoneNumber: _phoneController.text.trim(),
+        footerNote: _footerController.text.trim(),
       );
-      Navigator.of(context).pop();
+
+      final saved = await widget.repository.updateShopSettings(updated);
+
+      final currentFormat = await _printerStorageService.getReceiptFormatSettings();
+      final updatedFormat = currentFormat.copyWith(
+        businessName: _shopNameController.text.trim(),
+        branchName: _outletNameController.text.trim(),
+        businessTagline: _addressController.text.trim().isNotEmpty
+            ? _addressController.text.trim()
+            : currentFormat.businessTagline,
+        contactInfo: _phoneController.text.trim().isNotEmpty
+            ? 'CS: ${_phoneController.text.trim()} (WA)'
+            : currentFormat.contactInfo,
+        footerLine1: _footerController.text.trim().isNotEmpty
+            ? _footerController.text.trim()
+            : currentFormat.footerLine1,
+      );
+      await _printerStorageService.saveReceiptFormatSettings(updatedFormat);
+
+      if (mounted) {
+        setState(() {
+          _settings = saved;
+          _formatSettings = updatedFormat;
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pengaturan toko dan outlet berhasil disimpan!'),
+            backgroundColor: Color(0xFF047857),
+          ),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal menyimpan pengaturan toko: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     }
   }
 

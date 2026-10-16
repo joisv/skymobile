@@ -129,8 +129,14 @@ class AppRoutes {
 
       case createBooking:
       case '/create-booking':
+        final selectedIphone = (settings.arguments is Map)
+            ? (settings.arguments as Map)['selectedIphone'] as IphoneModel?
+            : (settings.arguments is IphoneModel ? settings.arguments as IphoneModel : null);
         return MaterialPageRoute(
-          builder: (_) => CreateBookingScreen(repository: repository),
+          builder: (_) => CreateBookingScreen(
+            repository: repository,
+            initialIphone: selectedIphone,
+          ),
           settings: settings,
         );
 

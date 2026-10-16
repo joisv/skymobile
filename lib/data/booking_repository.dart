@@ -1986,12 +1986,14 @@ class BookingRepository {
     final startIndex = (page - 1) * perPage;
     final pageUnits = startIndex >= total ? <IphoneModel>[] : allUnits.skip(startIndex).take(perPage).toList();
 
+    final summary = _unitSummaryCache ?? await getUnitStatusSummary();
+
     final result = PaginatedIphonesResult(
       units: pageUnits,
       total: total,
       currentPage: page,
       lastPage: lastPage,
-      summary: _unitSummaryCache,
+      summary: summary,
     );
 
     if (isDefaultFirstPage) {
@@ -2012,6 +2014,7 @@ class BookingRepository {
     _unitSummaryCache = null;
     _cachedFirstPageInventory = null;
     _cachedFirstPageInventoryTime = null;
+    _hasFetchedFromApi = false;
   }
 
   /// Helper untuk menyimulasikan inventaris besar (misalnya 100, 500, atau 1.000 unit) dalam pengujian performa
@@ -2043,6 +2046,7 @@ class BookingRepository {
     _unitSummaryCache = null;
     _cachedFirstPageInventory = null;
     _cachedFirstPageInventoryTime = null;
+    _hasFetchedFromApi = false;
   }
 
   /// Tambah unit baru ke inventaris
@@ -2345,7 +2349,7 @@ class BookingRepository {
 
 
   /// Mengambil data metrik dan operasional lengkap untuk layar dashboard (didukung client-side cache 5 menit)
-  Future<Map<String, dynamic>> getOperationalDashboardData({bool forceRefresh = false}) async {
+  Future<Map<String, dynamic>> getOperationalDashboardData({int? affiliateId, bool forceRefresh = false}) async {
     // 0. Cek client-side cache jika tidak dipaksa refresh
     if (!forceRefresh && isDashboardCacheValid && _cachedDashboardData != null) {
       return _cachedDashboardData!;
@@ -2353,7 +2357,8 @@ class BookingRepository {
 
     // 1. Coba ambil dari REST API backend Skyrent
     try {
-      final apiDashboard = await ApiService().getDashboardData();
+      final effectiveAffiliateId = affiliateId ?? (AuthService().isAffiliateScoped ? AuthService().affiliateId : (AuthService().affiliateId ?? 4));
+      final apiDashboard = await ApiService().getDashboardData(affiliateId: effectiveAffiliateId);
       if (apiDashboard != null && apiDashboard['metrics'] != null) {
         final metrics = apiDashboard['metrics'] as Map<String, dynamic>;
         final financials = (apiDashboard['financials'] as Map<String, dynamic>?) ?? {};

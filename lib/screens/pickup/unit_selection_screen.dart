@@ -213,7 +213,9 @@ class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
                             final isSelected = _selectedUnit?.id == unit.id;
                             final isMatch = requestedIphone != null &&
                                 unit.name.toLowerCase() == requestedIphone.name.toLowerCase() &&
-                                unit.storage.toLowerCase() == requestedIphone.storage.toLowerCase();
+                                (requestedIphone.storage.isEmpty ||
+                                    unit.storage.isEmpty ||
+                                    unit.storage.toLowerCase() == requestedIphone.storage.toLowerCase());
 
                             return _buildUnitCard(unit, isSelected, isMatch);
                           },
@@ -482,7 +484,7 @@ class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${unit.color} • ${unit.storage}',
+                          '${unit.color}${unit.storage.isNotEmpty ? ' • ${unit.storage}' : ''}',
                           style: TextStyle(
                             fontSize: 12,
                             color: AppTheme.textSecondary,

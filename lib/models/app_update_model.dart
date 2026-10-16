@@ -2,6 +2,7 @@ class AppUpdateInfo {
   final bool updateAvailable;
   final bool isMandatory;
   final int currentBuild;
+  final String currentVersion;
   final int latestBuild;
   final String latestVersion;
   final int minSupportedBuild;
@@ -18,10 +19,11 @@ class AppUpdateInfo {
     required this.updateAvailable,
     this.isMandatory = false,
     required this.currentBuild,
+    this.currentVersion = '',
     this.latestBuild = 0,
     this.latestVersion = '',
     this.minSupportedBuild = 0,
-    this.title = 'Pembaruan Tersedia',
+    this.title = 'Update Aplikasi Tersedia',
     this.releaseNotes,
     this.fileSize = 0,
     this.formattedSize = '',
@@ -45,13 +47,14 @@ class AppUpdateInfo {
       updateAvailable: available,
       isMandatory: json['is_mandatory'] as bool? ?? false,
       currentBuild: (json['current_build'] as num?)?.toInt() ?? 0,
+      currentVersion: json['current_version'] as String? ?? '',
       latestBuild: (json['latest_build'] as num?)?.toInt() ?? 0,
       latestVersion: json['latest_version'] as String? ?? '',
       minSupportedBuild: (json['min_supported_build'] as num?)?.toInt() ?? 0,
       title: json['title'] as String? ??
           ((json['is_mandatory'] as bool? ?? false)
-              ? 'Pembaruan Wajib Tersedia'
-              : 'Pembaruan Tersedia'),
+              ? 'Update Aplikasi Wajib'
+              : 'Update Aplikasi Tersedia'),
       releaseNotes: json['release_notes'] as String?,
       fileSize: size,
       formattedSize: formatted,

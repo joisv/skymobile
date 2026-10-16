@@ -96,8 +96,10 @@ class IphoneModel {
     this.isAvailable = true,
   });
 
-  String get fullName => '$name $storage';
-  String get fullDisplayName => '$name $storage - $color';
+  String get fullName => storage.trim().isNotEmpty ? '$name $storage' : name;
+  String get fullDisplayName => storage.trim().isNotEmpty
+      ? '$name $storage - $color'
+      : (color.isNotEmpty && color != 'Default' ? '$name - $color' : name);
   String get modelName => fullName;
   String? get affiliateName => branchName;
   List<IphoneDurationOption> get availableDurations {
@@ -309,7 +311,9 @@ class IphoneModel {
           ? json['id'] as int
           : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
       name: json['name']?.toString() ?? 'iPhone',
-      storage: json['storage']?.toString() ?? '128GB',
+      storage: json['storage'] != null && json['storage'].toString().trim().isNotEmpty
+          ? json['storage'].toString().trim()
+          : '',
       color: json['color']?.toString() ?? 'Default',
       serialNumber: json['serial_number']?.toString() ?? '-',
       assetCode: json['asset_code']?.toString() ?? '-',

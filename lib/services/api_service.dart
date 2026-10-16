@@ -408,11 +408,17 @@ class ApiService {
   }
 
   /// Mendapatkan data dashboard operasional langsung dari API
-  /// GET /api/v1/dashboard
-  Future<Map<String, dynamic>?> getDashboardData() async {
+  /// GET /api/v1/dashboard?affiliate_id={affiliateId}
+  Future<Map<String, dynamic>?> getDashboardData({int? affiliateId}) async {
     for (final base in candidateUrls) {
       try {
-        final uri = Uri.parse('$base/dashboard');
+        var uri = Uri.parse('$base/dashboard');
+        if (affiliateId != null) {
+          uri = uri.replace(queryParameters: {
+            ...uri.queryParameters,
+            'affiliate_id': affiliateId.toString(),
+          });
+        }
         final response = await http.get(
           uri,
           headers: _buildHeaders(),

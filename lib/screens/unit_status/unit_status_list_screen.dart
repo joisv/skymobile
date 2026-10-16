@@ -1683,7 +1683,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${unit.storage} • ${unit.color}',
+                      unit.storage.isNotEmpty ? '${unit.storage} • ${unit.color}' : unit.color,
                       style: const TextStyle(
                         fontSize: 11.5,
                         color: Color(0xFF64748B),

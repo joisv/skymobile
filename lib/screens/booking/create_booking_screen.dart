@@ -33,8 +33,13 @@ class _PhoneHyphenFormatter extends TextInputFormatter {
 
 class CreateBookingScreen extends StatefulWidget {
   final BookingRepository repository;
+  final IphoneModel? initialIphone;
 
-  const CreateBookingScreen({super.key, required this.repository});
+  const CreateBookingScreen({
+    super.key,
+    required this.repository,
+    this.initialIphone,
+  });
 
   @override
   State<CreateBookingScreen> createState() => _CreateBookingScreenState();
@@ -102,6 +107,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     super.initState();
     _startDate = DateTime.now();
     _startTime = TimeOfDay.now();
+    if (widget.initialIphone != null) {
+      _selectedUnit = widget.initialIphone;
+      _selectedDurationOption = widget.initialIphone!.availableDurations.firstOrNull;
+    }
     _fetchAvailableUnits();
   }
 
@@ -155,6 +164,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         matchedUnit = _isUnitAvailableForBooking(found) ? found : null;
       } else {
         matchedUnit = _isUnitAvailableForBooking(currentSelected) ? currentSelected : null;
+        if (_searchQuery.trim().isEmpty && matchedUnit != null && !updatedList.any((u) => u.id == matchedUnit!.id)) {
+          updatedList.insert(0, matchedUnit);
+        }
       }
     }
 

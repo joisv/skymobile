@@ -1164,7 +1164,9 @@ class _CreateTransferBottomSheetState extends State<_CreateTransferBottomSheet> 
                                     ),
                                     const SizedBox(width: 6),
                                     Text(
-                                      '${_selectedUnit!.storage} • ${_selectedUnit!.color}',
+                                      _selectedUnit!.storage.isNotEmpty
+                                           ? '${_selectedUnit!.storage} • ${_selectedUnit!.color}'
+                                           : _selectedUnit!.color,
                                       style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                                     ),
                                   ],
@@ -1679,7 +1681,9 @@ class _IphonePickerModalState extends State<_IphonePickerModal> {
                                           ),
                                         ),
                                         Text(
-                                          '${unit.storage} • ${unit.color}',
+                                          unit.storage.isNotEmpty
+                                           ? '${unit.storage} • ${unit.color}'
+                                           : unit.color,
                                           style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                                         ),
                                         Row(

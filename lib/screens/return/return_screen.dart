@@ -714,7 +714,9 @@ class _ReturnScreenState extends State<ReturnScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${booking.iphone.name} (${booking.iphone.storage})',
+                            booking.iphone.storage.isNotEmpty
+                                ? '${booking.iphone.name} (${booking.iphone.storage})'
+                                : booking.iphone.name,
                             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 2),

@@ -101,8 +101,8 @@ class AppUpdateService {
     final shouldCloseClient = httpClient == null;
 
     try {
-      final currentBuild = overrideCurrentBuild ??
-          (await getCurrentVersionInfo(forceRefresh: forceRefreshVersion)).buildNumber;
+      final currentVerInfo = await getCurrentVersionInfo(forceRefresh: forceRefreshVersion);
+      final currentBuild = overrideCurrentBuild ?? currentVerInfo.buildNumber;
       final baseUrl = ApiService().baseUrl.replaceAll(RegExp(r'/+$'), '');
       final uri = Uri.parse('$baseUrl/app/check-update?current_build=$currentBuild');
 
@@ -132,6 +132,7 @@ class AppUpdateService {
               false;
           data['is_mandatory'] = data['is_mandatory'] ?? body['is_mandatory'] ?? false;
           data['current_build'] = data['current_build'] ?? body['current_build'] ?? currentBuild;
+          data['current_version'] = data['current_version'] ?? body['current_version'] ?? currentVerInfo.version;
           data['message'] = data['message'] ?? body['message'];
 
           final info = AppUpdateInfo.fromJson(data);
