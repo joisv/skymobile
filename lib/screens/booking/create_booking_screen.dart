@@ -428,8 +428,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     }
     if (!_isUnitAvailableForBooking(_selectedUnit!)) {
       final isCurrentlyRented = ['rented', 'disewa'].contains(unitStatus) ||
-          widget.repository.isUnitCurrentlyRented(_selectedUnit!.assetCode);
-      if (isCurrentlyRented && _startDateTime.isBefore(DateTime.now())) {
+          widget.repository.isUnitCurrentlyRented(_selectedUnit!.assetCode, unitId: _selectedUnit!.id, serialNumber: _selectedUnit!.serialNumber);
+      if (isCurrentlyRented) {
         _showRentedUnitWarningDialog(_selectedUnit!);
       } else {
         _showScheduleConflictWarningDialog(_selectedUnit!);
@@ -493,8 +493,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           children: [
             Text(
               isRented
-                  ? 'Unit ${unit.modelName} (${unit.color}, SN: ${unit.serialNumber}) saat ini sedang dalam masa sewa aktif oleh pelanggan lain dan tidak dapat disewa ulang.'
-                  : 'Unit ${unit.modelName} (${unit.color}, SN: ${unit.serialNumber}) sedang dalam status perbaikan/maintenance teknis.',
+                  ? 'Unit ${unit.modelName} (SN: ${unit.serialNumber}) saat ini sedang dalam masa sewa aktif oleh pelanggan lain dan tidak dapat disewa ulang.'
+                  : 'Unit ${unit.modelName} (SN: ${unit.serialNumber}) sedang dalam status perbaikan/maintenance teknis.',
               style: TextStyle(fontSize: 13, height: 1.4, color: AppTheme.textPrimary),
             ),
             const SizedBox(height: 12),
@@ -568,7 +568,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Unit ${unit.modelName} (${unit.color}, SN: ${unit.serialNumber}) telah dibooking oleh pelanggan lain untuk jadwal sewa yang Anda pilih.',
+              'Unit ${unit.modelName} (SN: ${unit.serialNumber}) telah dibooking oleh pelanggan lain untuk jadwal sewa yang Anda pilih.',
               style: TextStyle(fontSize: 13, height: 1.4, color: AppTheme.textPrimary),
             ),
             const SizedBox(height: 12),
@@ -711,8 +711,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     }
     if (!_isUnitAvailableForBooking(_selectedUnit!)) {
       final isCurrentlyRented = ['rented', 'disewa'].contains(unitStatus) ||
-          widget.repository.isUnitCurrentlyRented(_selectedUnit!.assetCode);
-      if (isCurrentlyRented && _startDateTime.isBefore(DateTime.now())) {
+          widget.repository.isUnitCurrentlyRented(_selectedUnit!.assetCode, unitId: _selectedUnit!.id, serialNumber: _selectedUnit!.serialNumber);
+      if (isCurrentlyRented) {
         _showRentedUnitWarningDialog(_selectedUnit!);
       } else {
         _showScheduleConflictWarningDialog(_selectedUnit!);
@@ -1304,10 +1304,11 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                 ),
                 Text(
                   _selectedUnit != null
-                      ? '${_selectedUnit!.color} • SN: ${_selectedUnit!.serialNumber}'
+                      ? 'SN: ${_selectedUnit!.serialNumber}'
                       : 'Pilih unit iPhone di formulir',
                   style: TextStyle(
                     fontSize: 11,
+                    fontWeight: _selectedUnit != null ? FontWeight.w600 : FontWeight.normal,
                     color: _selectedUnit == null ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                     fontStyle: _selectedUnit == null ? FontStyle.italic : FontStyle.normal,
                   ),
@@ -1937,8 +1938,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
             final isPeriodAvailable = _isUnitAvailableForBooking(unit);
 
             final isCurrentlyRented = ['rented', 'disewa'].contains(unitStatus) ||
-                widget.repository.isUnitCurrentlyRented(unit.assetCode);
-            final isOverlappingCurrentRental = isCurrentlyRented && _startDateTime.isBefore(DateTime.now());
+                widget.repository.isUnitCurrentlyRented(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber);
+            final isOverlappingCurrentRental = isCurrentlyRented && !isPeriodAvailable;
             final isScheduleConflict = !isMaintenance && !isPeriodAvailable && !isOverlappingCurrentRental;
             final isUnavailable = !isPeriodAvailable;
 
@@ -2068,8 +2069,12 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                                     : (unit.affiliateName?.trim().isNotEmpty == true ? unit.affiliateName!.trim() : '');
                                 final tagPrefix = branchTag.isNotEmpty ? '$branchTag • ' : '';
                                 return Text(
-                                  '$tagPrefix${unit.color} • Bat. ${unit.batteryHealth}% • SN: ${unit.serialNumber}',
-                                  style: TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                                  '${tagPrefix}SN: ${unit.serialNumber}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textPrimary,
+                                  ),
                                   overflow: TextOverflow.ellipsis,
                                 );
                               },
@@ -2365,7 +2370,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         children: [
           const Text('3. Estimasi Biaya & Konfirmasi', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          _buildBillingRow('Unit iPhone', _selectedUnit?.modelName ?? '-'),
+          _buildBillingRow('Unit iPhone', _selectedUnit != null ? '${_selectedUnit!.modelName} (SN: ${_selectedUnit!.serialNumber})' : '-'),
           _buildBillingRow('Durasi', !_isCustomDurationMode && _selectedDurationOption != null ? _selectedDurationOption!.displayName : '$_customJumlah $_customUnit'),
           _buildBillingRow('Sewa', Formatters.formatCurrency(_rentTotal)),
           const Divider(),
@@ -2381,11 +2386,15 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(
-            child: Text(label, style: TextStyle(fontSize: 12, color: isAccent ? AppTheme.textPrimary : AppTheme.textSecondary, fontWeight: isAccent ? FontWeight.bold : FontWeight.normal)),
-          ),
+          Text(label, style: TextStyle(fontSize: 12, color: isAccent ? AppTheme.textPrimary : AppTheme.textSecondary, fontWeight: isAccent ? FontWeight.bold : FontWeight.normal)),
           const SizedBox(width: 8),
-          Text(value, style: TextStyle(fontSize: isAccent ? 14 : 12, fontWeight: FontWeight.bold, color: isAccent ? AppTheme.secondary : AppTheme.textPrimary)),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: TextStyle(fontSize: isAccent ? 14 : 12, fontWeight: FontWeight.bold, color: isAccent ? AppTheme.secondary : AppTheme.textPrimary),
+            ),
+          ),
         ],
       ),
     );
