@@ -2328,5 +2328,128 @@ class ApiService {
     }
     return null;
   }
+
+  /// Mengambil daftar pengeluaran operasional cabang
+  /// GET /api/v1/expenses
+  Future<Map<String, dynamic>?> getExpensesApi({
+    String? period,
+    DateTime? startDate,
+    DateTime? endDate,
+    int? affiliateId,
+    String? category,
+  }) async {
+    for (final base in candidateUrls) {
+      try {
+        final queryParams = <String, String>{};
+        if (period != null) queryParams['period'] = period;
+        if (startDate != null) queryParams['start_date'] = startDate.toIso8601String().substring(0, 10);
+        if (endDate != null) queryParams['end_date'] = endDate.toIso8601String().substring(0, 10);
+        if (affiliateId != null) queryParams['affiliate_id'] = affiliateId.toString();
+        if (category != null && category.isNotEmpty && category != 'all' && category != 'semua') {
+          queryParams['category'] = category;
+        }
+
+        final uri = Uri.parse('$base/expenses').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+        final response = await http.get(
+          uri,
+          headers: _buildHeaders(targetUri: uri),
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        } else if (response.statusCode >= 400) {
+          String message = 'Gagal memuat daftar pengeluaran (HTTP ${response.statusCode})';
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Mencatat pengeluaran operasional cabang baru
+  /// POST /api/v1/expenses
+  Future<Map<String, dynamic>?> createExpenseApi({
+    required double amount,
+    required String category,
+    String? notes,
+    DateTime? spentAt,
+    int? affiliateId,
+  }) async {
+    final payload = <String, dynamic>{
+      'amount': amount,
+      'category': category,
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+      if (spentAt != null) 'spent_at': spentAt.toIso8601String(),
+      if (affiliateId != null) 'affiliate_id': affiliateId,
+    };
+
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/expenses');
+        final response = await http.post(
+          uri,
+          headers: _buildHeaders(isJson: true, targetUri: uri),
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        } else if (response.statusCode >= 400) {
+          String message = 'Gagal mencatat pengeluaran (HTTP ${response.statusCode})';
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Menghapus catatan pengeluaran cabang
+  /// DELETE /api/v1/expenses/{id}
+  Future<bool> deleteExpenseApi(int id) async {
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/expenses/$id');
+        final response = await http.delete(
+          uri,
+          headers: _buildHeaders(targetUri: uri),
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _saveWorkingUrl(base);
+          return true;
+        } else if (response.statusCode >= 400) {
+          String message = 'Gagal menghapus pengeluaran (HTTP ${response.statusCode})';
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return false;
+  }
 }
 

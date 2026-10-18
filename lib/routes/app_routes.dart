@@ -19,6 +19,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/booking/booking_detail_screen.dart';
 import '../screens/booking/booking_list_screen.dart';
 import '../screens/booking/create_booking_screen.dart';
+import '../screens/dashboard/expenses_screen.dart';
 import '../screens/dashboard/notification_list_screen.dart';
 import '../screens/dashboard/sales_report_screen.dart';
 import '../screens/main_navigation_screen.dart';
@@ -72,6 +73,7 @@ class AppRoutes {
   static const String unitSchedule = '/unit-schedule';
   static const String dashboard = '/dashboard';
   static const String salesReport = '/sales-report';
+  static const String branchExpenses = '/expenses';
   static const String notifications = '/notifications';
   static const String account = '/account';
   static const String changePassword = '/change-password';
@@ -559,6 +561,22 @@ class AppRoutes {
       case salesReport:
         return MaterialPageRoute(
           builder: (_) => SalesReportScreen(repository: repository),
+          settings: settings,
+        );
+
+      case branchExpenses:
+      case '/branch-expenses':
+        int? initialAffiliateId;
+        if (settings.arguments is int) {
+          initialAffiliateId = settings.arguments as int;
+        } else if (settings.arguments is Map<String, dynamic>) {
+          initialAffiliateId = (settings.arguments as Map<String, dynamic>)['affiliateId'] as int?;
+        }
+        return MaterialPageRoute(
+          builder: (_) => ExpensesScreen(
+            repository: repository,
+            initialAffiliateId: initialAffiliateId,
+          ),
           settings: settings,
         );
 

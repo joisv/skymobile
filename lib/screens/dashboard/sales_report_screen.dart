@@ -541,6 +541,19 @@ Status Kasir: Telah Ditutup & Sesuai.
       return m.contains('qris');
     }).length;
 
+    final double totalExpenses = (summary['totalExpenses'] as num?)?.toDouble() ??
+        (summary['total_expenses'] as num?)?.toDouble() ??
+        0.0;
+    final double grossCash = (summary['grossCash'] as num?)?.toDouble() ??
+        (summary['gross_cash'] as num?)?.toDouble() ??
+        cashIncome;
+    final double refundDep = (summary['totalDepositsRefunded'] as num?)?.toDouble() ??
+        (summary['total_deposits_refunded'] as num?)?.toDouble() ??
+        0.0;
+    final double netCash = (summary['netCash'] as num?)?.toDouble() ??
+        (summary['net_cash'] as num?)?.toDouble() ??
+        (grossCash - refundDep - totalExpenses);
+
     final mediaWidth = MediaQuery.sizeOf(context).width;
     final isTablet = mediaWidth >= 900;
 
@@ -571,7 +584,7 @@ Status Kasir: Telah Ditutup & Sesuai.
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Left Column (Hero Omzet + Proporsi + Jenis Pembayaran)
+                          // Left Column (Hero Omzet + Proporsi + Jenis Pembayaran + Rekonsiliasi)
                           Expanded(
                             flex: 38,
                             child: _buildTabletLeftColumn(
@@ -584,6 +597,10 @@ Status Kasir: Telah Ditutup & Sesuai.
                               cashIncome: cashIncome,
                               transferIncome: transferIncome,
                               qrisIncome: qrisIncome,
+                              grossCash: grossCash,
+                              totalExpenses: totalExpenses,
+                              refundDep: refundDep,
+                              netCash: netCash,
                             ),
                           ),
                           const SizedBox(width: 20),
@@ -623,6 +640,10 @@ Status Kasir: Telah Ditutup & Sesuai.
                         modelRevenue: modelRevenue,
                         modelCount: modelCount,
                         transactions: transactions,
+                        grossCash: grossCash,
+                        totalExpenses: totalExpenses,
+                        refundDep: refundDep,
+                        netCash: netCash,
                       ),
 
                     const SizedBox(height: 20),
@@ -1282,11 +1303,23 @@ Status Kasir: Telah Ditutup & Sesuai.
     required double cashIncome,
     required double transferIncome,
     required double qrisIncome,
+    required double grossCash,
+    required double totalExpenses,
+    required double refundDep,
+    required double netCash,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildRevenueHeroCard(totalRev, txCount, aov, heldDep),
+        const SizedBox(height: 16),
+        _buildExpensesReconciliationCard(
+          grossCash: grossCash,
+          totalExpenses: totalExpenses,
+          refundDep: refundDep,
+          netCash: netCash,
+          isTablet: true,
+        ),
         const SizedBox(height: 16),
         _buildPaymentProportionCard(
           cashIncome: cashIncome,
@@ -1362,11 +1395,23 @@ Status Kasir: Telah Ditutup & Sesuai.
     required Map<String, double> modelRevenue,
     required Map<String, int> modelCount,
     required List<PaymentTransactionModel> transactions,
+    required double grossCash,
+    required double totalExpenses,
+    required double refundDep,
+    required double netCash,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildRevenueHeroCard(totalRev, txCount, aov, heldDep),
+        const SizedBox(height: 14),
+        _buildExpensesReconciliationCard(
+          grossCash: grossCash,
+          totalExpenses: totalExpenses,
+          refundDep: refundDep,
+          netCash: netCash,
+          isTablet: false,
+        ),
         const SizedBox(height: 14),
         // 2x2 grid for stat cards on mobile
         Column(
@@ -1443,6 +1488,173 @@ Status Kasir: Telah Ditutup & Sesuai.
         const SizedBox(height: 16),
         _buildTransactionsTableCard(transactions, txCount),
       ],
+    );
+  }
+
+  // =========================================================================
+  // REKONSILIASI KAS LACI & PENGELUARAN CABANG
+  // =========================================================================
+
+  Widget _buildExpensesReconciliationCard({
+    required double grossCash,
+    required double totalExpenses,
+    required double refundDep,
+    required double netCash,
+    required bool isTablet,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.point_of_sale_rounded, color: Color(0xFF2563EB), size: 20),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Rekonsiliasi Kas Laci & Biaya Cabang',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const Text(
+                            'Kas Fisik - Refund - Biaya Operasional',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFDC2626),
+                  side: const BorderSide(color: Color(0xFFFECACA)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                ),
+                icon: const Icon(Icons.receipt_long_outlined, size: 14),
+                label: const Text('Kelola Biaya', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                onPressed: () {
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.branchExpenses,
+                    arguments: _selectedAffiliateId,
+                  ).then((_) => _loadReport(page: _currentPage));
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Kas Fisik (Tunai)', style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
+                      const SizedBox(height: 4),
+                      Text(
+                        Formatters.currency(grossCash),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFECACA)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Biaya Cabang', style: TextStyle(fontSize: 10.5, color: Color(0xFFB91C1C))),
+                      const SizedBox(height: 4),
+                      Text(
+                        '-${Formatters.currency(totalExpenses)}',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Net Kas Laci', style: TextStyle(fontSize: 10.5, color: Color(0xFF047857))),
+                      const SizedBox(height: 4),
+                      Text(
+                        Formatters.currency(netCash < 0 ? 0 : netCash),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

@@ -6,6 +6,7 @@ import '../models/affiliate_model.dart';
 import '../models/affiliate_revenue_model.dart';
 import '../models/affiliate_user_model.dart';
 import '../models/booking_model.dart';
+import '../models/expense_model.dart';
 import '../models/iphone_model.dart';
 import '../models/iphone_transfer_model.dart';
 import '../models/notification_model.dart';
@@ -484,15 +485,23 @@ class BookingRepository {
       }
 
       final assetCode = unit.assetCode.toLowerCase().trim();
+      final serial = unit.serialNumber.toLowerCase().trim();
       final hasActiveRental = _bookings.any((booking) {
-        final sameUnit = booking.iphone.assetCode.toLowerCase().trim() == assetCode;
+        final matchId = unit.id > 0 && booking.iphone.id == unit.id;
+        final matchAsset = assetCode.isNotEmpty && assetCode != '-' && booking.iphone.assetCode.toLowerCase().trim() == assetCode;
+        final matchSerial = serial.isNotEmpty && serial != '-' && booking.iphone.serialNumber.toLowerCase().trim() == serial;
+        final sameUnit = matchId || matchAsset || matchSerial;
+        if (!sameUnit) return false;
+
+        if (booking.returns != null && booking.returns!.isNotEmpty) return false;
+        if (booking.status == BookingStatus.returned || booking.status == BookingStatus.cancelled) return false;
+
         final bookingStatus = booking.status.name.toLowerCase().trim();
         final unitStatus = booking.iphone.status.toLowerCase().trim();
-        return sameUnit &&
-            (bookingStatus == 'rented' ||
-                bookingStatus == 'disewa' ||
-                unitStatus == 'rented' ||
-                unitStatus == 'disewa');
+        return bookingStatus == 'rented' ||
+            bookingStatus == 'disewa' ||
+            unitStatus == 'rented' ||
+            unitStatus == 'disewa';
       });
       return !hasActiveRental;
     }
@@ -674,10 +683,16 @@ class BookingRepository {
 
     // Perbarui status unit iPhone di inventory menjadi 'dibooking'
     final updatedIphone = iphone.copyWith(status: 'dibooking');
-    final invIdx = _inventory.indexWhere((u) => u.assetCode == iphone.assetCode);
+    final invIdx = _inventory.indexWhere((u) =>
+        (u.id > 0 && iphone.id > 0 && u.id == iphone.id) ||
+        (iphone.serialNumber.isNotEmpty && iphone.serialNumber != '-' && u.serialNumber.toLowerCase() == iphone.serialNumber.toLowerCase()) ||
+        (iphone.assetCode.isNotEmpty && iphone.assetCode != '-' && u.assetCode.toLowerCase() == iphone.assetCode.toLowerCase()));
     if (invIdx != -1) {
       _inventory[invIdx] = updatedIphone;
     }
+    _cachedFirstPageInventory = null;
+    _cachedFirstPageInventoryTime = null;
+    _unitSummaryCache = null;
 
     final newBooking = BookingModel(
       id: nextId,
@@ -691,6 +706,8 @@ class BookingRepository {
       kia: kia,
       startDate: startDate,
       endDate: endDate,
+      startTime: '$startH:$startM',
+      endTime: '$endH:$endM',
       durationDays: durationDays,
       price: price,
       deposit: deposit,
@@ -1559,7 +1576,23 @@ class BookingRepository {
     if (['maintenance', 'perbaikan', 'perawatan', 'lost', 'hilang', 'retired', 'nonaktif', 'in_transit', 'transferred', 'mutasi'].contains(rawStatus)) {
       return false;
     }
-    if (!unit.isAvailable) {
+    if (['rented', 'disewa'].contains(rawStatus)) {
+      final activeBooking = getActiveBookingForUnitSync(unit.assetCode, unitId: unit.id, serialNumber: unit.serialNumber);
+      if (activeBooking == null) {
+        return false;
+      }
+      final bEnd = DateTime(
+        activeBooking.endDate.year,
+        activeBooking.endDate.month,
+        activeBooking.endDate.day,
+        int.tryParse(activeBooking.endTime?.split(':').firstOrNull ?? activeBooking.endDate.hour.toString()) ?? activeBooking.endDate.hour,
+        int.tryParse(activeBooking.endTime?.split(':').elementAtOrNull(1) ?? activeBooking.endDate.minute.toString()) ?? activeBooking.endDate.minute,
+      );
+      if (bEnd.isBefore(DateTime.now()) || !start.isAfter(bEnd)) {
+        return false;
+      }
+    }
+    if (!unit.isAvailable && !['rented', 'disewa'].contains(rawStatus)) {
       return false;
     }
 
@@ -1578,8 +1611,12 @@ class BookingRepository {
       }
       final unitAsset = unit.assetCode.toLowerCase().trim();
       final bAsset = b.iphone.assetCode.toLowerCase().trim();
-      final isSameUnit = b.iphone.id == unit.id ||
-          (unitAsset.isNotEmpty && unitAsset != '-' && bAsset == unitAsset);
+      final unitSerial = unit.serialNumber.toLowerCase().trim();
+      final bSerial = b.iphone.serialNumber.toLowerCase().trim();
+      final matchId = b.iphone.id > 0 && unit.id > 0 && b.iphone.id == unit.id;
+      final matchAsset = unitAsset.isNotEmpty && unitAsset != '-' && bAsset == unitAsset;
+      final matchSerial = unitSerial.isNotEmpty && unitSerial != '-' && bSerial == unitSerial;
+      final isSameUnit = matchId || matchAsset || matchSerial;
       if (!isSameUnit) {
         continue;
       }
@@ -1609,12 +1646,12 @@ class BookingRepository {
         b.startDate.year,
         b.startDate.month,
         b.startDate.day,
-        int.tryParse(b.startTime?.split(':').firstOrNull ?? '0') ?? 0,
-        int.tryParse(b.startTime?.split(':').elementAtOrNull(1) ?? '0') ?? 0,
+        int.tryParse(b.startTime?.split(':').firstOrNull ?? b.startDate.hour.toString()) ?? b.startDate.hour,
+        int.tryParse(b.startTime?.split(':').elementAtOrNull(1) ?? b.startDate.minute.toString()) ?? b.startDate.minute,
       );
 
       DateTime bEnd;
-      if (b.endTime != null) {
+      if (b.endTime != null && b.endTime!.isNotEmpty) {
         bEnd = DateTime(
           b.endDate.year,
           b.endDate.month,
@@ -1623,11 +1660,26 @@ class BookingRepository {
           int.tryParse(b.endTime!.split(':').elementAtOrNull(1) ?? '59') ?? 59,
         );
       } else {
-        bEnd = bStart.add(Duration(hours: b.durationDays > 0 ? b.durationDays : 24));
+        bEnd = DateTime(
+          b.endDate.year,
+          b.endDate.month,
+          b.endDate.day,
+          b.endDate.hour,
+          b.endDate.minute,
+        );
+        if (bEnd.isBefore(bStart) || bEnd.isAtSameMomentAs(bStart)) {
+          final durationHours = b.durationDays <= 5 ? b.durationDays * 24 : b.durationDays;
+          bEnd = bStart.add(Duration(hours: durationHours > 0 ? durationHours : 24));
+        }
       }
 
-      if (['rented', 'disewa'].contains(bStatus) && bEnd.isBefore(now)) {
-        bEnd = now;
+      // If unit is currently rented/disewa and not returned:
+      // If current time has passed the scheduled end date, it is an unreturned overdue rental.
+      // The unit is physically unavailable and cannot be booked for any period until returned.
+      if (['rented', 'disewa'].contains(bStatus)) {
+        if (bEnd.isBefore(now)) {
+          return false;
+        }
       }
 
       // Check interval overlap: [bStart, bEnd] overlaps with [startDt, endDt]
@@ -1660,6 +1712,14 @@ class BookingRepository {
           b.iphone.assetCode.toLowerCase().trim() == normalized;
       final sameUnit = matchId || matchSerial || matchAsset;
       if (!sameUnit) return false;
+
+      // Skip bookings that have already been returned or cancelled
+      if (b.returns != null && b.returns!.isNotEmpty) {
+        return false;
+      }
+      if (b.status == BookingStatus.returned || b.status == BookingStatus.cancelled) {
+        return false;
+      }
 
       final bookingStatus = b.status.name.toLowerCase().trim();
       final unitStatus = b.iphone.status.toLowerCase().trim();
@@ -2213,6 +2273,14 @@ class BookingRepository {
               b.iphone.assetCode.toLowerCase().trim() == normalized;
           final sameUnit = matchId || matchSerial || matchAsset;
           if (!sameUnit) return false;
+
+          // Skip bookings that have already been returned or cancelled
+          if (b.returns != null && b.returns!.isNotEmpty) {
+            return false;
+          }
+          if (b.status == BookingStatus.returned || b.status == BookingStatus.cancelled) {
+            return false;
+          }
 
           final bookingStatus = b.status.name.toLowerCase().trim();
           final unitStatus = b.iphone.status.toLowerCase().trim();
@@ -3020,6 +3088,14 @@ class BookingRepository {
         if (v is num) breakdown[k.toString()] = v.toDouble();
       });
     }
+    final rawExpenseBreakdown = reportData['expenseBreakdown'] ?? reportData['expense_breakdown'];
+    final Map<String, double> expenseBreakdown = {};
+    if (rawExpenseBreakdown is Map) {
+      rawExpenseBreakdown.forEach((k, v) {
+        if (v is num) expenseBreakdown[k.toString()] = v.toDouble();
+      });
+    }
+
     final double totalRev = (summary['totalRevenue'] as num?)?.toDouble() ??
         (summary['total_revenue'] as num?)?.toDouble() ??
         0;
@@ -3032,6 +3108,17 @@ class BookingRepository {
     final int txCount = (summary['transactionCount'] as num?)?.toInt() ??
         (summary['transaction_count'] as num?)?.toInt() ??
         0;
+    final double totalExpenses = (summary['totalExpenses'] as num?)?.toDouble() ??
+        (summary['total_expenses'] as num?)?.toDouble() ??
+        0;
+    final double grossCash = (summary['grossCash'] as num?)?.toDouble() ??
+        (summary['gross_cash'] as num?)?.toDouble() ??
+        (summary['cashAmount'] as num?)?.toDouble() ??
+        (summary['cash_amount'] as num?)?.toDouble() ??
+        0;
+    final double netCash = (summary['netCash'] as num?)?.toDouble() ??
+        (summary['net_cash'] as num?)?.toDouble() ??
+        (grossCash - refundDep - totalExpenses);
 
     final outletName = (branchName ?? reportData['branch_name']?.toString() ?? 'SEMUA CABANG').toUpperCase();
 
@@ -3053,14 +3140,44 @@ class BookingRepository {
     lines.add(center('RINGKASAN OMZET & KAS'));
     lines.add(twoCol('Total Omzet :', Formatters.currency(totalRev)));
     lines.add(twoCol('Total Trans :', '$txCount Transaksi'));
-    lines.add(twoCol('Dep. Kasir  :', Formatters.currency(heldDep)));
-    lines.add(twoCol('Dep. Refund :', Formatters.currency(refundDep)));
+    if (heldDep > 0) {
+      lines.add(twoCol('Dep. Kasir  :', Formatters.currency(heldDep)));
+    }
+    if (refundDep > 0) {
+      lines.add(twoCol('Dep. Refund :', Formatters.currency(refundDep)));
+    }
     lines.add(subDivider);
 
     lines.add(center('RINCIAN METODE BAYAR'));
-    breakdown.forEach((method, amount) {
-      lines.add(twoCol(method, Formatters.currency(amount)));
-    });
+    if (breakdown.isNotEmpty) {
+      breakdown.forEach((method, amount) {
+        lines.add(twoCol(method, Formatters.currency(amount)));
+      });
+    } else {
+      lines.add(twoCol('Metode Bayar', Formatters.currency(0)));
+    }
+    lines.add(subDivider);
+
+    lines.add(center('PENGELUARAN CABANG'));
+    if (expenseBreakdown.isNotEmpty) {
+      expenseBreakdown.forEach((cat, amount) {
+        final catStr = cat.replaceAll('_', ' ');
+        final catLabel = catStr.isNotEmpty ? '${catStr[0].toUpperCase()}${catStr.substring(1)}' : 'Biaya';
+        lines.add(twoCol(catLabel, Formatters.currency(amount)));
+      });
+    } else {
+      lines.add(twoCol('Pengeluaran', Formatters.currency(0)));
+    }
+    lines.add(twoCol('Total Biaya :', Formatters.currency(totalExpenses)));
+    lines.add(subDivider);
+
+    lines.add(center('REKONSILIASI KAS LACI'));
+    lines.add(twoCol('Kas Fisik   :', Formatters.currency(grossCash)));
+    lines.add(twoCol('Pengeluaran :', '-${Formatters.currency(totalExpenses)}'));
+    if (refundDep > 0) {
+      lines.add(twoCol('Refund      :', '-${Formatters.currency(refundDep)}'));
+    }
+    lines.add(twoCol('Net Kas Laci:', Formatters.currency(netCash < 0 ? 0 : netCash)));
     lines.add(subDivider);
 
     lines.add(center('STATUS TUTUP KASIR: VALID'));
@@ -3070,6 +3187,69 @@ class BookingRepository {
     lines.add('');
 
     return lines.join('\n');
+  }
+
+  /// Mengambil daftar pengeluaran operasional cabang
+  Future<ExpenseResponseModel> getExpensesData({
+    String period = 'Hari Ini',
+    DateTime? startDate,
+    DateTime? endDate,
+    int? affiliateId,
+    String? category,
+  }) async {
+    try {
+      final res = await _apiService.getExpensesApi(
+        period: period,
+        startDate: startDate,
+        endDate: endDate,
+        affiliateId: affiliateId,
+        category: category,
+      );
+      if (res != null) {
+        return ExpenseResponseModel.fromJson(res);
+      }
+    } catch (_) {
+      rethrow;
+    }
+    return const ExpenseResponseModel(
+      status: 'success',
+      period: 'Hari Ini',
+      startDate: '',
+      endDate: '',
+      summary: ExpenseSummaryModel(
+        totalExpenses: 0.0,
+        totalExpensesFormatted: 'Rp 0',
+        count: 0,
+        categories: {},
+      ),
+      data: [],
+    );
+  }
+
+  /// Mencatat pengeluaran operasional cabang baru
+  Future<ExpenseModel> createExpenseData({
+    required double amount,
+    required String category,
+    String? notes,
+    DateTime? spentAt,
+    int? affiliateId,
+  }) async {
+    final res = await _apiService.createExpenseApi(
+      amount: amount,
+      category: category,
+      notes: notes,
+      spentAt: spentAt,
+      affiliateId: affiliateId,
+    );
+    if (res != null && res['data'] is Map<String, dynamic>) {
+      return ExpenseModel.fromJson(res['data'] as Map<String, dynamic>);
+    }
+    throw Exception('Gagal mencatat pengeluaran cabang.');
+  }
+
+  /// Menghapus catatan pengeluaran cabang
+  Future<bool> deleteExpenseData(int id) async {
+    return await _apiService.deleteExpenseApi(id);
   }
 
   ShopSettingsModel _shopSettings = ShopSettingsModel.defaultSettings();
