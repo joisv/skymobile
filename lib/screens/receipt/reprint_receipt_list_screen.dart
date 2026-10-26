@@ -792,6 +792,10 @@ class _ReprintReceiptListScreenState extends State<ReprintReceiptListScreen> {
         bg = const Color(0xFFF3E8FF);
         text = const Color(0xFF7C3AED);
         break;
+      case ReceiptType.extend:
+        bg = const Color(0xFFE0E7FF);
+        text = const Color(0xFF4338CA);
+        break;
     }
 
     return Container(

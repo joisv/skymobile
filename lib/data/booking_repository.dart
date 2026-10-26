@@ -959,7 +959,7 @@ class BookingRepository {
 
     if (bookingIdx != -1) {
       final existing = _bookings[bookingIdx];
-      if (type != 'penalty') {
+      if (type != 'penalty' && type != 'extend') {
         final newDownPayment = existing.downPayment + amount;
         final totalBill = existing.price + existing.deposit - existing.discount;
         final newRemaining = (totalBill - newDownPayment).clamp(0.0, double.infinity);
@@ -1262,7 +1262,7 @@ class BookingRepository {
     final addedPrice = price ?? 0.0;
     final newDuration = current.durationDays + hours;
     final newEndDate = current.endDate.add(Duration(hours: hours));
-    final newPrice = current.price + addedPrice;
+    final newPrice = current.price; // Preserve original rental contract price
 
     final updated = current.copyWith(
       durationDays: newDuration,

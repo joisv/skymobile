@@ -4,7 +4,8 @@ enum ReceiptType {
   pickup,
   returnUnit,
   paymentSettlement,
-  depositRefund;
+  depositRefund,
+  extend;
 
   String get label {
     switch (this) {
@@ -16,6 +17,8 @@ enum ReceiptType {
         return 'PELUNASAN SEWA';
       case ReceiptType.depositRefund:
         return 'REFUND DEPOSIT';
+      case ReceiptType.extend:
+        return 'TAMBAH JAM (EXTEND)';
     }
   }
 }
@@ -85,7 +88,9 @@ class ReceiptModel {
   factory ReceiptModel.fromJson(Map<String, dynamic> json) {
     ReceiptType parsedType;
     final typeStr = (json['type']?.toString() ?? '').toLowerCase();
-    if (typeStr.contains('return') || typeStr.contains('kembali')) {
+    if (typeStr.contains('extend') || typeStr.contains('tambah')) {
+      parsedType = ReceiptType.extend;
+    } else if (typeStr.contains('return') || typeStr.contains('kembali')) {
       parsedType = ReceiptType.returnUnit;
     } else if (typeStr.contains('payment') || typeStr.contains('lunas') || typeStr.contains('sewa')) {
       parsedType = ReceiptType.paymentSettlement;
@@ -343,6 +348,84 @@ class ReceiptModel {
           lines.add(_center('telah sah diserahterimakan.', width));
           lines.add(_center(fmt.footerLine1, width));
         }
+        if (fmt.showContactInfo) lines.add(_center(fmt.contactInfo, width));
+        lines.add(divider);
+      }
+
+      return lines.join('\n');
+    }
+
+    // Format khusus Struk Tambah Jam / Perpanjangan Sewa (Extend)
+    if (type == ReceiptType.extend) {
+      if (fmt.showHeader) {
+        lines.add(divider);
+        lines.add(storeNameTag);
+        lines.add(_center('STRUK PERPANJANGAN SEWA', width));
+        if (fmt.showBranch) {
+          lines.add(_center(fmt.branchName, width));
+        }
+        lines.add(divider);
+      }
+
+      final dateStr =
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      if (fmt.showDateTime) lines.add(_twoColumn('Tgl       :', dateStr, width));
+      if (fmt.showReceiptNumber) lines.add(_twoColumn('No. Struk :', receiptNumber, width));
+      if (fmt.showAdminName) lines.add(_twoColumn('Admin     :', adminName, width));
+      lines.add(_twoColumn('Tipe Resi :', customTypeLabel ?? 'TAMBAH JAM (EXTEND)', width));
+      if (!fmt.compactSpacing) lines.add(subDivider);
+
+      if (fmt.showCustomerName) lines.addAll(_formatKeyValueMultiLine('Pelanggan :', customerName, width));
+      if (fmt.showCustomerPhone) lines.addAll(_formatKeyValueMultiLine('Kontak    :', customerPhone, width));
+      if (fmt.showBookingCodeText) lines.add(_twoColumn('Kode Book :', bookingCode, width));
+      if (fmt.showUnitName) lines.add(_twoColumn('Unit      :', unitName, width));
+      if (fmt.showAssetCode && assetCode != null && assetCode!.isNotEmpty) {
+        lines.add(_twoColumn('No. Aset  :', assetCode!, width));
+      }
+      if (fmt.showSerialNumber && serialNumber != null && serialNumber!.isNotEmpty) {
+        lines.add(_twoColumn('Serial No :', serialNumber!, width));
+      }
+      lines.add(_twoColumn('Durasi Ext:', rentalDuration, width));
+      if (fmt.showRentalDates && rentalDates != null && rentalDates!.isNotEmpty) {
+        lines.add(_twoColumn('Periode   :', rentalDates!, width));
+      }
+      if (!fmt.compactSpacing) lines.add(subDivider);
+
+      lines.add(_twoColumn('Biaya Ext :', _formatRupiah(totalAmount), width));
+      lines.add(_twoColumn('TOTAL     :', _formatRupiah(totalAmount), width));
+      lines.add(_twoColumn('Terbayar  :', _formatRupiah(paidAmount), width));
+      if (fmt.showPaymentMethod) lines.add(_twoColumn('Metode    :', paymentMethod, width));
+      if (fmt.showPaymentStatus) lines.add(_twoColumn('Status    :', 'LUNAS', width));
+
+      if (fmt.showCashDetails &&
+          (paymentMethod.toLowerCase().contains('tunai') || paymentMethod.toLowerCase().contains('cash')) &&
+          cashGiven > 0) {
+        lines.add(_twoColumn('Uang Diterima:', _formatRupiah(cashGiven), width));
+        lines.add(_twoColumn('Kembalian   :', _formatRupiah(cashChange), width));
+      }
+      lines.add(divider);
+
+      if (fmt.showNotes && notes != null && notes!.isNotEmpty) {
+        lines.add('Catatan:');
+        var noteText = notes!;
+        while (noteText.length > width) {
+          lines.add(noteText.substring(0, width));
+          noteText = noteText.substring(width);
+        }
+        if (noteText.isNotEmpty) {
+          lines.add(noteText);
+        }
+        if (!fmt.compactSpacing) lines.add(subDivider);
+      }
+
+      if (fmt.showBarcode && bookingCode.isNotEmpty) {
+        lines.add('[BARCODE:$bookingCode]');
+        if (!fmt.compactSpacing) lines.add(subDivider);
+      }
+
+      if (fmt.showFooter) {
+        lines.add(_center('Terima kasih atas perpanjangan sewa', width));
+        lines.add(_center(fmt.footerLine1, width));
         if (fmt.showContactInfo) lines.add(_center(fmt.contactInfo, width));
         lines.add(divider);
       }

@@ -539,6 +539,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
         return Icons.payments_rounded;
       case ReceiptType.depositRefund:
         return Icons.replay_circle_filled_rounded;
+      case ReceiptType.extend:
+        return Icons.more_time_rounded;
     }
   }
 

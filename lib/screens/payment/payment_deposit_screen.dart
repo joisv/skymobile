@@ -44,7 +44,7 @@ enum PaymentTypeOption {
     badge: 'EXTEND',
     icon: Icons.update_rounded,
     description: 'Biaya perpanjangan masa rental unit',
-    receiptType: ReceiptType.paymentSettlement,
+    receiptType: ReceiptType.extend,
   );
 
   final String id;
@@ -523,11 +523,14 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
         : 'Staff Kasir';
     final branchName = currentUser?.outletName ?? 'SKYRENTAL YOGYAKARTA';
 
+    final isExtend = _paymentType == PaymentTypeOption.extend;
     final bool isPenalty = result.paymentType == 'penalty';
     final String methodUpper = result.paymentMethod.toUpperCase();
 
     String customLabel;
-    if (widget.isReturnFlow) {
+    if (isExtend) {
+      customLabel = 'TAMBAH JAM (EXTEND)';
+    } else if (widget.isReturnFlow) {
       customLabel = 'TANDA TERIMA PENGEMBALIAN - $methodUpper';
     } else if (isPenalty) {
       customLabel = 'TANDA TERIMA DENDA - $methodUpper';
@@ -540,12 +543,22 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
     final double finesFee = isPenalty ? result.amount : 0.0;
     final double discountFee = booking?.discount ?? 0.0;
 
+    final displayRentFee = isExtend ? result.amount : rentFee;
+    final displayTotalAmount = isExtend ? result.amount : result.totalAmount;
+    final displayPaidAmount = isExtend ? result.amount : result.amount;
+    final displayRemaining = isExtend ? 0.0 : result.remainingPayment;
+    final displayDuration = isExtend
+        ? (widget.extendHours != null ? '${widget.extendHours} Jam (Tambah Durasi)' : 'Tambah Durasi')
+        : '${booking?.durationDays ?? 1} Hari';
+
+    final receiptNum = result.receiptNumber.isNotEmpty && result.receiptNumber != '-'
+        ? result.receiptNumber
+        : (result.bookingCode.isNotEmpty && result.bookingCode != '-'
+            ? result.bookingCode
+            : (booking?.bookingCode ?? 'BK-0000'));
+
     return ReceiptModel(
-      receiptNumber: result.receiptNumber.isNotEmpty && result.receiptNumber != '-'
-          ? result.receiptNumber
-          : (result.bookingCode.isNotEmpty && result.bookingCode != '-'
-              ? result.bookingCode
-              : (booking?.bookingCode ?? 'BK-0000')),
+      receiptNumber: receiptNum,
       date: result.paidAt,
       adminName: adminName,
       branchName: branchName,
@@ -557,20 +570,20 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
       unitName: result.unitName,
       serialNumber: booking?.iphone.serialNumber ?? '-',
       assetCode: booking?.iphone.assetCode,
-      rentalDuration: '${booking?.durationDays ?? 1} Hari',
+      rentalDuration: displayDuration,
       rentalDates: booking != null
           ? '${Formatters.formatDate(booking.startDate)} - ${Formatters.formatDate(booking.endDate)}'
           : null,
-      rentFee: rentFee,
-      depositFee: depositFee,
-      finesFee: finesFee,
-      discountFee: discountFee,
-      totalAmount: result.totalAmount,
-      paidAmount: result.amount,
-      remainingAmount: result.remainingPayment,
+      rentFee: displayRentFee,
+      depositFee: isExtend ? 0.0 : depositFee,
+      finesFee: isExtend ? 0.0 : finesFee,
+      discountFee: isExtend ? 0.0 : discountFee,
+      totalAmount: displayTotalAmount,
+      paidAmount: displayPaidAmount,
+      remainingAmount: displayRemaining,
       refundAmount: 0.0,
       paymentMethod: methodUpper,
-      paymentStatus: result.paymentStatus,
+      paymentStatus: isExtend ? 'Lunas' : result.paymentStatus,
       cashGiven: result.cashReceived,
       cashChange: result.change,
       depositStatus: 'Tanpa Deposit',
@@ -623,9 +636,9 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
             bookingCode: bookingCode,
             hours: hoursToExtend,
             price: _amount,
-            paymentMethod: methodToSend,
-            pay: _isCashSelected ? _pay : _amount,
-            note: 'Pembayaran Tambah Jam ($hoursToExtend Jam) via $methodName',
+            // Do NOT pass paymentMethod / pay because submitBookingPaymentDetail
+            // has already recorded the payment in the backend. Passing them here causes duplicate payments.
+            note: 'Penambahan durasi sewa $hoursToExtend Jam',
           );
           _activeBooking = updated;
         } catch (_) {}
@@ -650,10 +663,17 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
       if (paymentResult.updatedBooking != null) {
         _activeBooking = paymentResult.updatedBooking;
       } else if (_activeBooking != null && _paymentType != PaymentTypeOption.penalty) {
-        _activeBooking = _activeBooking!.copyWith(
-          paymentStatus: paymentResult.isSettled ? PaymentStatus.paid : PaymentStatus.partial,
-          downPayment: paymentResult.totalPaid,
-        );
+        if (_paymentType == PaymentTypeOption.extend) {
+          // Extension payment does not alter original rental settlement
+          _activeBooking = _activeBooking!.copyWith(
+            paymentStatus: _activeBooking!.paymentStatus,
+          );
+        } else {
+          _activeBooking = _activeBooking!.copyWith(
+            paymentStatus: paymentResult.isSettled ? PaymentStatus.paid : PaymentStatus.partial,
+            downPayment: paymentResult.totalPaid,
+          );
+        }
       }
 
       // Buat struk tanda terima berbasiskan data pembayaran riil dari backend
