@@ -1750,6 +1750,25 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   child: Row(
                     children: [
                       const Icon(Icons.grid_view_rounded, size: 13, color: Color(0xFF64748B)),
+                      if (unit.isAddon) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3E8FF),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: const Color(0xFFD8B4FE)),
+                          ),
+                          child: const Text(
+                            'ADD-ON',
+                            style: TextStyle(
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF7E22CE),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(

@@ -27,6 +27,7 @@ class AuthService implements Listenable {
   String? get token => _token;
   bool get isAuthenticated => _currentUser != null && _token != null;
   bool get rememberMe => _rememberMe;
+  String get userName => _currentUser?.name ?? 'Admin';
 
   // Role & Permission Checks
   bool get isSuperAdmin {

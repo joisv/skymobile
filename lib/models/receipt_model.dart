@@ -1,4 +1,6 @@
+import 'cash_drawer_shift_model.dart';
 import 'receipt_format_settings.dart';
+import '../utils/formatters.dart';
 
 enum ReceiptType {
   pickup,
@@ -22,6 +24,37 @@ enum ReceiptType {
     }
   }
 }
+
+class ReceiptAddonItem {
+  final String name;
+  final String? assetCode;
+  final String? serialNumber;
+  final double price;
+
+  const ReceiptAddonItem({
+    required this.name,
+    this.assetCode,
+    this.serialNumber,
+    this.price = 0.0,
+  });
+
+  factory ReceiptAddonItem.fromJson(Map<String, dynamic> json) {
+    return ReceiptAddonItem(
+      name: json['name']?.toString() ?? 'Item Add-on',
+      assetCode: json['asset_code']?.toString(),
+      serialNumber: json['serial_number']?.toString(),
+      price: double.tryParse(json['price']?.toString() ?? '0') ?? 0.0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (assetCode != null) 'asset_code': assetCode,
+    if (serialNumber != null) 'serial_number': serialNumber,
+    'price': price,
+  };
+}
+
 class ReceiptModel {
   final String receiptNumber;
   final DateTime date;
@@ -35,9 +68,12 @@ class ReceiptModel {
   final String unitName;
   final String? serialNumber;
   final String? assetCode;
+  final List<ReceiptAddonItem> addonItems;
   final String rentalDuration;
   final String? rentalDates;
   final double rentFee;
+  final double primaryRentFee;
+  final double addonRentFee;
   final double depositFee;
   final double finesFee;
   final double discountFee;
@@ -66,9 +102,12 @@ class ReceiptModel {
     required this.unitName,
     this.serialNumber,
     this.assetCode,
+    this.addonItems = const [],
     required this.rentalDuration,
     this.rentalDates,
     required this.rentFee,
+    double? primaryRentFee,
+    double? addonRentFee,
     required this.depositFee,
     this.finesFee = 0,
     this.discountFee = 0,
@@ -83,7 +122,25 @@ class ReceiptModel {
     this.refundAmount = 0,
     this.notes,
     this.termsAndConditions,
-  });
+  })  : primaryRentFee = primaryRentFee ?? (addonRentFee != null ? (rentFee - addonRentFee) : rentFee),
+        addonRentFee = addonRentFee ?? 0.0;
+
+  double get effectiveAddonRentFee {
+    if (addonRentFee > 0) return addonRentFee;
+    if (addonItems.isNotEmpty) {
+      return addonItems.fold<double>(0.0, (acc, item) => acc + item.price);
+    }
+    return 0.0;
+  }
+
+  double get effectivePrimaryRentFee {
+    if (primaryRentFee > 0 && primaryRentFee < rentFee) return primaryRentFee;
+    final addonFee = effectiveAddonRentFee;
+    if (addonFee > 0 && rentFee >= addonFee) {
+      return rentFee - addonFee;
+    }
+    return rentFee;
+  }
 
   factory ReceiptModel.fromJson(Map<String, dynamic> json) {
     ReceiptType parsedType;
@@ -107,37 +164,159 @@ class ReceiptModel {
       parsedDate = DateTime.now();
     }
 
+    final parsedAddons = json['addon_items'] is List
+        ? (json['addon_items'] as List)
+            .whereType<Map<String, dynamic>>()
+            .map((m) => ReceiptAddonItem.fromJson(m))
+            .toList()
+        : <ReceiptAddonItem>[];
+
+    final parsedRentFee = (json['rent_fee'] as num?)?.toDouble() ?? 0.0;
+    final parsedPrimaryRentFee = (json['primary_rent_fee'] as num?)?.toDouble();
+    final parsedAddonRentFee = (json['addon_rent_fee'] as num?)?.toDouble();
+
     return ReceiptModel(
       receiptNumber: json['receipt_number']?.toString() ?? '',
       date: parsedDate,
       adminName: json['admin_name']?.toString() ?? 'Kasir SKYRental',
       branchName: json['branch_name']?.toString() ?? 'SKYRENTAL YOGYAKARTA',
       type: parsedType,
-      customTypeLabel: json['type_label']?.toString(),
+      customTypeLabel: json['type_label']?.toString() ?? json['custom_type_label']?.toString(),
       bookingCode: json['booking_code']?.toString() ?? '',
       customerName: json['customer_name']?.toString() ?? 'Pelanggan',
       customerPhone: json['customer_phone']?.toString() ?? '',
       unitName: json['unit_name']?.toString() ?? 'Unit iPhone',
       serialNumber: json['serial_number']?.toString(),
       assetCode: json['asset_code']?.toString(),
+      addonItems: parsedAddons,
       rentalDuration: json['rental_duration']?.toString() ?? '1 Hari',
       rentalDates: json['rental_dates']?.toString(),
-      rentFee: (json['rent_fee'] as num?)?.toDouble() ?? 0.0,
+      rentFee: parsedRentFee,
+      primaryRentFee: parsedPrimaryRentFee,
+      addonRentFee: parsedAddonRentFee,
       depositFee: (json['deposit_fee'] as num?)?.toDouble() ?? 0.0,
-      finesFee: (json['fines_fee'] as num?)?.toDouble() ?? 0.0,
+      finesFee: (json['fines_fee'] as num?)?.toDouble() ?? (json['fines'] as num?)?.toDouble() ?? (json['late_fee'] as num?)?.toDouble() ?? 0.0,
       discountFee: (json['discount_fee'] as num?)?.toDouble() ?? 0.0,
       totalAmount: (json['total_amount'] as num?)?.toDouble() ?? 0.0,
       paidAmount: (json['paid_amount'] as num?)?.toDouble() ?? 0.0,
       remainingAmount: (json['remaining_amount'] as num?)?.toDouble() ?? 0.0,
       paymentMethod: json['payment_method']?.toString() ?? 'Tunai',
       paymentStatus: json['payment_status']?.toString() ?? 'Lunas',
-      cashGiven: (json['cash_given'] as num?)?.toDouble() ?? 0.0,
-      cashChange: (json['cash_change'] as num?)?.toDouble() ?? 0.0,
+      cashGiven: (json['cash_given'] as num?)?.toDouble() ?? (json['cash_received'] as num?)?.toDouble() ?? (json['pay'] as num?)?.toDouble() ?? 0.0,
+      cashChange: (json['cash_change'] as num?)?.toDouble() ?? (json['change'] as num?)?.toDouble() ?? 0.0,
       depositStatus: json['deposit_status']?.toString(),
       refundAmount: (json['refund_amount'] as num?)?.toDouble() ?? 0.0,
       notes: json['notes']?.toString(),
       termsAndConditions: json['terms_and_conditions']?.toString(),
     );
+  }
+
+  ReceiptModel copyWith({
+    String? receiptNumber,
+    DateTime? date,
+    String? adminName,
+    String? branchName,
+    ReceiptType? type,
+    String? customTypeLabel,
+    String? bookingCode,
+    String? customerName,
+    String? customerPhone,
+    String? unitName,
+    String? serialNumber,
+    String? assetCode,
+    List<ReceiptAddonItem>? addonItems,
+    String? rentalDuration,
+    String? rentalDates,
+    double? rentFee,
+    double? primaryRentFee,
+    double? addonRentFee,
+    double? depositFee,
+    double? finesFee,
+    double? discountFee,
+    double? totalAmount,
+    double? paidAmount,
+    double? remainingAmount,
+    String? paymentMethod,
+    String? paymentStatus,
+    double? cashGiven,
+    double? cashChange,
+    String? depositStatus,
+    double? refundAmount,
+    String? notes,
+    String? termsAndConditions,
+  }) {
+    return ReceiptModel(
+      receiptNumber: receiptNumber ?? this.receiptNumber,
+      date: date ?? this.date,
+      adminName: adminName ?? this.adminName,
+      branchName: branchName ?? this.branchName,
+      type: type ?? this.type,
+      customTypeLabel: customTypeLabel ?? this.customTypeLabel,
+      bookingCode: bookingCode ?? this.bookingCode,
+      customerName: customerName ?? this.customerName,
+      customerPhone: customerPhone ?? this.customerPhone,
+      unitName: unitName ?? this.unitName,
+      serialNumber: serialNumber ?? this.serialNumber,
+      assetCode: assetCode ?? this.assetCode,
+      addonItems: addonItems ?? this.addonItems,
+      rentalDuration: rentalDuration ?? this.rentalDuration,
+      rentalDates: rentalDates ?? this.rentalDates,
+      rentFee: rentFee ?? this.rentFee,
+      primaryRentFee: primaryRentFee ?? this.primaryRentFee,
+      addonRentFee: addonRentFee ?? this.addonRentFee,
+      depositFee: depositFee ?? this.depositFee,
+      finesFee: finesFee ?? this.finesFee,
+      discountFee: discountFee ?? this.discountFee,
+      totalAmount: totalAmount ?? this.totalAmount,
+      paidAmount: paidAmount ?? this.paidAmount,
+      remainingAmount: remainingAmount ?? this.remainingAmount,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      cashGiven: cashGiven ?? this.cashGiven,
+      cashChange: cashChange ?? this.cashChange,
+      depositStatus: depositStatus ?? this.depositStatus,
+      refundAmount: refundAmount ?? this.refundAmount,
+      notes: notes ?? this.notes,
+      termsAndConditions: termsAndConditions ?? this.termsAndConditions,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'receipt_number': receiptNumber,
+      'date': date.toIso8601String(),
+      'admin_name': adminName,
+      'branch_name': branchName,
+      'type': type.name,
+      'type_label': customTypeLabel ?? type.label,
+      'custom_type_label': customTypeLabel,
+      'booking_code': bookingCode,
+      'customer_name': customerName,
+      'customer_phone': customerPhone,
+      'unit_name': unitName,
+      'serial_number': serialNumber,
+      'asset_code': assetCode,
+      'addon_items': addonItems.map((a) => a.toJson()).toList(),
+      'rental_duration': rentalDuration,
+      'rental_dates': rentalDates,
+      'rent_fee': rentFee,
+      'primary_rent_fee': primaryRentFee,
+      'addon_rent_fee': addonRentFee,
+      'deposit_fee': depositFee,
+      'fines_fee': finesFee,
+      'discount_fee': discountFee,
+      'total_amount': totalAmount,
+      'paid_amount': paidAmount,
+      'remaining_amount': remainingAmount,
+      'payment_method': paymentMethod,
+      'payment_status': paymentStatus,
+      'cash_given': cashGiven,
+      'cash_change': cashChange,
+      'deposit_status': depositStatus,
+      'refund_amount': refundAmount,
+      'notes': notes,
+      'terms_and_conditions': termsAndConditions,
+    };
   }
 
   static String _center(String text, int width) {
@@ -308,19 +487,58 @@ class ReceiptModel {
       if (fmt.showSerialNumber && serialNumber != null && serialNumber!.isNotEmpty) {
         lines.add(_twoColumn('Serial No :', serialNumber!, width));
       }
+      if (fmt.showRentalDuration && rentalDuration.isNotEmpty) {
+        lines.add(_twoColumn('Durasi    :', formatRentalDurationText(rentalDuration), width));
+      }
+      if (fmt.showRentalDates && rentalDates != null && rentalDates!.isNotEmpty) {
+        lines.add(_twoColumn('Periode   :', rentalDates!, width));
+      }
       lines.add(_twoColumn('Status    :', 'KEMBALI (TERSEDIA)', width));
       lines.add(_twoColumn('Jaminan   :', 'DISERAHKAN BALIK', width));
+      if (addonItems.isNotEmpty) {
+        lines.add(subDivider);
+        lines.add('ITEM TAMBAHAN / ADD-ON:');
+        for (int i = 0; i < addonItems.length; i++) {
+          final item = addonItems[i];
+          final numPrefix = '${i + 1}. ';
+          final maxTitleLen = width - numPrefix.length;
+          final itemTitle = item.name.length > maxTitleLen ? item.name.substring(0, maxTitleLen) : item.name;
+          lines.add('$numPrefix$itemTitle');
+        }
+      }
       if (!fmt.compactSpacing) lines.add(subDivider);
 
-      if (fmt.showDeposit) {
+      if (fmt.showDeposit && depositFee > 0) {
         lines.add(_twoColumn('Deposit   :', _formatRupiah(depositFee), width));
       }
+
+      final isCash = paymentMethod.toLowerCase().contains('tunai') ||
+          paymentMethod.toLowerCase().contains('cash');
+
       if (finesFee > 0) {
-        lines.add(_twoColumn('Pot. Denda:', '-${_formatRupiah(finesFee)}', width));
+        if (depositStatus != null &&
+            depositStatus!.toLowerCase().contains('potong')) {
+          lines.add(_twoColumn('Pot. Denda:', '-${_formatRupiah(finesFee)}', width));
+        } else {
+          lines.add(_twoColumn('Biaya Keterlambatan:', _formatRupiah(finesFee), width));
+        }
       }
-      lines.add(_twoColumn('Refund Dep. :', _formatRupiah(refundAmount), width));
+
+      if (refundAmount > 0 || (fmt.showDeposit && depositFee > 0 && finesFee == 0)) {
+        lines.add(_twoColumn('Refund Dep. :', _formatRupiah(refundAmount), width));
+      }
+
+      if (!isCash && paidAmount > 0 && finesFee > 0) {
+        lines.add(_twoColumn('Terbayar  :', _formatRupiah(paidAmount), width));
+      }
+
       if (fmt.showPaymentMethod) lines.add(_twoColumn('Metode    :', paymentMethod, width));
       if (fmt.showPaymentStatus) lines.add(_twoColumn('Status    :', 'LUNAS / SELESAI', width));
+
+      if (fmt.showCashDetails && isCash && cashGiven > 0) {
+        lines.add(_twoColumn('Uang Diterima:', _formatRupiah(cashGiven), width));
+        lines.add(_twoColumn('Kembalian   :', _formatRupiah(cashChange), width));
+      }
       lines.add(divider);
 
       if (fmt.showNotes && notes != null && notes!.isNotEmpty) {
@@ -522,8 +740,35 @@ class ReceiptModel {
       if (!fmt.compactSpacing) lines.add(subDivider);
     }
 
+    // 3. Item Tambahan / Add-on (jika ada)
+    if (addonItems.isNotEmpty) {
+      lines.add('ITEM TAMBAHAN / ADD-ON:');
+      for (int i = 0; i < addonItems.length; i++) {
+        final item = addonItems[i];
+        final numPrefix = '${i + 1}. ';
+        final maxTitleLen = width - numPrefix.length;
+        final itemTitle = item.name.length > maxTitleLen ? item.name.substring(0, maxTitleLen) : item.name;
+        lines.add('$numPrefix$itemTitle');
+        final codeStr = (item.assetCode != null && item.assetCode!.isNotEmpty && item.assetCode != '-')
+            ? item.assetCode!
+            : (item.serialNumber != null && item.serialNumber!.isNotEmpty && item.serialNumber != '-')
+                ? item.serialNumber!
+                : '';
+        final priceStr = _formatRupiah(item.price);
+        if (codeStr.isNotEmpty) {
+          lines.add(_twoColumn('   [$codeStr]', priceStr, width));
+        } else {
+          lines.add(_twoColumn('   Biaya:', priceStr, width));
+        }
+      }
+      lines.add(subDivider);
+    }
+
     // 4. Rincian Biaya
-    if (fmt.showRentFee) {
+    if (addonItems.isNotEmpty) {
+      lines.add(_twoColumn('Sewa iPhone :', _formatRupiah(effectivePrimaryRentFee), width));
+      lines.add(_twoColumn('Sewa Add-on :', _formatRupiah(effectiveAddonRentFee), width));
+    } else if (fmt.showRentFee) {
       lines.add(_twoColumn('Biaya Sewa  :', _formatRupiah(rentFee), width));
     }
     if (fmt.showDeposit && depositFee > 0) {
@@ -614,5 +859,92 @@ class ReceiptModel {
 
     cm += fmt.feedLines * 0.38;
     return (cm * 10).round() / 10.0;
+  }
+
+  /// Menghasilkan format struk thermal 58mm (32 kolom monospace) untuk Tutup Kasir / Closing Shift
+  static String generateShiftClosingEscPos58mm({
+    required CashDrawerShiftModel shift,
+    List<CashBookEntryModel> entries = const [],
+    String? businessName,
+    String? branchName,
+  }) {
+    const int width = 32;
+    final divider = '=' * width;
+    final subDivider = '-' * width;
+
+    final lines = <String>[];
+    lines.add(divider);
+    lines.add(_center(businessName ?? 'SKYRENTAL INDONESIA', width));
+    lines.add(_center('LAPORAN PENUTUPAN KASIR', width));
+    lines.add(_center(branchName ?? shift.branchName.toUpperCase(), width));
+    lines.add(divider);
+
+    lines.add(_twoColumn('No. Shift   :', shift.shiftNumber, width));
+    lines.add(_twoColumn('Kasir Buka  :', shift.openedByName, width));
+    if (shift.closedByName != null && shift.closedByName!.isNotEmpty) {
+      lines.add(_twoColumn('Kasir Tutup :', shift.closedByName!, width));
+    }
+
+    final openWib = Formatters.toWib(shift.openedAt);
+    final openStr = '${openWib.year}-${openWib.month.toString().padLeft(2, '0')}-${openWib.day.toString().padLeft(2, '0')} ${openWib.hour.toString().padLeft(2, '0')}:${openWib.minute.toString().padLeft(2, '0')}';
+    lines.add(_twoColumn('Waktu Buka  :', openStr, width));
+
+    if (shift.closedAt != null) {
+      final closeWib = Formatters.toWib(shift.closedAt!);
+      final closeStr = '${closeWib.year}-${closeWib.month.toString().padLeft(2, '0')}-${closeWib.day.toString().padLeft(2, '0')} ${closeWib.hour.toString().padLeft(2, '0')}:${closeWib.minute.toString().padLeft(2, '0')}';
+      lines.add(_twoColumn('Waktu Tutup :', closeStr, width));
+    }
+    lines.add(subDivider);
+
+    lines.add(_center('RINGKASAN KAS FISIK', width));
+    lines.add(_twoColumn('Modal Awal (Float) :', _formatRupiah(shift.openingCashFloat), width));
+    lines.add(_twoColumn('Total Kas Masuk    :', _formatRupiah(shift.currentCashInflow), width));
+    if (shift.currentCashRefund > 0) {
+      lines.add(_twoColumn('Total Kas Refund   :', '-${_formatRupiah(shift.currentCashRefund)}', width));
+    }
+    if (shift.currentCashExpenses > 0) {
+      lines.add(_twoColumn('Pengeluaran Kasir  :', '-${_formatRupiah(shift.currentCashExpenses)}', width));
+    }
+    lines.add(subDivider);
+
+    final expected = shift.effectiveExpectedCash;
+    final actual = shift.actualCashCounted ?? expected;
+    final diff = shift.cashDifference ?? (actual - expected);
+
+    lines.add(_twoColumn('ESTIMASI KAS LACI  :', _formatRupiah(expected), width));
+    lines.add(_twoColumn('FISIK DIHITUNG     :', _formatRupiah(actual), width));
+
+    String diffLabel = 'SEIMBANG';
+    if (diff > 0.01) {
+      diffLabel = '+${_formatRupiah(diff)} (LEBIH)';
+    } else if (diff < -0.01) {
+      diffLabel = '-${_formatRupiah(diff.abs())} (KURANG)';
+    }
+    lines.add(_twoColumn('SELISIH KAS        :', diffLabel, width));
+
+    if (shift.differenceReason != null && shift.differenceReason!.trim().isNotEmpty) {
+      lines.add(subDivider);
+      lines.add('Alasan Selisih:');
+      lines.add(shift.differenceReason!.trim());
+    }
+
+    if (shift.closingNotes != null && shift.closingNotes!.trim().isNotEmpty) {
+      lines.add(subDivider);
+      lines.add('Catatan Shift:');
+      lines.add(shift.closingNotes!.trim());
+    }
+
+    lines.add(subDivider);
+    lines.add(_center('TANDA TANGAN & PERSETUJUAN', width));
+    lines.add('');
+    lines.add('');
+    lines.add(_twoColumn('(    Kasir    )', '(  Supervisor )', width));
+    lines.add(divider);
+    lines.add(_center('TERCETAK SECARA ELEKTRONIK', width));
+    lines.add(_center('DOKUMEN RESMI SKYRENTAL', width));
+    lines.add('');
+    lines.add('');
+
+    return lines.join('\n');
   }
 }

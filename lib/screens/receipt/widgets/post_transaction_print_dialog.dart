@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:barcode_widget/barcode_widget.dart';
+import '../../../models/print_result_model.dart';
 import '../../../models/receipt_model.dart';
 import '../../../routes/app_routes.dart';
+import '../../../services/printer_storage_service.dart';
 import '../../../services/thermal_print_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/formatters.dart';
+import 'printer_connection_dialog.dart';
 
 class PostTransactionPrintDialog extends StatefulWidget {
   final ReceiptModel receipt;
@@ -74,20 +77,46 @@ class _PostTransactionPrintDialogState extends State<PostTransactionPrintDialog>
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } else if (result.status == PrintResultStatus.noPrinterSelected) {
+      PrinterConnectionDialog.showNoPrinter(
+        context,
+        onConnectPrinter: () async {
+          await Navigator.pushNamed(context, AppRoutes.printerSettings);
+          if (!mounted) return;
+          _handlePrint();
+        },
+        onPrintLater: () {},
+      );
+    } else if (result.status == PrintResultStatus.printerNotConnected ||
+               result.status == PrintResultStatus.timeout) {
+      final msg = result.status == PrintResultStatus.timeout
+          ? 'Koneksi ke printer melebihi batas waktu (timeout).'
+          : (result.message.isNotEmpty
+              ? result.message
+              : 'The printer could not be connected. Check that the printer is powered on, nearby, and available, then try again.');
+      PrinterConnectionDialog.showConnectionFailed(
+        context,
+        failureMessage: msg,
+        onTryAgain: _handlePrint,
+        onChooseAnotherPrinter: () async {
+          await Navigator.pushNamed(context, AppRoutes.printerSettings);
+          if (!mounted) return;
+          _handlePrint();
+        },
+        onPrintLater: () {},
+      );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.message),
-          backgroundColor: const Color(0xFFDC2626),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'Pengaturan',
-            textColor: Colors.white,
-            onPressed: () {
-              Navigator.pushNamed(context, AppRoutes.printerSettings);
-            },
-          ),
-        ),
+      PrinterConnectionDialog.showPrintingFailed(
+        context,
+        failureMessage: result.message,
+        onTryAgain: _handlePrint,
+        onReconnect: () async {
+          final printer = await PrinterStorageService().getPrimaryPrinter();
+          await ThermalPrintService().connectPrinterDetailed(printer.address);
+          if (!mounted) return;
+          _handlePrint();
+        },
+        onPrintLater: () {},
       );
     }
   }
@@ -95,6 +124,8 @@ class _PostTransactionPrintDialogState extends State<PostTransactionPrintDialog>
   void _handleShareWhatsApp() {
     final String text;
     if (r.type == ReceiptType.returnUnit) {
+      final isCash = r.paymentMethod.toLowerCase().contains('tunai') || r.paymentMethod.toLowerCase().contains('cash');
+      final isDeduction = r.depositStatus != null && r.depositStatus!.toLowerCase().contains('potong');
       text = '''
 *SKYRENTAL - STRUK PENGEMBALIAN IPHONE*
 No. Struk    : ${r.receiptNumber}
@@ -106,12 +137,9 @@ Kode Booking : ${r.bookingCode}
 Status Unit  : KEMBALI (TERSEDIA)
 Jaminan      : TELAH DISERAHKAN BALIK
 -----------------------------
-Deposit Awal : ${Formatters.currency(r.depositFee)}
-Potongan Denda: ${r.finesFee > 0 ? '-${Formatters.currency(r.finesFee)}' : 'Rp 0'}
-Refund Deposit: ${Formatters.currency(r.refundAmount)}
-Metode Refund: ${r.paymentMethod}
+${r.depositFee > 0 ? 'Deposit Awal : ${Formatters.currency(r.depositFee)}\n' : ''}${r.finesFee > 0 ? (isDeduction ? 'Potongan Denda: -${Formatters.currency(r.finesFee)}\n' : 'Biaya Keterlambatan: ${Formatters.currency(r.finesFee)}\n') : ''}${r.refundAmount > 0 ? 'Refund Deposit: ${Formatters.currency(r.refundAmount)}\n' : ''}${!isCash && r.paidAmount > 0 && r.finesFee > 0 ? 'Terbayar     : ${Formatters.currency(r.paidAmount)}\n' : ''}Metode Bayar : ${r.paymentMethod}
 Status       : SELESAI / LUNAS
------------------------------
+${isCash && r.cashGiven > 0 ? 'Uang Diterima: ${Formatters.currency(r.cashGiven)}\nKembalian    : ${Formatters.currency(r.cashChange)}\n' : ''}-----------------------------
 Terima kasih telah menyewa iPhone di SKYRental!
 '''.trim();
     } else {
@@ -248,10 +276,21 @@ Terima kasih telah mempercayai SKYRental. Simpan pesan ini sebagai bukti transak
                   if (r.type == ReceiptType.returnUnit) ...[
                     _buildMiniRow('Pelanggan', r.customerName),
                     _buildMiniRow('Unit', r.unitName),
-                    _buildMiniRow('Deposit Awal', Formatters.currency(r.depositFee)),
-                    if (r.finesFee > 0) _buildMiniRow('Pot. Denda', '-${Formatters.currency(r.finesFee)}'),
-                    _buildMiniRow('Refund Dep.', Formatters.currency(r.refundAmount)),
+                    if (r.depositFee > 0) _buildMiniRow('Deposit Awal', Formatters.currency(r.depositFee)),
+                    if (r.finesFee > 0) ...[
+                      if (r.depositStatus != null && r.depositStatus!.toLowerCase().contains('potong'))
+                        _buildMiniRow('Pot. Denda', '-${Formatters.currency(r.finesFee)}')
+                      else
+                        _buildMiniRow('Biaya Keterlambatan', Formatters.currency(r.finesFee)),
+                    ],
+                    if (r.refundAmount > 0) _buildMiniRow('Refund Dep.', Formatters.currency(r.refundAmount)),
                     _buildMiniRow('Metode', r.paymentMethod),
+                    if ((r.paymentMethod.toLowerCase().contains('tunai') || r.paymentMethod.toLowerCase().contains('cash')) && r.cashGiven > 0) ...[
+                      _buildMiniRow('Uang Diterima', Formatters.currency(r.cashGiven)),
+                      _buildMiniRow('Kembalian', Formatters.currency(r.cashChange)),
+                    ] else if (r.paidAmount > 0 && r.finesFee > 0) ...[
+                      _buildMiniRow('Terbayar', Formatters.currency(r.paidAmount)),
+                    ],
                     _buildMiniRow('Status Unit', 'TERSEDIA'),
                   ] else ...[
                     _buildMiniRow('Pelanggan', r.customerName),

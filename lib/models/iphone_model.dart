@@ -61,6 +61,7 @@ class IphoneModel {
   final List<IphoneDurationOption> durations;
   final int? affiliateId;
   final String? photoUrl;
+  final String? thumbnailUrl;
   final String? branchName;
   final String? maintenanceNote;
   final String? customerName;
@@ -71,6 +72,7 @@ class IphoneModel {
   final int? galleryId;
   final DateTime? createdDate;
   final bool isAvailable;
+  final bool isAddon;
 
   const IphoneModel({
     required this.id,
@@ -84,6 +86,7 @@ class IphoneModel {
     this.durations = const [],
     this.affiliateId,
     this.photoUrl,
+    this.thumbnailUrl,
     this.branchName,
     this.maintenanceNote,
     this.customerName,
@@ -94,6 +97,7 @@ class IphoneModel {
     this.galleryId,
     this.createdDate,
     this.isAvailable = true,
+    this.isAddon = false,
   });
 
   String get fullName => storage.trim().isNotEmpty ? '$name $storage' : name;
@@ -181,6 +185,36 @@ class IphoneModel {
     return trimmed;
   }
 
+  String? get resolvedThumbnailUrl {
+    final target = thumbnailUrl ?? photoUrl;
+    if (target == null || target.trim().isEmpty) return null;
+    final trimmed = target.trim();
+    final apiBase = ApiService().baseUrl.replaceAll(RegExp(r'/api/v1/?$'), '');
+
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      final cleanPath = trimmed.startsWith('/') ? trimmed.substring(1) : trimmed;
+      if (cleanPath.startsWith('storage/')) {
+        return '$apiBase/$cleanPath';
+      }
+      return '$apiBase/storage/$cleanPath';
+    }
+
+    try {
+      final uri = Uri.parse(trimmed);
+      if (uri.host == 'localhost' || uri.host == '127.0.0.1') {
+        final baseUri = Uri.parse(apiBase);
+        final rewritten = uri.replace(
+          scheme: baseUri.scheme,
+          host: baseUri.host,
+          port: baseUri.hasPort ? baseUri.port : null,
+        );
+        return rewritten.toString();
+      }
+    } catch (_) {}
+
+    return trimmed;
+  }
+
   IphoneModel copyWith({
     int? id,
     String? name,
@@ -193,6 +227,7 @@ class IphoneModel {
     List<IphoneDurationOption>? durations,
     int? affiliateId,
     String? photoUrl,
+    String? thumbnailUrl,
     String? branchName,
     String? maintenanceNote,
     String? customerName,
@@ -203,6 +238,7 @@ class IphoneModel {
     int? galleryId,
     DateTime? createdDate,
     bool? isAvailable,
+    bool? isAddon,
   }) {
     return IphoneModel(
       id: id ?? this.id,
@@ -216,6 +252,7 @@ class IphoneModel {
       durations: durations ?? this.durations,
       affiliateId: affiliateId ?? this.affiliateId,
       photoUrl: photoUrl ?? this.photoUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       branchName: branchName ?? this.branchName,
       maintenanceNote: maintenanceNote ?? this.maintenanceNote,
       customerName: customerName ?? this.customerName,
@@ -226,6 +263,7 @@ class IphoneModel {
       galleryId: galleryId ?? this.galleryId,
       createdDate: createdDate ?? this.createdDate,
       isAvailable: isAvailable ?? this.isAvailable,
+      isAddon: isAddon ?? this.isAddon,
     );
   }
 
@@ -235,6 +273,28 @@ class IphoneModel {
       parsedDurations = (json['durations'] as List)
           .map((d) => IphoneDurationOption.fromJson(d as Map<String, dynamic>))
           .toList();
+    } else if (json['model'] is Map && (json['model'] as Map)['pricing_tiers'] is List) {
+      final tiers = (json['model'] as Map)['pricing_tiers'] as List;
+      parsedDurations = tiers.whereType<Map>().map((t) {
+        final hours = t['duration_hours'] is int ? t['duration_hours'] as int : int.tryParse(t['duration_hours']?.toString() ?? '24') ?? 24;
+        final price = (t['rate'] as num?)?.toDouble() ?? (t['price'] as num?)?.toDouble() ?? 50000.0;
+        return IphoneDurationOption(
+          id: t['id'] is int ? t['id'] as int : 0,
+          name: t['tier_name']?.toString() ?? '$hours Jam',
+          hours: hours,
+          price: price,
+        );
+      }).toList();
+    } else if (json['model'] is Map && (json['model'] as Map)['daily_rate'] != null) {
+      final daily = ((json['model'] as Map)['daily_rate'] as num?)?.toDouble() ?? 50000.0;
+      parsedDurations = [
+        IphoneDurationOption(
+          id: 1,
+          name: '24 Jam',
+          hours: 24,
+          price: daily,
+        ),
+      ];
     }
 
     final rawAffId = json['affiliate_id'] is int
@@ -246,6 +306,11 @@ class IphoneModel {
             ? ((json['gallery'] as Map)['image'] ?? (json['gallery'] as Map)['photo'])?.toString()
             : null) ??
         json['image']?.toString();
+
+    final rawThumbnail = json['thumbnail_url']?.toString() ??
+        (json['gallery'] is Map
+            ? ((json['gallery'] as Map)['thumbnail'] ?? (json['gallery'] as Map)['thumb'])?.toString()
+            : null);
 
     final rawAffiliateName = json['affiliate_name']?.toString() ??
         (json['affiliate'] is Map ? (json['affiliate'] as Map)['name']?.toString() : null);
@@ -306,11 +371,32 @@ class IphoneModel {
             ? (json['is_available'].toString() == '1' || json['is_available'].toString().toLowerCase() == 'true')
             : (effectiveStatus.toLowerCase() == 'ready' || effectiveStatus.toLowerCase() == 'tersedia'));
 
+    final assetCodeStr = json['asset_code']?.toString().toUpperCase() ?? '';
+    final serialStr = json['serial_number']?.toString().toUpperCase() ?? '';
+    final isCodeOrSerialAddon = assetCodeStr.startsWith('ADDON') || serialStr.startsWith('ACC');
+
+    final bool rawIsAddon;
+    if (json['is_addon'] is bool) {
+      rawIsAddon = (json['is_addon'] as bool) || isCodeOrSerialAddon;
+    } else if (json['is_addon'] != null) {
+      final s = json['is_addon'].toString().toLowerCase();
+      rawIsAddon = (s == '1' || s == 'true') || isCodeOrSerialAddon;
+    } else {
+      rawIsAddon = isCodeOrSerialAddon ||
+          json['item_type'] == 'addon' ||
+          json['type'] == 'addon' ||
+          (json['category'] is Map && ((json['category'] as Map)['is_addon'] == true || (json['category'] as Map)['is_addon'] == 1 || (json['category'] as Map)['is_addon']?.toString() == '1')) ||
+          (json['model'] is Map && ((json['model'] as Map)['is_addon'] == true || (json['model'] as Map)['is_addon'] == 1 || (json['model'] as Map)['is_addon']?.toString() == '1' ||
+              ((json['model'] as Map)['category'] is Map && ((json['model'] as Map)['category']['is_addon'] == true || (json['model'] as Map)['category']['is_addon']?.toString() == '1'))));
+    }
+
     return IphoneModel(
       id: json['id'] is int
           ? json['id'] as int
           : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
-      name: json['name']?.toString() ?? 'iPhone',
+      name: json['name']?.toString() ??
+          (json['model'] is Map ? (json['model'] as Map)['name']?.toString() : null) ??
+          'iPhone',
       storage: json['storage'] != null && json['storage'].toString().trim().isNotEmpty
           ? json['storage'].toString().trim()
           : '',
@@ -324,6 +410,7 @@ class IphoneModel {
       durations: parsedDurations,
       affiliateId: rawAffId,
       photoUrl: rawPhoto,
+      thumbnailUrl: rawThumbnail ?? rawPhoto,
       branchName: rawBranch,
       maintenanceNote: json['maintenance_note']?.toString(),
       customerName: rawCustomerName,
@@ -334,6 +421,7 @@ class IphoneModel {
       galleryId: rawGalleryId,
       createdDate: parsedDate,
       isAvailable: rawAvailable,
+      isAddon: rawIsAddon,
     );
   }
 
@@ -351,12 +439,14 @@ class IphoneModel {
       'affiliate_id': affiliateId,
       'affiliate_name': branchName,
       'photo_url': photoUrl,
+      'thumbnail_url': thumbnailUrl,
       'branch_name': branchName,
       'maintenance_note': maintenanceNote,
       'customer_name': customerName,
       'booking_code': bookingCode,
       'return_schedule_text': returnScheduleText,
       'is_available': isAvailable,
+      'is_addon': isAddon,
       if (slug != null) 'slug': slug,
       if (description != null) 'description': description,
       if (galleryId != null) 'gallery_id': galleryId,

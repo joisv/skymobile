@@ -8,6 +8,7 @@ import '../../../services/api_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/formatters.dart';
+import '../../../widgets/app_cached_network_image.dart';
 
 class CreateIphoneDialog extends StatefulWidget {
   final BookingRepository repository;
@@ -61,6 +62,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
 
   // Form State
   DateTime _registrationDate = DateTime.now();
+  bool _isAddon = false;
 
   // Poster & Gallery State
   int? _selectedGalleryId;
@@ -91,6 +93,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
     super.initState();
     if (isEditMode) {
       final unit = widget.initialUnit!;
+      _isAddon = unit.isAddon;
       _nameController.text = unit.name;
       _slugController.text = unit.slug ?? _slugify(unit.name);
       _isSlugManuallyEdited = true;
@@ -157,14 +160,14 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
   void _generateAssetCode() {
     final randomNum = (1000 + DateTime.now().millisecond).toString();
     setState(() {
-      _assetCodeController.text = 'IPHSKY$randomNum';
+      _assetCodeController.text = _isAddon ? 'ADDON$randomNum' : 'IPHSKY$randomNum';
     });
   }
 
   void _generateSerialNumber() {
     final hex = DateTime.now().millisecondsSinceEpoch.toRadixString(16).toUpperCase();
     setState(() {
-      _snController.text = 'DX${hex.padLeft(8, '0')}';
+      _snController.text = _isAddon ? 'ACC${hex.padLeft(8, '0')}' : 'DX${hex.padLeft(8, '0')}';
     });
   }
 
@@ -652,6 +655,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
           galleryId: _selectedGalleryId ?? widget.initialUnit!.galleryId ?? 1,
           createdDate: _registrationDate,
           durations: parsedDurations,
+          isAddon: _isAddon,
         );
 
         final saved = await widget.repository.updateInventoryUnit(updatedUnit);
@@ -682,7 +686,9 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
       if (!isEditMode && !AuthService().canCreateIphone) {
         setState(() {
           _isSubmitting = false;
-          _errorMessage = 'Akses ditolak: Hanya Super Admin dan Admin yang memiliki izin untuk menambah unit iPhone baru.';
+          _errorMessage = _isAddon
+              ? 'Akses ditolak: Hanya Super Admin dan Admin yang memiliki izin untuk menambah unit add-on baru.'
+              : 'Akses ditolak: Hanya Super Admin dan Admin yang memiliki izin untuk menambah unit iPhone baru.';
         });
         return;
       }
@@ -704,6 +710,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
         galleryId: _selectedGalleryId ?? 1,
         createdDate: _registrationDate,
         durations: parsedDurations,
+        isAddon: _isAddon,
       );
 
       final saved = await widget.repository.addInventoryUnit(newUnit);
@@ -844,14 +851,14 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
               color: AppTheme.accent.withAlpha(30),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(Icons.phone_iphone_rounded, color: AppTheme.accent, size: 22),
+            child: Icon(_isAddon ? Icons.devices_other_rounded : Icons.phone_iphone_rounded, color: _isAddon ? Colors.purple : AppTheme.accent, size: 22),
           ),
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                isEditMode ? 'Edit Unit iPhone' : 'Tambah iPhone Baru',
+                isEditMode ? (_isAddon ? 'Edit Unit Add-on' : 'Edit Unit iPhone') : (_isAddon ? 'Tambah Add-on Baru' : 'Tambah iPhone Baru'),
                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
               ),
               Text(
@@ -887,6 +894,8 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildDeviceTypeSelector(isDark),
+                const SizedBox(height: 16),
                 _buildModelNameSection(isDark),
                 const SizedBox(height: 16),
                 _buildDescriptionSection(isDark),
@@ -935,6 +944,8 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildDeviceTypeSelector(isDark),
+          const SizedBox(height: 14),
           _buildModelNameSection(isDark),
           const SizedBox(height: 14),
           _buildDescriptionSection(isDark),
@@ -950,6 +961,146 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
           _buildAffiliateSection(isDark),
           const SizedBox(height: 14),
           _buildDurationRepeaterSection(isDark),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeviceTypeSelector(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                if (_isAddon) {
+                  setState(() {
+                    _isAddon = false;
+                    if (!isEditMode && (_assetCodeController.text.startsWith('ADDON') || _assetCodeController.text.isEmpty)) {
+                      _generateAssetCode();
+                      _generateSerialNumber();
+                    }
+                  });
+                }
+              },
+              borderRadius: BorderRadius.circular(9),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: !_isAddon
+                      ? (isDark ? const Color(0xFF0F172A) : Colors.white)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                  boxShadow: !_isAddon
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.phone_iphone_rounded,
+                      size: 16,
+                      color: !_isAddon
+                          ? AppTheme.accent
+                          : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'iPhone (Utama)',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: !_isAddon ? FontWeight.bold : FontWeight.w600,
+                          color: !_isAddon
+                              ? (isDark ? Colors.white : const Color(0xFF0F172A))
+                              : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                if (!_isAddon) {
+                  setState(() {
+                    _isAddon = true;
+                    if (!isEditMode && (_assetCodeController.text.startsWith('IPHSKY') || _assetCodeController.text.isEmpty)) {
+                      _generateAssetCode();
+                      _generateSerialNumber();
+                    }
+                  });
+                }
+              },
+              borderRadius: BorderRadius.circular(9),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: _isAddon
+                      ? (isDark ? const Color(0xFF0F172A) : Colors.white)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                  boxShadow: _isAddon
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.devices_other_rounded,
+                      size: 16,
+                      color: _isAddon
+                          ? const Color(0xFF8B5CF6)
+                          : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'Aksesoris / Add-on',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: _isAddon ? FontWeight.bold : FontWeight.w600,
+                          color: _isAddon
+                              ? (isDark ? Colors.white : const Color(0xFF0F172A))
+                              : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -989,7 +1140,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'MODEL UNIT IPHONE *',
+                _isAddon ? 'NAMA PERANGKAT ADD-ON / AKSESORIS *' : 'MODEL UNIT IPHONE *',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
@@ -1009,7 +1160,7 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
             controller: _nameController,
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
-              hintText: 'iPhone 16 pro MAX',
+              hintText: _isAddon ? 'MagSafe Battery Pack / Tripod' : 'iPhone 16 pro MAX',
               hintStyle: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w500,
@@ -1021,10 +1172,10 @@ class _CreateIphoneDialogState extends State<CreateIphoneDialog> {
             validator: (val) {
               final trimmed = val?.trim() ?? '';
               if (trimmed.isEmpty) {
-                return 'Nama model iPhone wajib diisi.';
+                return _isAddon ? 'Nama add-on wajib diisi.' : 'Nama model iPhone wajib diisi.';
               }
               if (trimmed.length < 3) {
-                return 'Nama model iPhone minimal 3 karakter.';
+                return _isAddon ? 'Nama add-on minimal 3 karakter.' : 'Nama model iPhone minimal 3 karakter.';
               }
               return null;
             },

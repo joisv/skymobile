@@ -5,7 +5,6 @@ import 'package:skyrental_admin/data/mock_booking_data.dart';
 import 'package:skyrental_admin/models/admin_user_model.dart';
 import 'package:skyrental_admin/models/booking_model.dart';
 import 'package:skyrental_admin/models/iphone_model.dart';
-import 'package:skyrental_admin/models/payment_model.dart';
 import 'package:skyrental_admin/screens/booking/create_booking_screen.dart';
 import 'package:skyrental_admin/services/auth_service.dart';
 

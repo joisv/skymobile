@@ -18,15 +18,26 @@ class Formatters {
     'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
   ];
 
+  /// Normalizes UTC DateTime to Asia/Jakarta (WIB, UTC+7)
+  static DateTime toWib(DateTime dt) {
+    if (dt.isUtc) {
+      final wib = dt.add(const Duration(hours: 7));
+      return DateTime(wib.year, wib.month, wib.day, wib.hour, wib.minute, wib.second);
+    }
+    return dt;
+  }
+
   static String date(DateTime dt) {
-    final day = dt.day.toString().padLeft(2, '0');
-    final month = _monthNames[dt.month - 1];
-    return '$day $month ${dt.year}';
+    final local = toWib(dt);
+    final day = local.day.toString().padLeft(2, '0');
+    final month = _monthNames[local.month - 1];
+    return '$day $month ${local.year}';
   }
 
   static String time(DateTime dt) {
-    final hour = dt.hour.toString().padLeft(2, '0');
-    final minute = dt.minute.toString().padLeft(2, '0');
+    final local = toWib(dt);
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
 import '../../models/booking_model.dart';
 import '../../models/payment_model.dart';
+import '../../models/print_result_model.dart';
 import '../../models/receipt_format_settings.dart';
 import '../../models/receipt_model.dart';
 import '../../routes/app_routes.dart';
@@ -12,6 +13,7 @@ import '../../services/thermal_print_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_header.dart';
+import '../receipt/widgets/printer_connection_dialog.dart';
 
 enum PaymentTypeOption {
   pelunasan(
@@ -680,19 +682,76 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
       final receipt = _createReceiptFromPaymentResult(paymentResult);
       await widget.repository.saveReceipt(receipt);
 
-      if (_printReceipt) {
-        try {
-          await ThermalPrintService().printReceipt(receipt);
-        } catch (_) {}
-      }
-
       if (!mounted) return;
       setState(() => _isConfirming = false);
-      _showSuccessDialog(paymentResult, receipt);
+
+      if (_printReceipt) {
+        await _executePrintWithDialogs(paymentResult, receipt);
+      } else {
+        _showSuccessDialog(paymentResult, receipt, printed: false);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isConfirming = false);
       _showSnackbar('Gagal konfirmasi pembayaran: $e', isError: true);
+    }
+  }
+
+  Future<void> _executePrintWithDialogs(BookingPaymentResult paymentResult, ReceiptModel receipt) async {
+    if (mounted) setState(() => _isConfirming = true);
+    final result = await ThermalPrintService().printReceipt(receipt);
+    if (!mounted) return;
+    setState(() => _isConfirming = false);
+
+    if (result.isSuccess) {
+      _showSuccessDialog(paymentResult, receipt, printed: true);
+    } else if (result.status == PrintResultStatus.noPrinterSelected) {
+      PrinterConnectionDialog.showNoPrinter(
+        context,
+        onConnectPrinter: () async {
+          await Navigator.pushNamed(context, AppRoutes.printerSettings);
+          if (!mounted) return;
+          _executePrintWithDialogs(paymentResult, receipt);
+        },
+        onPrintLater: () {
+          _showSuccessDialog(paymentResult, receipt, printed: false);
+        },
+      );
+    } else if (result.status == PrintResultStatus.printerNotConnected ||
+        result.status == PrintResultStatus.timeout) {
+      final msg = result.status == PrintResultStatus.timeout
+          ? 'Koneksi ke printer melebihi batas waktu (timeout).'
+          : (result.message.isNotEmpty
+              ? result.message
+              : 'The printer could not be connected. Check that the printer is powered on, nearby, and available, then try again.');
+      PrinterConnectionDialog.showConnectionFailed(
+        context,
+        failureMessage: msg,
+        onTryAgain: () => _executePrintWithDialogs(paymentResult, receipt),
+        onChooseAnotherPrinter: () async {
+          await Navigator.pushNamed(context, AppRoutes.printerSettings);
+          if (!mounted) return;
+          _executePrintWithDialogs(paymentResult, receipt);
+        },
+        onPrintLater: () {
+          _showSuccessDialog(paymentResult, receipt, printed: false);
+        },
+      );
+    } else {
+      PrinterConnectionDialog.showPrintingFailed(
+        context,
+        failureMessage: result.message,
+        onTryAgain: () => _executePrintWithDialogs(paymentResult, receipt),
+        onReconnect: () async {
+          final printer = await PrinterStorageService().getPrimaryPrinter();
+          await ThermalPrintService().connectPrinterDetailed(printer.address);
+          if (!mounted) return;
+          _executePrintWithDialogs(paymentResult, receipt);
+        },
+        onPrintLater: () {
+          _showSuccessDialog(paymentResult, receipt, printed: false);
+        },
+      );
     }
   }
 
@@ -706,7 +765,7 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
     );
   }
 
-  void _showSuccessDialog(BookingPaymentResult paymentResult, ReceiptModel receipt) {
+  void _showSuccessDialog(BookingPaymentResult paymentResult, ReceiptModel receipt, {bool printed = true}) {
     final displayReceiptNum = paymentResult.receiptNumber.isNotEmpty && paymentResult.receiptNumber != '-'
         ? paymentResult.receiptNumber
         : (paymentResult.bookingCode.isNotEmpty && paymentResult.bookingCode != '-'
@@ -850,9 +909,20 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
             if (_printReceipt)
               Row(
                 children: [
-                  const Icon(Icons.print_rounded, size: 14, color: AppTheme.success),
+                  Icon(
+                    printed ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                    size: 14,
+                    color: printed ? AppTheme.success : const Color(0xFFD97706),
+                  ),
                   const SizedBox(width: 6),
-                  Text('Terkirim ke Printer Thermal Bluetooth', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  Text(
+                    printed ? 'Struk resi berhasil dicetak' : 'Struk belum dicetak',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: printed ? AppTheme.success : const Color(0xFFD97706),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
             if (_sendWhatsApp) ...[
@@ -1268,6 +1338,64 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
               ],
             ),
           ),
+          if (booking.hasAddons) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.devices_other_rounded, size: 14, color: Color(0xFF16A34A)),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Item Add-on (${booking.addonDevices.length}):',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        Formatters.formatCurrency(booking.addonSubtotal),
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  ...booking.addonDevices.map((addon) {
+                    final itemPrice = addon.dailyRate > 0 ? addon.dailyRate : 10000.0;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2.5),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '• ${addon.name} (${addon.assetCode.isNotEmpty ? addon.assetCode : addon.serialNumber})',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            '+ ${Formatters.formatCurrency(itemPrice)}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2309,6 +2437,65 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
               ],
             ),
           ),
+          if (_activeBooking != null && _activeBooking!.hasAddons) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.devices_other_rounded, size: 13, color: Color(0xFF16A34A)),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Item Add-on (${_activeBooking!.addonDevices.length}):',
+                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        'Subtotal: ${Formatters.formatCurrency(_activeBooking!.addonSubtotal)}',
+                        style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ..._activeBooking!.addonDevices.map((a) {
+                    final itemPrice = a.dailyRate > 0 ? a.dailyRate : 10000.0;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '• ${a.name} (${a.assetCode.isNotEmpty ? a.assetCode : a.serialNumber})',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            '+ ${Formatters.formatCurrency(itemPrice)}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2426,6 +2613,15 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
                   Text('Deposit: ${Formatters.formatCurrency(_depositFee)}  ', style: TextStyle(fontSize: 10, color: AppTheme.secondary, fontWeight: FontWeight.w600)),
                 if (_discountFee > 0)
                   Text('Diskon: -${Formatters.formatCurrency(_discountFee)}', style: const TextStyle(fontSize: 10, color: Color(0xFF047857), fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
+          if (_activeBooking != null && _activeBooking!.hasAddons && !isPenalty && !isExtend) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text('Sewa iPhone: ${Formatters.formatCurrency(_activeBooking!.primarySubtotal)}  ', style: TextStyle(fontSize: 10, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
+                Text('Sewa Add-on: ${Formatters.formatCurrency(_activeBooking!.addonSubtotal)}', style: const TextStyle(fontSize: 10, color: Color(0xFF15803D), fontWeight: FontWeight.w600)),
               ],
             ),
           ],

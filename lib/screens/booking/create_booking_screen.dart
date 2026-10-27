@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/booking_repository.dart';
 import '../../models/booking_model.dart';
+import '../../models/cash_drawer_shift_model.dart';
 import '../../models/iphone_model.dart';
 import '../../routes/app_routes.dart';
 import '../../services/auth_service.dart';
@@ -64,12 +65,12 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   // Options & Selections
   String _countryCode = '+62';
   final List<Map<String, String>> _countryCodes = const [
-    {'code': '+62', 'flag': '🇮🇩', 'name': 'Indonesia (+62)'},
-    {'code': '+60', 'flag': '🇲🇾', 'name': 'Malaysia (+60)'},
-    {'code': '+65', 'flag': '🇸🇬', 'name': 'Singapura (+65)'},
-    {'code': '+66', 'flag': '🇹🇭', 'name': 'Thailand (+66)'},
-    {'code': '+63', 'flag': '🇵🇭', 'name': 'Filipina (+63)'},
-    {'code': '+84', 'flag': '🇻🇳', 'name': 'Vietnam (+84)'},
+    {'code': '+62', 'flag': 'ðŸ‡®ðŸ‡©', 'name': 'Indonesia (+62)'},
+    {'code': '+60', 'flag': 'ðŸ‡²ðŸ‡¾', 'name': 'Malaysia (+60)'},
+    {'code': '+65', 'flag': 'ðŸ‡¸ðŸ‡¬', 'name': 'Singapura (+65)'},
+    {'code': '+66', 'flag': 'ðŸ‡¹ðŸ‡­', 'name': 'Thailand (+66)'},
+    {'code': '+63', 'flag': 'ðŸ‡µðŸ‡­', 'name': 'Filipina (+63)'},
+    {'code': '+84', 'flag': 'ðŸ‡»ðŸ‡³', 'name': 'Vietnam (+84)'},
   ];
 
   String _jaminanType = 'KTP';
@@ -93,6 +94,40 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   int _totalUnits = 0;
   bool _isLoadingMoreUnits = false;
 
+  // Add-on selection state
+  List<IphoneModel> _availableAddons = [];
+  final Set<int> _selectedAddonIds = {};
+  bool _isLoadingAddons = false;
+
+  List<IphoneModel> get _selectedAddonUnits =>
+      _availableAddons.where((a) => _selectedAddonIds.contains(a.id)).toList();
+
+  double _getAddonRentalPrice(IphoneModel addon) {
+    if (addon.durations.isNotEmpty) {
+      final hours = _durationHoursToSubmit;
+      final match = addon.durations.where((d) => d.hours == hours).firstOrNull;
+      if (match != null) return match.price;
+      return addon.dailyRate;
+    }
+    return addon.dailyRate;
+  }
+
+  double get _addonTotal {
+    double sum = 0.0;
+    for (final a in _selectedAddonUnits) {
+      sum += _getAddonRentalPrice(a);
+    }
+    return sum;
+  }
+
+  double get _primaryPrice {
+    if (_selectedUnit == null) return 0.0;
+    if (!_isCustomDurationMode && _selectedDurationOption != null) {
+      return _selectedDurationOption!.price;
+    }
+    return _customPrice;
+  }
+
   DateTime _startDate = DateTime.now();
   TimeOfDay _startTime = TimeOfDay.now();
 
@@ -101,6 +136,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   String _customUnit = 'Hari'; // 'Hari', 'Minggu', 'Bulan'
 
   bool _isSubmitting = false;
+  ShiftScheduleModel? _shiftSchedule;
 
   @override
   void initState() {
@@ -112,6 +148,16 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       _selectedDurationOption = widget.initialIphone!.availableDurations.firstOrNull;
     }
     _fetchAvailableUnits();
+    _checkShiftSchedule();
+  }
+
+  Future<void> _checkShiftSchedule() async {
+    try {
+      final schedule = await widget.repository.getShiftSchedule();
+      if (mounted) {
+        setState(() => _shiftSchedule = schedule);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -146,13 +192,27 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       }).toList();
     }
 
+    // Pisahkan perangkat add-on dari daftar perangkat utama
+    final incomingAddons = incomingUnits.where((u) => u.isAddon).toList();
+    final incomingPrimary = incomingUnits.where((u) => !u.isAddon).toList();
+
+    if (incomingAddons.isNotEmpty) {
+      final existingAddonIds = _availableAddons.map((a) => a.id).toSet();
+      for (final a in incomingAddons) {
+        if (!existingAddonIds.contains(a.id)) {
+          _availableAddons.add(a);
+          existingAddonIds.add(a.id);
+        }
+      }
+    }
+
     final List<IphoneModel> updatedList;
     if (append) {
       final existingIds = _availableUnits.map((u) => u.id).toSet();
       updatedList = List.from(_availableUnits)
-        ..addAll(incomingUnits.where((u) => !existingIds.contains(u.id)));
+        ..addAll(incomingPrimary.where((u) => !existingIds.contains(u.id)));
     } else {
-      updatedList = incomingUnits;
+      updatedList = incomingPrimary;
     }
 
     final currentSelected = _selectedUnit;
@@ -188,6 +248,32 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     });
   }
 
+  Future<void> _fetchAvailableAddons() async {
+    if (mounted) setState(() => _isLoadingAddons = true);
+    try {
+      final addons = await widget.repository.getAvailableAddonUnits(
+        startDate: _startDateTime,
+        endDate: _endDateTime,
+      );
+      if (mounted) {
+        setState(() {
+          final existingIds = _availableAddons.map((a) => a.id).toSet();
+          final merged = List<IphoneModel>.from(_availableAddons);
+          for (final a in addons) {
+            if (!existingIds.contains(a.id)) {
+              merged.add(a);
+              existingIds.add(a.id);
+            }
+          }
+          _availableAddons = merged.isNotEmpty ? merged : addons;
+          _isLoadingAddons = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingAddons = false);
+    }
+  }
+
   Future<void> _fetchAvailableUnits({bool reset = true}) async {
     if (reset) {
       setState(() {
@@ -195,6 +281,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         _currentPage = 1;
       });
     }
+
+    _fetchAvailableAddons();
 
     try {
       final isScoped = AuthService().isAffiliateScoped;
@@ -316,13 +404,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     }
   }
 
-  double get _rentTotal {
-    if (_selectedUnit == null) return 0.0;
-    if (!_isCustomDurationMode && _selectedDurationOption != null) {
-      return _selectedDurationOption!.price;
-    }
-    return _customPrice;
-  }
+  double get _rentTotal => _primaryPrice + _addonTotal;
 
   double get _depositTotal => 0.0;
   double get _grandTotal => _rentTotal;
@@ -604,6 +686,131 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     );
   }
 
+  void _showShiftRequiredDialog(ShiftScheduleModel schedule) {
+    final isClosed = schedule.operationalState == ShiftOperationalState.closed;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isClosed ? Colors.grey.shade100 : Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                isClosed ? Icons.lock_clock_rounded : Icons.point_of_sale_rounded,
+                color: isClosed ? Colors.grey.shade700 : Colors.amber.shade800,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                isClosed ? 'Shift Kasir Ditutup' : 'Shift Kasir Belum Dibuka',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          isClosed
+              ? 'Shift kasir untuk hari ini telah ditutup (${schedule.shiftClosingTime}). Transaksi booking baru hanya dapat dibuat saat shift kasir aktif.'
+              : 'Transaksi booking dan penerimaan kas tidak dapat diproses karena shift kasir belum dibuka untuk cabang ini.\n\nSilakan buka shift kasir dan masukkan modal awal (float) terlebih dahulu.',
+          style: const TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          if (!isClosed)
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pushNamed(context, AppRoutes.cashierShift).then((_) => _checkShiftSchedule());
+              },
+              icon: const Icon(Icons.vpn_key_rounded, size: 16),
+              label: const Text('Buka Shift Kasir'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShiftWarningBanner() {
+    if (_shiftSchedule == null || _shiftSchedule!.canCreateBooking) return const SizedBox.shrink();
+    final schedule = _shiftSchedule!;
+    final isClosed = schedule.operationalState == ShiftOperationalState.closed;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: isClosed ? const Color(0xFFF1F5F9) : const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: isClosed ? const Color(0xFFCBD5E1) : const Color(0xFFF59E0B)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isClosed ? Icons.lock_clock_rounded : Icons.warning_amber_rounded,
+            color: isClosed ? const Color(0xFF475569) : const Color(0xFFB45309),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isClosed ? 'Shift Kasir Telah Ditutup' : 'Shift Kasir Belum Dibuka',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: isClosed ? const Color(0xFF334155) : const Color(0xFF92400E),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  isClosed
+                      ? 'Shift kasir hari ini telah selesai ditutup. Transaksi sewa baru dibatasi.'
+                      : 'Buka shift kasir terlebih dahulu untuk dapat memproses transaksi dan pembayaran booking.',
+                  style: TextStyle(fontSize: 12, color: isClosed ? const Color(0xFF64748B) : const Color(0xFFB45309)),
+                ),
+                if (!isClosed) ...[
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: () => Navigator.pushNamed(context, AppRoutes.cashierShift).then((_) => _checkShiftSchedule()),
+                    child: const Text(
+                      'Buka Shift Kasir Sekarang â†’',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFB45309),
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showSnackbar(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -698,6 +905,12 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   }
 
   Future<void> _submitBooking() async {
+    final schedule = _shiftSchedule ?? await widget.repository.getShiftSchedule();
+    if (!schedule.canCreateBooking) {
+      _showShiftRequiredDialog(schedule);
+      return;
+    }
+
     if (!_validateSection3()) return;
     if (_selectedUnit == null) {
       _showSnackbar('Silakan pilih salah satu unit iPhone yang tersedia.', isError: true);
@@ -734,6 +947,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         customerEmail: email,
         address: _addressController.text.trim(),
         iphone: _selectedUnit!,
+        addonDevices: _selectedAddonUnits,
+        primarySubtotal: _primaryPrice,
+        addonSubtotal: _addonTotal,
         startDate: _startDateTime,
         endDate: _endDateTime,
         durationDays: _durationHoursToSubmit,
@@ -804,6 +1020,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       body: Column(
         children: [
           _buildTabletSubHeader(context),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+            child: _buildShiftWarningBanner(),
+          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -1143,6 +1363,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           _buildDurationSelectionSection(),
           const SizedBox(height: 20),
           _buildSchedulePickerSection(),
+          const SizedBox(height: 20),
+          _buildAddonSelectionSection(),
         ],
       ),
     );
@@ -1168,7 +1390,14 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
             ],
           ),
           const SizedBox(height: 18),
-          _buildBillingRow('Sewa ${_selectedUnit?.modelName ?? 'iPhone'}', Formatters.formatCurrency(_rentTotal)),
+          _buildBillingRow('Sewa ${_selectedUnit?.modelName ?? 'iPhone'}', Formatters.formatCurrency(_primaryPrice)),
+          if (_selectedAddonUnits.isNotEmpty) ...[
+            ..._selectedAddonUnits.map((addon) => _buildBillingRow(
+              'Add-on: ${addon.name}',
+              '+ ${Formatters.formatCurrency(_getAddonRentalPrice(addon))}',
+            )),
+            _buildBillingRow('Subtotal Add-on', Formatters.formatCurrency(_addonTotal)),
+          ],
           _buildBillingRow('Deposit Fisik & Jaminan', 'Rp 0 (Jaminan ${_getJaminanLabel(_jaminanType)})'),
           const Divider(color: Color(0xFFE2E8F0)),
           _buildBillingRow('TOTAL TAGIHAN BAYAR DI KASIR', Formatters.formatCurrency(_grandTotal), isAccent: true),
@@ -1323,6 +1552,30 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
               ],
             ),
           ),
+          if (_selectedAddonUnits.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('ITEM ADD-ON TERPILIH', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                  const SizedBox(height: 6),
+                  ..._selectedAddonUnits.map((a) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(child: Text(a.name, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+                        Text('+ ${Formatters.formatCurrency(_getAddonRentalPrice(a))}', style: const TextStyle(fontSize: 11, color: Color(0xFF166534), fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  )),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           // Calculation Preview
           Container(
@@ -1331,8 +1584,11 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('TOTAL BIAYA SEWA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF166534))),
-                Text(Formatters.formatCurrency(_grandTotal), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF166534))),
+                const Flexible(
+                  child: Text('TOTAL BIAYA SEWA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF166534)), overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(width: 8),
+                Text(Formatters.formatCurrency(_grandTotal), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF166534))),
               ],
             ),
           ),
@@ -1369,6 +1625,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         child: Column(
           children: [
             _buildStepperHeader(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _buildShiftWarningBanner(),
+            ),
             Expanded(
               child: RepaintBoundary(
                 child: SingleChildScrollView(
@@ -1508,7 +1768,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(_nameController.text.trim().isEmpty ? 'Customer' : _nameController.text.trim(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                Text('${_formatPhoneNumber(_phoneController.text.trim())} • Jaminan: ${_getJaminanLabel(_jaminanType)}', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                Text('${_formatPhoneNumber(_phoneController.text.trim())} â€¢ Jaminan: ${_getJaminanLabel(_jaminanType)}', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
               ],
             ),
           ),
@@ -1543,6 +1803,49 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           ),
           const SizedBox(height: 6),
           Text('Jadwal: ${Formatters.date(_startDate)} - ${Formatters.date(_endDateTime)}', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+          if (_selectedAddonUnits.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.secondary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Item Add-on Terpilih (${_selectedAddonUnits.length}):',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.secondary),
+                  ),
+                  const SizedBox(height: 4),
+                  ..._selectedAddonUnits.map((a) {
+                    final price = _getAddonRentalPrice(a);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '• ${a.name} (${a.assetCode.isNotEmpty ? a.assetCode : a.serialNumber})',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            '+ ${Formatters.formatCurrency(price)}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF166534)),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1876,6 +2179,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           _buildDurationSelectionSection(),
           const SizedBox(height: 16),
           _buildSchedulePickerSection(),
+          const SizedBox(height: 16),
+          _buildAddonSelectionSection(),
         ],
       ),
     );
@@ -2067,7 +2372,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                                 final branchTag = unit.branchName?.trim().isNotEmpty == true
                                     ? unit.branchName!.trim()
                                     : (unit.affiliateName?.trim().isNotEmpty == true ? unit.affiliateName!.trim() : '');
-                                final tagPrefix = branchTag.isNotEmpty ? '$branchTag • ' : '';
+                                final tagPrefix = branchTag.isNotEmpty ? '$branchTag â€¢ ' : '';
                                 return Text(
                                   '${tagPrefix}SN: ${unit.serialNumber}',
                                   style: TextStyle(
@@ -2372,9 +2677,186 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           const SizedBox(height: 12),
           _buildBillingRow('Unit iPhone', _selectedUnit != null ? '${_selectedUnit!.modelName} (SN: ${_selectedUnit!.serialNumber})' : '-'),
           _buildBillingRow('Durasi', !_isCustomDurationMode && _selectedDurationOption != null ? _selectedDurationOption!.displayName : '$_customJumlah $_customUnit'),
-          _buildBillingRow('Sewa', Formatters.formatCurrency(_rentTotal)),
+          _buildBillingRow('Sewa iPhone', Formatters.formatCurrency(_primaryPrice)),
+          if (_selectedAddonUnits.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            ..._selectedAddonUnits.map((addon) => _buildBillingRow(
+              'Add-on: ${addon.name}',
+              '+ ${Formatters.formatCurrency(_getAddonRentalPrice(addon))}',
+            )),
+            _buildBillingRow('Subtotal Add-on', Formatters.formatCurrency(_addonTotal)),
+          ],
           const Divider(),
           _buildBillingRow('Total', Formatters.formatCurrency(_grandTotal), isAccent: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddonSelectionSection() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.secondary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.devices_other_rounded, size: 18, color: AppTheme.secondary),
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Item Tambahan / Add-on (Opsional)',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            'Disewa bersamaan dengan unit iPhone',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_selectedAddonIds.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${_selectedAddonIds.length} dipilih',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_isLoadingAddons)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              ),
+            )
+          else if (_availableAddons.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: const Text(
+                'Tidak ada perangkat add-on tersedia untuk jadwal sewa ini.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _availableAddons.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final addon = _availableAddons[index];
+                final isSelected = _selectedAddonIds.contains(addon.id);
+                final price = _getAddonRentalPrice(addon);
+
+                return InkWell(
+                  key: Key('addon_tile_${addon.id}'),
+                  onTap: () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedAddonIds.remove(addon.id);
+                      } else {
+                        _selectedAddonIds.add(addon.id);
+                      }
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppTheme.secondary.withValues(alpha: 0.08) : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSelected ? AppTheme.secondary : const Color(0xFFE2E8F0),
+                        width: isSelected ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          key: Key('addon_checkbox_${addon.id}'),
+                          value: isSelected,
+                          activeColor: AppTheme.secondary,
+                          onChanged: (val) {
+                            setState(() {
+                              if (val == true) {
+                                _selectedAddonIds.add(addon.id);
+                              } else {
+                                _selectedAddonIds.remove(addon.id);
+                              }
+                            });
+                          },
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                addon.name,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'SN: ${addon.serialNumber} â€¢ ${addon.assetCode}',
+                                style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '+ ${Formatters.formatCurrency(price)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isSelected ? AppTheme.secondary : const Color(0xFF166534),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );

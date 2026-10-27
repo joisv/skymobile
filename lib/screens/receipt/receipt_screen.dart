@@ -781,10 +781,21 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
             const SizedBox(height: 8),
             if (r.type == ReceiptType.returnUnit) ...[
               _buildPriceRow('Biaya Sewa Pokok', r.rentFee),
-              _buildPriceRow('Deposit Jaminan Awal', r.depositFee),
-              if (r.finesFee > 0) _buildPriceRow('Pemotongan Denda/Kerusakan', -r.finesFee, isNegative: true, color: const Color(0xFFDC2626)),
-              const Divider(height: 16),
-              _buildPriceRow('Deposit Dikembalikan (Refund)', r.refundAmount, color: const Color(0xFF047857), isBold: true),
+              if (r.depositFee > 0) _buildPriceRow('Deposit Jaminan Awal', r.depositFee),
+              if (r.finesFee > 0) ...[
+                if (r.depositStatus != null && r.depositStatus!.toLowerCase().contains('potong'))
+                  _buildPriceRow('Pemotongan Denda/Kerusakan', -r.finesFee, isNegative: true, color: const Color(0xFFDC2626))
+                else
+                  _buildPriceRow('Biaya Keterlambatan', r.finesFee, color: const Color(0xFFDC2626), isBold: true),
+              ],
+              if (r.refundAmount > 0) ...[
+                const Divider(height: 16),
+                _buildPriceRow('Deposit Dikembalikan (Refund)', r.refundAmount, color: const Color(0xFF047857), isBold: true),
+              ],
+              if (!r.paymentMethod.toLowerCase().contains('tunai') && !r.paymentMethod.toLowerCase().contains('cash') && r.paidAmount > 0 && r.finesFee > 0) ...[
+                const Divider(height: 16),
+                _buildPriceRow('Terbayar', r.paidAmount, color: const Color(0xFF047857), isBold: true),
+              ],
             ] else ...[
               _buildPriceRow('Biaya Sewa', r.rentFee),
               _buildPriceRow('Deposit Jaminan', r.depositFee),

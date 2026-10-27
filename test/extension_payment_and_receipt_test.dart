@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skyrental_admin/data/booking_repository.dart';
 import 'package:skyrental_admin/models/booking_model.dart';
-import 'package:skyrental_admin/models/iphone_model.dart';
 import 'package:skyrental_admin/models/receipt_format_settings.dart';
 import 'package:skyrental_admin/models/receipt_model.dart';
 import 'package:skyrental_admin/screens/payment/payment_deposit_screen.dart';

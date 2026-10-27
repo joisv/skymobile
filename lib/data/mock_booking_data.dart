@@ -1,4 +1,5 @@
 import '../models/booking_model.dart';
+import '../models/cash_drawer_shift_model.dart';
 import '../models/iphone_model.dart';
 import '../models/payment_model.dart';
 
@@ -572,6 +573,68 @@ class MockBookingData {
       status: 'tersedia',
       batteryHealth: 85,
     ),
+
+    // Unit Add-on / Aksesoris Resmi
+    IphoneModel(
+      id: 501,
+      name: 'DJI Osmo Mobile 6 Gimbal',
+      storage: '',
+      color: 'Slate Gray',
+      serialNumber: 'OSMO6-9812',
+      assetCode: 'AST-ADD-001',
+      status: 'tersedia',
+      batteryHealth: 100,
+      isAddon: true,
+      durations: [
+        IphoneDurationOption(id: 5011, name: '24 Jam', hours: 24, price: 45000.0),
+        IphoneDurationOption(id: 5012, name: '12 Jam', hours: 12, price: 30000.0),
+      ],
+    ),
+    IphoneModel(
+      id: 502,
+      name: 'Anker MagSafe Powerbank 10000mAh',
+      storage: '',
+      color: 'Black',
+      serialNumber: 'ANKER10K-441',
+      assetCode: 'AST-ADD-002',
+      status: 'tersedia',
+      batteryHealth: 100,
+      isAddon: true,
+      durations: [
+        IphoneDurationOption(id: 5021, name: '24 Jam', hours: 24, price: 25000.0),
+        IphoneDurationOption(id: 5022, name: '12 Jam', hours: 12, price: 15000.0),
+      ],
+    ),
+    IphoneModel(
+      id: 503,
+      name: 'Rode Wireless ME Microphone',
+      storage: '',
+      color: 'Black',
+      serialNumber: 'RODE-ME-102',
+      assetCode: 'AST-ADD-003',
+      status: 'tersedia',
+      batteryHealth: 100,
+      isAddon: true,
+      durations: [
+        IphoneDurationOption(id: 5031, name: '24 Jam', hours: 24, price: 50000.0),
+        IphoneDurationOption(id: 5032, name: '12 Jam', hours: 12, price: 35000.0),
+      ],
+    ),
+    IphoneModel(
+      id: 504,
+      name: 'Apple 20W Fast Charger & Cable',
+      storage: '',
+      color: 'White',
+      serialNumber: 'CHG-20W-881',
+      assetCode: 'AST-ADD-004',
+      status: 'tersedia',
+      batteryHealth: 100,
+      isAddon: true,
+      durations: [
+        IphoneDurationOption(id: 5041, name: '24 Jam', hours: 24, price: 15000.0),
+        IphoneDurationOption(id: 5042, name: '12 Jam', hours: 12, price: 10000.0),
+      ],
+    ),
   ];
 
   static List<IphoneModel> inventory = List.of(_defaultInventory);
@@ -745,4 +808,48 @@ class MockBookingData {
       notes: 'Selesai dan refund via Transfer BCA.',
     ),
   ];
+
+  // ===========================================================================
+  // MOCK CASH DRAWER SHIFTS
+  // ===========================================================================
+
+  static final List<CashDrawerShiftModel> _defaultShifts = [
+    CashDrawerShiftModel(
+      id: 901,
+      shiftNumber: 'SHF-GNT-261026-0001',
+      branchId: 4,
+      branchName: 'Genteng Pusat',
+      openedByName: 'Budi Santoso',
+      closedByName: 'Budi Santoso',
+      openedAt: DateTime(2026, 10, 26, 8, 0),
+      closedAt: DateTime(2026, 10, 26, 16, 0),
+      openingCashFloat: 200000.0,
+      currentCashInflow: 450000.0,
+      currentCashRefund: 0.0,
+      currentCashExpenses: 50000.0,
+      expectedCashNow: 600000.0,
+      expectedCashTotal: 600000.0,
+      actualCashCounted: 600000.0,
+      cashDifference: 0.0,
+      differenceReason: null,
+      closingNotes: 'Shift kemarin berjalan lancar, kas seimbang.',
+      status: ShiftStatus.closed,
+    ),
+  ];
+
+  static List<CashDrawerShiftModel> shiftHistory = List.of(_defaultShifts);
+  static CashDrawerShiftModel? activeShift;
+  static bool shiftEnforcementEnabled = false;
+  static String shiftOpeningTime = '08:00';
+  static String shiftClosingTime = '22:00';
+  static int shiftGracePeriodMinutes = 30;
+
+  static void resetShifts() {
+    shiftHistory = List.of(_defaultShifts);
+    activeShift = null;
+    shiftEnforcementEnabled = false;
+    shiftOpeningTime = '08:00';
+    shiftClosingTime = '22:00';
+    shiftGracePeriodMinutes = 30;
+  }
 }

@@ -6,6 +6,7 @@ import '../models/affiliate_model.dart';
 import '../models/affiliate_revenue_model.dart';
 import '../models/affiliate_user_model.dart';
 import '../models/booking_model.dart';
+import '../models/cash_drawer_shift_model.dart';
 import '../models/expense_model.dart';
 import '../models/iphone_model.dart';
 import '../models/iphone_transfer_model.dart';
@@ -509,7 +510,7 @@ class BookingRepository {
     bool matchesFilters(IphoneModel unit) {
       if (forBooking) {
         if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
-          if (unit.affiliateId != AuthService().affiliateId) return false;
+          if (unit.affiliateId != null && unit.affiliateId != AuthService().affiliateId) return false;
         }
       } else if (effectiveAffiliateId != null) {
         if (unit.affiliateId != null && unit.affiliateId != effectiveAffiliateId) {
@@ -539,7 +540,7 @@ class BookingRepository {
 
     // 1. Ambil unit dari REST API Skyrent backend jika server tersedia
     try {
-      final unassignedOnly = false;
+      const unassignedOnly = false;
       if (onlyAvailable) {
         // Endpoint /iphones/available — hanya unit tersedia
         final apiUnits = await ApiService().getAvailableIphones(
@@ -560,17 +561,73 @@ class BookingRepository {
           forBooking: forBooking,
           unassignedOnly: unassignedOnly,
         );
-        if (result != null && result['data'] is List) {
-          _hasFetchedFromApi = true;
-          final allUnits = (result['data'] as List)
-              .map((item) => IphoneModel.fromJson(item as Map<String, dynamic>))
-              .toList();
-          return allUnits.where(matchesFilters).toList();
+        if (result != null) {
+          List? rawItems;
+          if (result['data'] is List) {
+            rawItems = result['data'] as List;
+          } else if (result['data'] is Map && (result['data'] as Map)['data'] is List) {
+            rawItems = (result['data'] as Map)['data'] as List;
+          }
+          if (rawItems != null) {
+            _hasFetchedFromApi = true;
+            final allUnits = rawItems
+                .whereType<Map>()
+                .map((item) => IphoneModel.fromJson(Map<String, dynamic>.from(item)))
+                .toList();
+            return allUnits.where(matchesFilters).toList();
+          }
         }
       }
     } catch (_) {}
 
     return _inventory.where(matchesFilters).toList();
+  }
+
+  /// Mengambil unit add-on (aksesoris / perangkat tambahan) yang siap disewa
+  Future<List<IphoneModel>> getAvailableAddonUnits({
+    String? query,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final effectiveAffiliateId = AuthService().isAffiliateScoped ? AuthService().affiliateId : null;
+
+    // Selalu coba sinkronisasi unit inventaris terbaru dari API backend
+    try {
+      final all = await getInventoryUnits(onlyAvailable: false, forBooking: true);
+      final fetchedAddons = all.where((u) => u.isAddon).toList();
+      if (fetchedAddons.isNotEmpty) {
+        final existingIds = _inventory.map((u) => u.id).toSet();
+        for (final addon in fetchedAddons) {
+          if (!existingIds.contains(addon.id)) {
+            _inventory.add(addon);
+            existingIds.add(addon.id);
+          } else {
+            final idx = _inventory.indexWhere((u) => u.id == addon.id);
+            if (idx != -1) _inventory[idx] = addon;
+          }
+        }
+      }
+    } catch (_) {}
+
+    var candidates = _inventory.where((u) => u.isAddon).toList();
+
+    return candidates.where((addon) {
+      if (effectiveAffiliateId != null && addon.affiliateId != null && addon.affiliateId != effectiveAffiliateId) {
+        return false;
+      }
+      final status = addon.status.toLowerCase().trim();
+      if (!['tersedia', 'ready'].contains(status)) return false;
+      if (startDate != null && endDate != null) {
+        if (!isUnitAvailableForPeriod(addon, startDate, endDate)) return false;
+      }
+      if (query != null && query.trim().isNotEmpty) {
+        final q = query.trim().toLowerCase();
+        return addon.name.toLowerCase().contains(q) ||
+            addon.assetCode.toLowerCase().contains(q) ||
+            addon.serialNumber.toLowerCase().contains(q);
+      }
+      return true;
+    }).toList();
   }
 
   /// Membuat booking baru untuk pelanggan walk-in atau reservasi langsung di outlet
@@ -580,6 +637,9 @@ class BookingRepository {
     required String customerEmail,
     String? address,
     required IphoneModel iphone,
+    List<IphoneModel> addonDevices = const [],
+    double? primarySubtotal,
+    double addonSubtotal = 0.0,
     required DateTime startDate,
     required DateTime endDate,
     required int durationDays,
@@ -624,6 +684,21 @@ class BookingRepository {
       );
     }
 
+    // Validasi ketersediaan unit-unit add-on
+    for (final addon in addonDevices) {
+      final addonStatus = addon.status.toLowerCase().trim();
+      if (['rented', 'disewa'].contains(addonStatus)) {
+        throw Exception(
+          'Unit Add-on ${addon.name} (${addon.assetCode}) sedang dalam masa sewa dan tidak dapat disewa lagi.',
+        );
+      }
+      if (['maintenance', 'perawatan'].contains(addonStatus)) {
+        throw Exception(
+          'Unit Add-on ${addon.name} (${addon.assetCode}) sedang dalam perawatan/perbaikan dan tidak dapat disewa.',
+        );
+      }
+    }
+
     String bookingCode = '';
     int nextId = _bookings.isEmpty
         ? 1
@@ -634,6 +709,8 @@ class BookingRepository {
     final startM = startDate.minute.toString().padLeft(2, '0');
     final endH = endDate.hour.toString().padLeft(2, '0');
     final endM = endDate.minute.toString().padLeft(2, '0');
+
+    final addonIds = addonDevices.map((a) => a.id).where((id) => id > 0).toList();
 
     Map<String, dynamic>? apiResult;
     try {
@@ -657,6 +734,7 @@ class BookingRepository {
         amountPaid: amountPaid,
         paymentMethod: paymentMethod,
         notes: notes?.trim(),
+        addonAssetIds: addonIds.isNotEmpty ? addonIds : null,
       );
     } catch (e) {
       if (!_isTestEnvironment) rethrow;
@@ -690,6 +768,21 @@ class BookingRepository {
     if (invIdx != -1) {
       _inventory[invIdx] = updatedIphone;
     }
+
+    // Perbarui status unit add-on di inventory menjadi 'dibooking'
+    final List<IphoneModel> updatedAddonDevices = [];
+    for (final addon in addonDevices) {
+      final updatedAddon = addon.copyWith(status: 'dibooking');
+      updatedAddonDevices.add(updatedAddon);
+      final aIdx = _inventory.indexWhere((u) =>
+          (u.id > 0 && addon.id > 0 && u.id == addon.id) ||
+          (addon.serialNumber.isNotEmpty && addon.serialNumber != '-' && u.serialNumber.toLowerCase() == addon.serialNumber.toLowerCase()) ||
+          (addon.assetCode.isNotEmpty && addon.assetCode != '-' && u.assetCode.toLowerCase() == addon.assetCode.toLowerCase()));
+      if (aIdx != -1) {
+        _inventory[aIdx] = updatedAddon;
+      }
+    }
+
     _cachedFirstPageInventory = null;
     _cachedFirstPageInventoryTime = null;
     _unitSummaryCache = null;
@@ -715,6 +808,9 @@ class BookingRepository {
       status: BookingStatus.confirmed,
       paymentStatus: paymentStatus,
       iphone: updatedIphone,
+      addonDevices: updatedAddonDevices,
+      primarySubtotal: primarySubtotal ?? (price - addonSubtotal),
+      addonSubtotal: addonSubtotal,
       notes: notes?.trim(),
       userName: AuthService().currentUser?.name,
       userId: AuthService().currentUser?.userIdentifier,
@@ -1014,9 +1110,7 @@ class BookingRepository {
       final b = _bookings[bookingIdx];
       final isPenalty = type == 'penalty';
       final totalBill = b.price + b.deposit - b.discount;
-      final newRemaining = isPenalty
-          ? (totalBill - b.downPayment).clamp(0.0, double.infinity)
-          : (totalBill - (b.downPayment + amount)).clamp(0.0, double.infinity);
+      final newRemaining = (totalBill - b.downPayment).clamp(0.0, double.infinity);
       final newStatus = isPenalty
           ? (b.paymentStatus == PaymentStatus.paid ? 'paid' : 'partial')
           : (newRemaining <= 0 ? 'paid' : 'partial');
@@ -1031,7 +1125,7 @@ class BookingRepository {
           customerPhone: b.customerPhone,
           iphoneName: b.iphone.fullName,
           rentTotal: b.price,
-          paidAmount: isPenalty ? b.downPayment : (b.downPayment + amount),
+          paidAmount: b.downPayment,
           remainingAmount: newRemaining,
           depositAmount: b.deposit,
           depositStatus: DepositStatus.held,
@@ -1748,7 +1842,7 @@ class BookingRepository {
     final effectiveAffiliateId = AuthService().isAffiliateScoped ? AuthService().affiliateId : affiliateId;
 
     try {
-      final unassignedOnly = false;
+      const unassignedOnly = false;
       final res = await ApiService().getAllIphonesApi(
         query: query,
         status: statusFilter,
@@ -1869,7 +1963,7 @@ class BookingRepository {
 
       if (forBooking) {
         if (AuthService().isAffiliateScoped && AuthService().affiliateId != null) {
-          if (unit.affiliateId != AuthService().affiliateId) return false;
+          if (unit.affiliateId != null && unit.affiliateId != AuthService().affiliateId) return false;
         }
       } else {
         final effectiveAff = effectiveAffiliateId ?? affiliateId;
@@ -1954,7 +2048,7 @@ class BookingRepository {
     }
 
     try {
-      final unassignedOnly = false;
+      const unassignedOnly = false;
       final res = await ApiService().getAllIphonesApi(
         query: query,
         status: statusFilter,
@@ -1971,31 +2065,48 @@ class BookingRepository {
         page: page,
         perPage: perPage,
       );
-      if (res != null && res['data'] is List) {
-        _hasFetchedFromApi = true;
-        final raw = res['data'] as List;
-        final list = raw.map((j) {
-          var u = IphoneModel.fromJson(j as Map<String, dynamic>);
-          final isAlreadyLate = u.status.toLowerCase() == 'terlambat' || u.status.toLowerCase() == 'overdue' || u.status.toLowerCase() == 'late';
-          if (!isAlreadyLate && (u.status.toLowerCase() == 'disewa' || u.status.toLowerCase() == 'rented' || isUnitCurrentlyRented(u.assetCode, unitId: u.id, serialNumber: u.serialNumber)) &&
-              (u.customerName == null || u.customerName!.isEmpty)) {
-            final b = getActiveBookingForUnitSync(u.assetCode, unitId: u.id, serialNumber: u.serialNumber);
-            if (b != null) {
-              u = u.copyWith(
-                status: 'disewa',
-                customerName: b.customerName,
-                bookingCode: '#${b.bookingCode}',
-                returnScheduleText: 'Kembali: ${Formatters.date(b.endDate)} • ${b.endTime ?? "18:00 WIB"}${b.jaminanType.isNotEmpty ? " (${b.jaminanType})" : ""}',
-              );
-            }
-          }
-          return u;
-        }).toList();
+      if (res != null) {
+        List raw = [];
+        int? paginatorTotal;
+        int? paginatorCurrentPage;
+        int? paginatorLastPage;
 
-        final meta = res['meta'] is Map ? res['meta'] as Map<String, dynamic> : null;
-        final total = int.tryParse(meta?['total']?.toString() ?? '') ?? (res['total'] != null ? int.tryParse(res['total'].toString()) ?? list.length : list.length);
-        final currentPage = int.tryParse(meta?['current_page']?.toString() ?? '') ?? page;
-        final lastPage = int.tryParse(meta?['last_page']?.toString() ?? '') ?? ((total / perPage).ceil().clamp(1, 999999));
+        if (res['data'] is List) {
+          raw = res['data'] as List;
+        } else if (res['data'] is Map) {
+          final dataMap = res['data'] as Map;
+          if (dataMap['data'] is List) {
+            raw = dataMap['data'] as List;
+          }
+          paginatorTotal = int.tryParse(dataMap['total']?.toString() ?? '');
+          paginatorCurrentPage = int.tryParse(dataMap['current_page']?.toString() ?? '');
+          paginatorLastPage = int.tryParse(dataMap['last_page']?.toString() ?? '');
+        }
+
+        if (raw.isNotEmpty || res['data'] != null) {
+          _hasFetchedFromApi = true;
+          final list = raw.whereType<Map>().map((j) {
+            var u = IphoneModel.fromJson(Map<String, dynamic>.from(j));
+            final isAlreadyLate = u.status.toLowerCase() == 'terlambat' || u.status.toLowerCase() == 'overdue' || u.status.toLowerCase() == 'late';
+            if (!isAlreadyLate && (u.status.toLowerCase() == 'disewa' || u.status.toLowerCase() == 'rented' || isUnitCurrentlyRented(u.assetCode, unitId: u.id, serialNumber: u.serialNumber)) &&
+                (u.customerName == null || u.customerName!.isEmpty)) {
+              final b = getActiveBookingForUnitSync(u.assetCode, unitId: u.id, serialNumber: u.serialNumber);
+              if (b != null) {
+                u = u.copyWith(
+                  status: 'disewa',
+                  customerName: b.customerName,
+                  bookingCode: '#${b.bookingCode}',
+                  returnScheduleText: 'Kembali: ${Formatters.date(b.endDate)} • ${b.endTime ?? "18:00 WIB"}${b.jaminanType.isNotEmpty ? " (${b.jaminanType})" : ""}',
+                );
+              }
+            }
+            return u;
+          }).toList();
+
+          final meta = res['meta'] is Map ? res['meta'] as Map<String, dynamic> : null;
+          final total = paginatorTotal ?? int.tryParse(meta?['total']?.toString() ?? '') ?? (res['total'] != null ? int.tryParse(res['total'].toString()) ?? list.length : list.length);
+          final currentPage = paginatorCurrentPage ?? int.tryParse(meta?['current_page']?.toString() ?? '') ?? page;
+          final lastPage = paginatorLastPage ?? int.tryParse(meta?['last_page']?.toString() ?? '') ?? ((total / perPage).ceil().clamp(1, 999999));
 
         if (res['summary'] is Map) {
           final s = res['summary'] as Map<String, dynamic>;
@@ -2023,6 +2134,7 @@ class BookingRepository {
         }
 
         return result;
+        }
       }
     } catch (_) {}
 
@@ -2107,6 +2219,12 @@ class BookingRepository {
     _cachedFirstPageInventory = null;
     _cachedFirstPageInventoryTime = null;
     _hasFetchedFromApi = false;
+  }
+
+  /// Menyimpan daftar booking khusus pengujian ke repositori
+  void setTestBookings(List<BookingModel> bookings) {
+    _bookings.clear();
+    _bookings.addAll(bookings);
   }
 
   /// Tambah unit baru ke inventaris
@@ -2423,9 +2541,10 @@ class BookingRepository {
       return _cachedDashboardData!;
     }
 
-    // 1. Coba ambil dari REST API backend Skyrent
-    try {
-      final effectiveAffiliateId = affiliateId ?? (AuthService().isAffiliateScoped ? AuthService().affiliateId : (AuthService().affiliateId ?? 4));
+    // 1. Coba ambil dari REST API backend Skyrent (lewati pada mode test)
+    if (!_isTestEnvironment) {
+      try {
+        final effectiveAffiliateId = affiliateId ?? (AuthService().isAffiliateScoped ? AuthService().affiliateId : (AuthService().affiliateId ?? 4));
       final apiDashboard = await ApiService().getDashboardData(affiliateId: effectiveAffiliateId);
       if (apiDashboard != null && apiDashboard['metrics'] != null) {
         final metrics = apiDashboard['metrics'] as Map<String, dynamic>;
@@ -2509,11 +2628,14 @@ class BookingRepository {
         _dashboardCacheTime = DateTime.now();
         return result;
       }
-    } catch (_) {
-      // Fallback lokal jika offline
+      } catch (_) {
+        // Fallback lokal jika offline
+      }
     }
 
-    await Future.delayed(const Duration(milliseconds: 50));
+    if (!_isTestEnvironment) {
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
     final now = _currentDateTime;
     final today = DateTime(now.year, now.month, now.day);
     final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
@@ -2727,6 +2849,11 @@ class BookingRepository {
         final resTxs = res['transactions'] as List<dynamic>? ?? [];
         res['transactions'] = resTxs.map((t) {
           final txMap = Map<String, dynamic>.from(t as Map);
+          final rawAddonNames = txMap['addon_names'];
+          List<String>? parsedAddonNames;
+          if (rawAddonNames is List) {
+            parsedAddonNames = rawAddonNames.map((e) => e.toString()).toList();
+          }
           return PaymentTransactionModel(
             id: txMap['id'] is int ? txMap['id'] : int.tryParse(txMap['id']?.toString() ?? '0') ?? 0,
             bookingId: txMap['booking_id'] is int ? txMap['booking_id'] : int.tryParse(txMap['booking_id']?.toString() ?? '0') ?? 0,
@@ -2743,6 +2870,10 @@ class BookingRepository {
             paymentMethod: txMap['payment_method']?.toString() ?? 'Tunai Kasir',
             transactionDate: DateTime.tryParse(txMap['transaction_date']?.toString() ?? '') ?? DateTime.now(),
             notes: txMap['notes']?.toString() ?? txMap['type']?.toString() ?? 'Pelunasan',
+            primaryRentFee: (txMap['primary_rent_fee'] as num?)?.toDouble(),
+            addonFee: (txMap['addon_fee'] as num?)?.toDouble() ?? (txMap['addon_subtotal'] as num?)?.toDouble(),
+            addonName: txMap['addon_name']?.toString(),
+            addonNames: parsedAddonNames,
           );
         }).toList();
 
@@ -4009,6 +4140,8 @@ class BookingRepository {
         }
         return true;
       }
+    } on ApiException catch (e) {
+      if (e.statusCode != 404 && !_isTestEnvironment) rethrow;
     } catch (_) {
       if (!_isTestEnvironment) rethrow;
     }
@@ -4048,6 +4181,8 @@ class BookingRepository {
       final newUser = UserRoleModel.fromJson(res);
       _users.insert(0, newUser);
       return newUser;
+    } on ApiException catch (e) {
+      if (e.statusCode != 404 && !_isTestEnvironment) rethrow;
     } catch (_) {
       if (!_isTestEnvironment) rethrow;
     }
@@ -4077,6 +4212,8 @@ class BookingRepository {
         _users.removeWhere((u) => u.id == userId);
         return true;
       }
+    } on ApiException catch (e) {
+      if (e.statusCode != 404 && !_isTestEnvironment) rethrow;
     } catch (_) {
       if (!_isTestEnvironment) rethrow;
     }
@@ -4087,5 +4224,457 @@ class BookingRepository {
     }
 
     return false;
+  }
+
+  // ===========================================================================
+  // POS CASHIER SHIFT MANAGEMENT
+  // ===========================================================================
+
+  final List<ExpenseModel> _localExpenses = [];
+  CashDrawerShiftModel? _activeShift;
+  CashDrawerShiftModel? get activeShift => _activeShift;
+
+  void setTestShift(CashDrawerShiftModel? shift) {
+    _activeShift = shift;
+    MockBookingData.activeShift = shift;
+  }
+
+  void setTestExpenses(List<ExpenseModel> expenses) {
+    _localExpenses.clear();
+    _localExpenses.addAll(expenses);
+  }
+
+  void setTestTransactions(List<PaymentTransactionModel> txs) {
+    _paymentTransactions.clear();
+    _paymentTransactions.addAll(txs);
+  }
+
+  /// Mengambil status shift kasir saat ini
+  Future<CashDrawerShiftModel?> getCurrentShift({int? branchId, bool forceRefresh = false}) async {
+    final effectiveBranchId = branchId ?? AuthService().affiliateId;
+
+    if (!forceRefresh && _activeShift != null && _activeShift!.isOpen) {
+      if (_paymentTransactions.isNotEmpty || _localExpenses.isNotEmpty) {
+        _recalculateActiveShiftMetrics();
+      }
+      return _activeShift;
+    }
+
+    try {
+      final res = await _apiService.getCurrentShiftApi(branchId: effectiveBranchId);
+      if (res != null && res['data'] is Map<String, dynamic>) {
+        final data = res['data'] as Map<String, dynamic>;
+        if (data['has_active_shift'] == true && data['shift'] is Map<String, dynamic>) {
+          _activeShift = CashDrawerShiftModel.fromJson(data['shift'] as Map<String, dynamic>);
+          MockBookingData.activeShift = _activeShift;
+          return _activeShift;
+        } else {
+          _activeShift = null;
+          MockBookingData.activeShift = null;
+          return null;
+        }
+      }
+    } on ApiException catch (e) {
+      if (e.statusCode != 404 && !_isTestEnvironment) rethrow;
+    } catch (_) {
+      if (!_isTestEnvironment) rethrow;
+    }
+
+    // Fallback offline / test environment
+    if (_activeShift != null && _activeShift!.isOpen) {
+      _recalculateActiveShiftMetrics();
+      return _activeShift;
+    }
+
+    if (MockBookingData.activeShift != null && MockBookingData.activeShift!.isOpen) {
+      _activeShift = MockBookingData.activeShift;
+      _recalculateActiveShiftMetrics();
+      return _activeShift;
+    }
+
+    return null;
+  }
+
+  void _recalculateActiveShiftMetrics() {
+    if (_activeShift == null || !_activeShift!.isOpen) return;
+
+    final start = _activeShift!.openedAt;
+    final closedAt = _activeShift!.closedAt;
+
+    // 1. Hitung kas masuk tunai dari payment transactions
+    double cashInflow = 0.0;
+    double cashRefund = 0.0;
+
+    for (final tx in _paymentTransactions) {
+      if (tx.transactionDate.isBefore(start)) continue;
+      if (closedAt != null && tx.transactionDate.isAfter(closedAt)) continue;
+      if (tx.paymentStatus.toLowerCase() == 'void') continue;
+
+      final method = tx.paymentMethod.toLowerCase();
+      final isCash = method.contains('tunai') || method.contains('cash');
+      if (!isCash) continue;
+
+      if (tx.depositStatus == DepositStatus.refunded || tx.refundAmount > 0) {
+        cashRefund += (tx.refundAmount > 0 ? tx.refundAmount : tx.paidAmount);
+      } else {
+        cashInflow += tx.paidAmount;
+      }
+    }
+
+    // 2. Hitung pengeluaran kas laci (cash drawer expenses)
+    double cashExpenses = 0.0;
+    for (final exp in _localExpenses) {
+      final spent = exp.spentAt ?? exp.createdAt;
+      if (spent != null && !spent.isBefore(start) && (closedAt == null || !spent.isAfter(closedAt))) {
+        cashExpenses += exp.amount;
+      }
+    }
+
+    // If local collections have no matching items for this shift
+    // but _activeShift has remote inflow/expenses loaded from backend API, do NOT wipe them out.
+    if (cashInflow == 0.0 && cashRefund == 0.0 && cashExpenses == 0.0 && _activeShift!.expectedCashNow > _activeShift!.openingCashFloat) {
+      return;
+    }
+
+    final expected = (_activeShift!.openingCashFloat + cashInflow - cashRefund - cashExpenses).clamp(0.0, double.infinity);
+
+    _activeShift = _activeShift!.copyWith(
+      currentCashInflow: cashInflow,
+      currentCashRefund: cashRefund,
+      currentCashExpenses: cashExpenses,
+      expectedCashNow: expected,
+    );
+    MockBookingData.activeShift = _activeShift;
+  }
+
+  /// Membuka shift kasir baru dengan modal awal
+  Future<CashDrawerShiftModel> openShift({
+    required double openingCashFloat,
+    String? notes,
+    int? branchId,
+  }) async {
+    final effectiveBranchId = branchId ?? AuthService().affiliateId;
+    final current = await getCurrentShift(branchId: effectiveBranchId);
+    if (current != null && current.isOpen) {
+      throw Exception('Shift kasir masih terbuka (Shift: ${current.shiftNumber}). Harap tutup shift terlebih dahulu.');
+    }
+
+    try {
+      final res = await _apiService.openShiftApi(
+        openingCashFloat: openingCashFloat,
+        notes: notes,
+        branchId: effectiveBranchId,
+      );
+      if (res != null && res['data'] is Map<String, dynamic>) {
+        _activeShift = CashDrawerShiftModel.fromJson(res['data'] as Map<String, dynamic>);
+        MockBookingData.activeShift = _activeShift;
+        return _activeShift!;
+      }
+    } on ApiException catch (e) {
+      if (e.statusCode != 404 && !_isTestEnvironment) rethrow;
+    } catch (_) {
+      if (!_isTestEnvironment) rethrow;
+    }
+
+    // Mock / Offline Shift Creation
+    final now = DateTime.now();
+    final datePrefix = '${now.year.toString().substring(2)}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final resolvedBranchId = effectiveBranchId ?? 1;
+    final branchCode = (resolvedBranchId == 4 || resolvedBranchId == 1) ? 'GNT' : 'CBG$resolvedBranchId';
+    final count = MockBookingData.shiftHistory.length + 1;
+    final shiftNumber = 'SHF-$branchCode-$datePrefix-${count.toString().padLeft(4, '0')}';
+
+    final newShift = CashDrawerShiftModel(
+      id: 900 + count,
+      shiftNumber: shiftNumber,
+      branchId: resolvedBranchId,
+      branchName: (resolvedBranchId == 4 || resolvedBranchId == 1) ? 'Genteng Pusat' : 'Cabang #$resolvedBranchId',
+      openedByName: AuthService().currentUser?.name ?? 'Kasir SKYRental',
+      openedAt: now,
+      openingCashFloat: openingCashFloat,
+      expectedCashNow: openingCashFloat,
+      closingNotes: notes,
+      status: ShiftStatus.open,
+    );
+
+    _activeShift = newShift;
+    MockBookingData.activeShift = newShift;
+    return newShift;
+  }
+
+  /// Menutup shift kasir aktif dengan verifikasi uang fisik
+  Future<CashDrawerShiftModel> closeShift({
+    required double actualCashCounted,
+    String? differenceReason,
+    String? closingNotes,
+    int? shiftId,
+  }) async {
+    final shift = _activeShift ?? MockBookingData.activeShift;
+    if (shift == null || !shift.isOpen) {
+      throw Exception('Tidak ada shift kasir yang sedang aktif untuk ditutup.');
+    }
+
+    final currentShiftState = _activeShift ?? shift;
+
+    try {
+      final res = await _apiService.closeShiftApi(
+        actualCashCounted: actualCashCounted,
+        differenceReason: differenceReason,
+        closingNotes: closingNotes,
+        shiftId: shiftId ?? currentShiftState.id,
+      );
+      if (res != null && res['data'] is Map<String, dynamic>) {
+        final closed = CashDrawerShiftModel.fromJson(res['data'] as Map<String, dynamic>);
+        _activeShift = closed;
+        MockBookingData.activeShift = null;
+        MockBookingData.shiftHistory.insert(0, closed);
+        return closed;
+      }
+    } on ApiException catch (e) {
+      if (e.statusCode != 404 && !_isTestEnvironment) rethrow;
+    } catch (_) {
+      if (!_isTestEnvironment) rethrow;
+    }
+
+    // Mock / Offline Shift Close
+    _recalculateActiveShiftMetrics();
+    final fallbackState = _activeShift ?? currentShiftState;
+    final expected = fallbackState.effectiveExpectedCash;
+    final difference = actualCashCounted - expected;
+
+    if (difference.abs() > 5000 && (differenceReason == null || differenceReason.trim().isEmpty)) {
+      throw Exception('Terdapat selisih kas fisik sebesar ${Formatters.currency(difference)}. Keterangan/alasan selisih kas wajib diisi sebelum shift dapat ditutup.');
+    }
+
+    final closedShift = fallbackState.copyWith(
+      closedByName: AuthService().currentUser?.name ?? 'Kasir SKYRental',
+      closedAt: DateTime.now(),
+      expectedCashTotal: expected,
+      actualCashCounted: actualCashCounted,
+      cashDifference: difference,
+      differenceReason: differenceReason,
+      closingNotes: closingNotes,
+      status: ShiftStatus.closed,
+    );
+
+    _activeShift = closedShift;
+    MockBookingData.activeShift = null;
+    MockBookingData.shiftHistory.insert(0, closedShift);
+    return closedShift;
+  }
+
+  /// Mengambil daftar mutasi buku kas kronologis untuk shift tertentu
+  Future<List<CashBookEntryModel>> getCashBookEntries({required CashDrawerShiftModel shift}) async {
+    final entries = <CashBookEntryModel>[];
+
+    // 1. Entry Saldo Awal (Opening Float)
+    entries.add(
+      CashBookEntryModel(
+        id: 'CB-OPEN-${shift.id}',
+        timestamp: shift.openedAt,
+        transactionRef: shift.shiftNumber,
+        entryType: CashBookEntryType.openingFloat,
+        title: 'Modal Awal Kas Laci',
+        notes: shift.closingNotes ?? 'Saldo modal awal kasir',
+        inflowAmount: shift.openingCashFloat,
+        outflowAmount: 0.0,
+        runningBalance: shift.openingCashFloat,
+        cashierName: shift.openedByName,
+        paymentMethod: 'Tunai Fisik',
+      ),
+    );
+
+    final start = shift.openedAt;
+    final end = shift.closedAt;
+
+    // 2. Transaksi Kasir Tunai (Inflow / Refund)
+    for (final tx in _paymentTransactions) {
+      if (tx.transactionDate.isBefore(start) || (end != null && tx.transactionDate.isAfter(end))) continue;
+      if (tx.paymentStatus.toLowerCase() == 'void') continue;
+
+      final method = tx.paymentMethod.toLowerCase();
+      final isCash = method.contains('tunai') || method.contains('cash');
+      if (!isCash) continue;
+
+      final isRefund = tx.depositStatus == DepositStatus.refunded || tx.refundAmount > 0;
+      final amount = isRefund ? (tx.refundAmount > 0 ? tx.refundAmount : tx.paidAmount) : tx.paidAmount;
+
+      entries.add(
+        CashBookEntryModel(
+          id: 'CB-TX-${tx.id}',
+          timestamp: tx.transactionDate,
+          transactionRef: tx.bookingCode,
+          entryType: isRefund ? CashBookEntryType.cashRefund : CashBookEntryType.cashInflow,
+          title: isRefund
+              ? 'Refund Jaminan (${tx.customerName})'
+              : 'Pembayaran Sewa (${tx.customerName})',
+          notes: tx.notes ?? (isRefund ? 'Pengembalian deposit fisik' : 'Pelunasan / pembayaran sewa'),
+          inflowAmount: isRefund ? 0.0 : amount,
+          outflowAmount: isRefund ? amount : 0.0,
+          runningBalance: 0.0,
+          cashierName: shift.openedByName,
+          paymentMethod: tx.paymentMethod,
+          relatedBookingId: tx.bookingId,
+        ),
+      );
+    }
+
+    // 3. Pengeluaran Kasir Tunai (Cash Drawer Expenses)
+    for (final exp in _localExpenses) {
+      final spent = exp.spentAt ?? exp.createdAt;
+      if (spent != null && !spent.isBefore(start) && (end == null || !spent.isAfter(end))) {
+        entries.add(
+          CashBookEntryModel(
+            id: 'CB-EXP-${exp.id}',
+            timestamp: spent,
+            transactionRef: 'EXP-${exp.id}',
+            entryType: CashBookEntryType.cashExpense,
+            title: 'Pengeluaran: ${exp.categoryLabel.isNotEmpty ? exp.categoryLabel : exp.category}',
+            notes: exp.notes ?? 'Biaya operasional kasir',
+            inflowAmount: 0.0,
+            outflowAmount: exp.amount,
+            runningBalance: 0.0,
+            cashierName: exp.userName,
+            paymentMethod: 'Kas Laci (Cash)',
+            relatedExpenseId: exp.id,
+          ),
+        );
+      }
+    }
+
+    // Urutkan mutasi secara kronologis dari waktu paling awal
+    entries.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    // Hitung saldo berjalan secara sekuensial
+    double runningBalance = 0.0;
+    final finalized = <CashBookEntryModel>[];
+    for (final e in entries) {
+      runningBalance += e.inflowAmount - e.outflowAmount;
+      finalized.add(CashBookEntryModel(
+        id: e.id,
+        timestamp: e.timestamp,
+        transactionRef: e.transactionRef,
+        entryType: e.entryType,
+        title: e.title,
+        notes: e.notes,
+        inflowAmount: e.inflowAmount,
+        outflowAmount: e.outflowAmount,
+        runningBalance: runningBalance < 0 ? 0.0 : runningBalance,
+        cashierName: e.cashierName,
+        paymentMethod: e.paymentMethod,
+        relatedBookingId: e.relatedBookingId,
+        relatedExpenseId: e.relatedExpenseId,
+      ));
+    }
+
+    return finalized;
+  }
+
+  /// Mengambil riwayat shift kasir yang telah ditutup
+  Future<List<CashDrawerShiftModel>> getShiftHistory({
+    int? branchId,
+    int page = 1,
+    int perPage = 20,
+    String? status,
+  }) async {
+    final effectiveBranchId = branchId ?? AuthService().affiliateId;
+
+    try {
+      final res = await _apiService.getShiftHistoryApi(
+        branchId: effectiveBranchId,
+        page: page,
+        perPage: perPage,
+        status: status,
+      );
+
+      if (res != null && res['data'] is List) {
+        final list = (res['data'] as List)
+            .whereType<Map<String, dynamic>>()
+            .map((item) => CashDrawerShiftModel.fromJson(item))
+            .toList();
+
+        if (page == 1) {
+          MockBookingData.shiftHistory = List.of(list);
+        }
+        return list;
+      }
+    } on ApiException catch (e) {
+      if (e.statusCode != 404 && !_isTestEnvironment) rethrow;
+    } catch (_) {
+      if (!_isTestEnvironment) rethrow;
+    }
+
+    if (_isTestEnvironment) {
+      return List.unmodifiable(MockBookingData.shiftHistory);
+    }
+    return [];
+  }
+
+  /// Mengambil pengaturan jadwal shift dan status operasional real-time
+  Future<ShiftScheduleModel> getShiftSchedule({int? branchId, bool forceRefresh = false}) async {
+    final effectiveBranchId = branchId ?? AuthService().affiliateId;
+
+    if (_isTestEnvironment) {
+      final active = await getCurrentShift(branchId: effectiveBranchId);
+      return ShiftScheduleModel.resolveLocal(
+        activeShift: active,
+        openingTime: MockBookingData.shiftOpeningTime,
+        closingTime: MockBookingData.shiftClosingTime,
+        graceMinutes: MockBookingData.shiftGracePeriodMinutes,
+      );
+    }
+
+    try {
+      final res = await _apiService.getShiftScheduleApi(branchId: effectiveBranchId);
+      if (res != null && res['data'] is Map<String, dynamic>) {
+        return ShiftScheduleModel.fromJson(res['data'] as Map<String, dynamic>);
+      }
+    } on ApiException catch (e) {
+      if (e.statusCode != 404 && !_isTestEnvironment) rethrow;
+    } catch (_) {
+      if (!_isTestEnvironment) rethrow;
+    }
+
+    // Fallback local resolution
+    final active = await getCurrentShift(branchId: effectiveBranchId);
+    return ShiftScheduleModel.resolveLocal(
+      activeShift: active,
+      openingTime: MockBookingData.shiftOpeningTime,
+      closingTime: MockBookingData.shiftClosingTime,
+      graceMinutes: MockBookingData.shiftGracePeriodMinutes,
+      enforcementEnabled: MockBookingData.shiftEnforcementEnabled,
+    );
+  }
+
+  /// Memperbarui pengaturan jadwal shift (Owner & Admin)
+  Future<ShiftScheduleModel> updateShiftSchedule({
+    bool? enforcementEnabled,
+    String? openingTime,
+    String? closingTime,
+    int? graceMinutes,
+    int? branchId,
+    String? branchOpeningOverride,
+    String? branchClosingOverride,
+  }) async {
+    final res = await _apiService.updateShiftScheduleApi(
+      enforcementEnabled: enforcementEnabled,
+      openingTime: openingTime,
+      closingTime: closingTime,
+      graceMinutes: graceMinutes,
+      branchId: branchId,
+      branchOpeningOverride: branchOpeningOverride,
+      branchClosingOverride: branchClosingOverride,
+    );
+
+    if (res != null && res['data'] is Map<String, dynamic>) {
+      return ShiftScheduleModel.fromJson(res['data'] as Map<String, dynamic>);
+    }
+
+    if (enforcementEnabled != null) MockBookingData.shiftEnforcementEnabled = enforcementEnabled;
+    if (openingTime != null) MockBookingData.shiftOpeningTime = openingTime;
+    if (closingTime != null) MockBookingData.shiftClosingTime = closingTime;
+    if (graceMinutes != null) MockBookingData.shiftGracePeriodMinutes = graceMinutes;
+
+    return getShiftSchedule(branchId: branchId, forceRefresh: true);
   }
 }

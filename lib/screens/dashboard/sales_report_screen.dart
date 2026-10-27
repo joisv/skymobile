@@ -398,7 +398,7 @@ Status Kasir: Telah Ditutup & Sesuai.
               _buildReceiptDetailRow('Nominal', Formatters.currency(tx.paidAmount)),
               _buildReceiptDetailRow('Tanggal', '${Formatters.date(tx.transactionDate)} ${tx.transactionDate.hour.toString().padLeft(2, '0')}:${tx.transactionDate.minute.toString().padLeft(2, '0')} WIB'),
               if (tx.notes != null && tx.notes!.isNotEmpty)
-                _buildReceiptDetailRow('Keterangan', tx.notes!.replaceAll('|', ' • ')),
+                _buildReceiptDetailRow('Keterangan', tx.notes!.replaceAll('|', ' â€¢ ')),
             ],
           ),
           actions: [
@@ -2555,7 +2555,7 @@ Status Kasir: Telah Ditutup & Sesuai.
           }
 
           final phoneText = tx.customerPhone.isNotEmpty && tx.customerPhone != '-' ? tx.customerPhone : '';
-          final customerSub = phoneText.isNotEmpty ? '$phoneText • $verificationTag' : verificationTag;
+          final customerSub = phoneText.isNotEmpty ? '$phoneText â€¢ $verificationTag' : verificationTag;
 
           Color badgeBg = const Color(0xFFEFF6FF);
           Color badgeColor = const Color(0xFF2563EB);
@@ -2663,6 +2663,15 @@ Status Kasir: Telah Ditutup & Sesuai.
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (tx.hasAddons && tx.addonName != null && tx.addonName!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '+ Add-on: ${tx.addonName}',
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF0D9488)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                       const SizedBox(height: 3),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -2709,13 +2718,29 @@ Status Kasir: Telah Ditutup & Sesuai.
                   flex: 16,
                   child: Align(
                     alignment: Alignment.centerRight,
-                    child: Text(
-                      Formatters.currency(tx.paidAmount),
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A),
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          Formatters.currency(tx.paidAmount),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        if (tx.hasAddons && (tx.addonFee != null && tx.addonFee! > 0)) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'iPhone: ${Formatters.currency(tx.primaryRentFee ?? (tx.paidAmount - (tx.addonFee ?? 0)))}',
+                            style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
+                          ),
+                          Text(
+                            'Add-on: ${Formatters.currency(tx.addonFee!)}',
+                            style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF0D9488)),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
@@ -3105,7 +3130,7 @@ Status Kasir: Telah Ditutup & Sesuai.
                                     style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                                   ),
                                   const SizedBox(width: 8),
-                                  Text('•', style: TextStyle(color: AppTheme.textMuted)),
+                                  Text('â€¢', style: TextStyle(color: AppTheme.textMuted)),
                                   const SizedBox(width: 8),
                                   Text(
                                     '$bCount Transaksi',

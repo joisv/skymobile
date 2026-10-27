@@ -57,6 +57,10 @@ class PaymentTransactionModel {
   final String paymentMethod; // 'QRIS', 'Tunai', 'Transfer Bank'
   final DateTime transactionDate;
   final String? notes;
+  final double? primaryRentFee;
+  final double? addonFee;
+  final String? addonName;
+  final List<String>? addonNames;
 
   const PaymentTransactionModel({
     required this.id,
@@ -76,11 +80,16 @@ class PaymentTransactionModel {
     required this.paymentMethod,
     required this.transactionDate,
     this.notes,
+    this.primaryRentFee,
+    this.addonFee,
+    this.addonName,
+    this.addonNames,
   });
 
   bool get isPaid => paymentStatus == 'paid';
   bool get hasRemaining => remainingAmount > 0;
   bool get canRefundDeposit => depositStatus == DepositStatus.readyRefund;
+  bool get hasAddons => (addonFee != null && addonFee! > 0) || (addonName != null && addonName!.isNotEmpty) || (addonNames != null && addonNames!.isNotEmpty);
 
   PaymentTransactionModel copyWith({
     int? id,
@@ -100,6 +109,10 @@ class PaymentTransactionModel {
     String? paymentMethod,
     DateTime? transactionDate,
     String? notes,
+    double? primaryRentFee,
+    double? addonFee,
+    String? addonName,
+    List<String>? addonNames,
   }) {
     return PaymentTransactionModel(
       id: id ?? this.id,
@@ -119,6 +132,10 @@ class PaymentTransactionModel {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       transactionDate: transactionDate ?? this.transactionDate,
       notes: notes ?? this.notes,
+      primaryRentFee: primaryRentFee ?? this.primaryRentFee,
+      addonFee: addonFee ?? this.addonFee,
+      addonName: addonName ?? this.addonName,
+      addonNames: addonNames ?? this.addonNames,
     );
   }
 
@@ -140,6 +157,13 @@ class PaymentTransactionModel {
     final amountVal = (json['paid_amount'] as num?)?.toDouble() ?? (json['amount'] as num?)?.toDouble() ?? 0.0;
     final rentVal = (json['rent_total'] as num?)?.toDouble() ?? amountVal;
 
+    final List<String> parsedAddonNames = [];
+    if (json['addon_names'] is List) {
+      for (final a in json['addon_names'] as List) {
+        if (a != null) parsedAddonNames.add(a.toString());
+      }
+    }
+
     return PaymentTransactionModel(
       id: parsedId,
       bookingId: parsedBookingId,
@@ -158,6 +182,10 @@ class PaymentTransactionModel {
       paymentMethod: json['payment_method']?.toString() ?? 'Tunai',
       transactionDate: parsedDate,
       notes: json['notes']?.toString() ?? json['note']?.toString(),
+      primaryRentFee: (json['primary_rent_fee'] as num?)?.toDouble(),
+      addonFee: (json['addon_fee'] as num?)?.toDouble() ?? (json['addon_subtotal'] as num?)?.toDouble(),
+      addonName: json['addon_name']?.toString(),
+      addonNames: parsedAddonNames.isNotEmpty ? parsedAddonNames : null,
     );
   }
 
@@ -180,6 +208,11 @@ class PaymentTransactionModel {
       'payment_method': paymentMethod,
       'transaction_date': transactionDate.toIso8601String(),
       'notes': notes,
+      'primary_rent_fee': primaryRentFee,
+      'addon_fee': addonFee,
+      'addon_name': addonName,
+      'addon_names': addonNames,
+      'has_addons': hasAddons,
     };
   }
 }

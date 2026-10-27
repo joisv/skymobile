@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kReleaseMode;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/api_config.dart';
 import '../models/iphone_model.dart';
 
 class ApiException implements Exception {
@@ -27,25 +28,50 @@ class ApiService {
   static const String _prefKeyAuthToken = 'api_auth_token';
   static const String _prefKeyUserProfile = 'api_user_profile';
 
-  static const String productionBaseUrl = 'https://skyrental.id/api/v1';
+  static const String productionBaseUrl = ApiConfig.defaultProductionBaseUrl;
 
-  static String get _initialBaseUrl => productionBaseUrl;
+  static String get _initialBaseUrl => ApiConfig.resolveInitialBaseUrl();
 
-  /// Default API base URL pointing to official production API
-  String baseUrl = productionBaseUrl;
+  /// Default API base URL pointing to official production API or compile-time dart-define
+  String baseUrl = ApiConfig.resolveInitialBaseUrl();
 
   /// Bearer Sanctum auth token
   String? authToken;
 
+  /// Origin host URL (e.g. 'https://skyrental.id' or 'http://192.168.1.93:8000')
+  String get backendHost => ApiConfig.getBackendHost(baseUrl);
+
+  /// Base storage URL for uploaded assets (e.g. 'https://skyrental.id/storage')
+  String get storageBaseUrl => ApiConfig.getStorageBaseUrl(baseUrl);
+
+  /// Whether the active base URL points to a local development server
+  bool get isLocalDevelopment => ApiConfig.isLocalOrPrivateUrl(baseUrl);
+
   Future<void> loadPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getString(_prefKeyBaseUrl);
-      if (saved != null && saved.trim().isNotEmpty) {
-        baseUrl = saved.trim();
+
+      // If compile-time --dart-define was explicitly provided in debug mode,
+      // it takes precedence for this run session.
+      if (!kReleaseMode && ApiConfig.hasDartDefineUrl) {
+        baseUrl = ApiConfig.resolveInitialBaseUrl();
       } else {
-        baseUrl = productionBaseUrl;
+        final saved = prefs.getString(_prefKeyBaseUrl);
+        if (saved != null && saved.trim().isNotEmpty) {
+          final normalized = ApiConfig.normalizeBaseUrl(saved);
+          // Safety: In release mode, reject any saved local or private URL
+          if (kReleaseMode && ApiConfig.isLocalOrPrivateUrl(normalized)) {
+            debugPrint('[ApiService] Ignored saved local URL in release mode: $saved');
+            baseUrl = ApiConfig.defaultProductionBaseUrl;
+            await prefs.remove(_prefKeyBaseUrl);
+          } else {
+            baseUrl = normalized;
+          }
+        } else {
+          baseUrl = ApiConfig.resolveInitialBaseUrl();
+        }
       }
+
       final savedToken = prefs.getString(_prefKeyAuthToken);
       if (savedToken != null && savedToken.trim().isNotEmpty) {
         authToken = savedToken.trim();
@@ -55,26 +81,11 @@ class ApiService {
 
   /// Memperbarui dan menyimpan Base URL baru (bisa IP lokal maupun domain seperti https://skyrental.id)
   Future<void> setCustomBaseUrl(String inputUrl) async {
-    String clean = inputUrl.trim();
-    if (clean.isEmpty) return;
+    final clean = ApiConfig.normalizeBaseUrl(inputUrl);
 
-    // Normalisasi protokol jika belum ada
-    if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
-      clean = 'http://$clean';
-    }
-
-    // Bersihkan trailing slash
-    while (clean.endsWith('/')) {
-      clean = clean.substring(0, clean.length - 1);
-    }
-
-    // Pastikan berakhiran /api/v1
-    if (!clean.endsWith('/api/v1')) {
-      if (clean.endsWith('/api')) {
-        clean = '$clean/v1';
-      } else {
-        clean = '$clean/api/v1';
-      }
+    // Requirement 8: Do not allow a release build to target localhost or private IP
+    if (kReleaseMode && ApiConfig.isLocalOrPrivateUrl(clean)) {
+      throw ApiException('Tidak dapat menggunakan alamat lokal / private pada mode rilis (release).');
     }
 
     baseUrl = clean;
@@ -184,7 +195,11 @@ class ApiService {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefKeyUserProfile);
       if (raw != null && raw.trim().isNotEmpty) {
-        return jsonDecode(raw) as Map<String, dynamic>;
+        final map = jsonDecode(raw) as Map<String, dynamic>;
+        if (map['business_id'] != null) {
+          activeBusinessId = int.tryParse(map['business_id'].toString());
+        }
+        return map;
       }
     } catch (_) {}
     return null;
@@ -227,12 +242,17 @@ class ApiService {
     return [baseUrl];
   }
 
+  int? activeBusinessId;
+
   Map<String, String> _buildHeaders({bool isJson = false, Uri? targetUri}) {
     final headers = <String, String>{
       'Accept': 'application/json',
     };
     if (isJson) {
       headers['Content-Type'] = 'application/json';
+    }
+    if (activeBusinessId != null) {
+      headers['X-Business-Id'] = activeBusinessId.toString();
     }
     if (authToken != null && authToken!.isNotEmpty) {
       // Do not send authentication tokens to unrelated hosts
@@ -269,6 +289,14 @@ class ApiService {
             final data = json['data'] as Map<String, dynamic>;
             if (data['token'] != null) {
               saveAuthToken(data['token'].toString());
+            }
+            if (data['businesses'] is List && (data['businesses'] as List).isNotEmpty) {
+              final firstBiz = (data['businesses'] as List).first;
+              if (firstBiz is Map && firstBiz['id'] != null) {
+                activeBusinessId = int.tryParse(firstBiz['id'].toString());
+              }
+            } else if (data['user'] is Map && (data['user'] as Map)['business_id'] != null) {
+              activeBusinessId = int.tryParse((data['user'] as Map)['business_id'].toString());
             }
             return data;
           }
@@ -477,9 +505,16 @@ class ApiService {
 
         if (response.statusCode == 200) {
           final Map<String, dynamic> json = jsonDecode(response.body);
+          List? rawList;
           if (json['data'] is List) {
-            final list = (json['data'] as List)
-                .map((item) => IphoneModel.fromJson(item as Map<String, dynamic>))
+            rawList = json['data'] as List;
+          } else if (json['data'] is Map && (json['data'] as Map)['data'] is List) {
+            rawList = (json['data'] as Map)['data'] as List;
+          }
+          if (rawList != null) {
+            final list = rawList
+                .whereType<Map>()
+                .map((item) => IphoneModel.fromJson(Map<String, dynamic>.from(item)))
                 .toList();
             // Cache successful working base URL
             baseUrl = base;
@@ -611,6 +646,7 @@ class ApiService {
     required double amountPaid,
     String paymentMethod = 'QRIS Kasir',
     String? notes,
+    List<int>? addonAssetIds,
   }) async {
     final startStr =
         "${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}";
@@ -638,6 +674,7 @@ class ApiService {
       'amount_paid': amountPaid,
       'payment_method': paymentMethod,
       'notes': notes,
+      if (addonAssetIds != null && addonAssetIds.isNotEmpty) 'addon_asset_ids': addonAssetIds,
       'send_whatsapp': false, // Notifikasi WA dikirim 1x saat konfirmasi pembayaran di kasir
     };
 
@@ -987,7 +1024,7 @@ class ApiService {
         if (response.statusCode == 200) {
           _saveWorkingUrl(base);
           final decoded = jsonDecode(response.body);
-          if (decoded is Map<String, dynamic> && decoded['status'] == 'success') {
+          if (decoded is Map<String, dynamic> && (decoded['status'] == 'success' || decoded['success'] == true)) {
             return decoded;
           }
         }
@@ -1200,7 +1237,7 @@ class ApiService {
         if (response.statusCode == 200) {
           _saveWorkingUrl(base);
           final decoded = jsonDecode(response.body);
-          if (decoded is Map<String, dynamic> && decoded['status'] == 'success') {
+          if (decoded is Map<String, dynamic> && (decoded['status'] == 'success' || decoded['success'] == true)) {
             return decoded;
           }
         }
@@ -2349,25 +2386,34 @@ class ApiService {
           queryParams['category'] = category;
         }
 
-        final uri = Uri.parse('$base/expenses').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
-        final response = await http.get(
-          uri,
-          headers: _buildHeaders(targetUri: uri),
-        ).timeout(const Duration(seconds: 10));
-
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          _saveWorkingUrl(base);
-          final decoded = jsonDecode(response.body);
-          if (decoded is Map<String, dynamic>) {
-            return decoded;
-          }
-        } else if (response.statusCode >= 400) {
-          String message = 'Gagal memuat daftar pengeluaran (HTTP ${response.statusCode})';
+        final endpointPaths = ['/cashier/expenses', '/expenses'];
+        for (final epPath in endpointPaths) {
           try {
-            final errBody = jsonDecode(response.body);
-            if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
+            final uri = Uri.parse('$base$epPath').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+            final response = await http.get(
+              uri,
+              headers: _buildHeaders(targetUri: uri),
+            ).timeout(const Duration(seconds: 10));
+
+            if (response.statusCode >= 200 && response.statusCode < 300) {
+              _saveWorkingUrl(base);
+              final decoded = jsonDecode(response.body);
+              if (decoded is Map<String, dynamic>) {
+                return decoded;
+              }
+            } else if (response.statusCode == 404) {
+              continue; // Coba path endpoint alternatif
+            } else if (response.statusCode >= 400) {
+              String message = 'Gagal memuat daftar pengeluaran (HTTP ${response.statusCode})';
+              try {
+                final errBody = jsonDecode(response.body);
+                if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
+              } catch (_) {}
+              throw ApiException(message, statusCode: response.statusCode);
+            }
+          } on ApiException {
+            rethrow;
           } catch (_) {}
-          throw ApiException(message, statusCode: response.statusCode);
         }
       } on ApiException {
         rethrow;
@@ -2394,39 +2440,58 @@ class ApiService {
     };
 
     for (final base in candidateUrls) {
-      try {
-        final uri = Uri.parse('$base/expenses');
-        final response = await http.post(
-          uri,
-          headers: _buildHeaders(isJson: true, targetUri: uri),
-          body: jsonEncode(payload),
-        ).timeout(const Duration(seconds: 15));
+      final endpointPaths = ['/cashier/expenses', '/expenses'];
+      for (final epPath in endpointPaths) {
+        try {
+          final uri = Uri.parse('$base$epPath');
+          final response = await http.post(
+            uri,
+            headers: _buildHeaders(isJson: true, targetUri: uri),
+            body: jsonEncode(payload),
+          ).timeout(const Duration(seconds: 15));
 
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          _saveWorkingUrl(base);
-          final decoded = jsonDecode(response.body);
-          if (decoded is Map<String, dynamic>) {
-            return decoded;
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            _saveWorkingUrl(base);
+            final decoded = jsonDecode(response.body);
+            if (decoded is Map<String, dynamic>) {
+              return decoded;
+            }
+          } else if (response.statusCode == 404) {
+            continue;
+          } else if (response.statusCode >= 400) {
+            String message = 'Gagal mencatat pengeluaran (HTTP ${response.statusCode})';
+            try {
+              final errBody = jsonDecode(response.body);
+              if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
+            } catch (_) {}
+            throw ApiException(message, statusCode: response.statusCode);
           }
-        } else if (response.statusCode >= 400) {
-          String message = 'Gagal mencatat pengeluaran (HTTP ${response.statusCode})';
-          try {
-            final errBody = jsonDecode(response.body);
-            if (errBody is Map && errBody['message'] != null) message = errBody['message'].toString();
-          } catch (_) {}
-          throw ApiException(message, statusCode: response.statusCode);
-        }
-      } on ApiException {
-        rethrow;
-      } catch (_) {}
+        } on ApiException {
+          rethrow;
+        } catch (_) {}
+      }
     }
     return null;
   }
 
-  /// Menghapus catatan pengeluaran cabang
-  /// DELETE /api/v1/expenses/{id}
+  /// Menghapus / membatalkan catatan pengeluaran cabang
+  /// POST /api/v1/cashier/expenses/{id}/void atau DELETE /api/v1/expenses/{id}
   Future<bool> deleteExpenseApi(int id) async {
     for (final base in candidateUrls) {
+      try {
+        final uriVoid = Uri.parse('$base/cashier/expenses/$id/void');
+        final response = await http.post(
+          uriVoid,
+          headers: _buildHeaders(isJson: true, targetUri: uriVoid),
+          body: jsonEncode({'void_reason': 'Dibatalkan oleh pengguna via mobile'}),
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _saveWorkingUrl(base);
+          return true;
+        }
+      } catch (_) {}
+
       try {
         final uri = Uri.parse('$base/expenses/$id');
         final response = await http.delete(
@@ -2437,7 +2502,7 @@ class ApiService {
         if (response.statusCode >= 200 && response.statusCode < 300) {
           _saveWorkingUrl(base);
           return true;
-        } else if (response.statusCode >= 400) {
+        } else if (response.statusCode >= 400 && response.statusCode != 404) {
           String message = 'Gagal menghapus pengeluaran (HTTP ${response.statusCode})';
           try {
             final errBody = jsonDecode(response.body);
@@ -2450,6 +2515,253 @@ class ApiService {
       } catch (_) {}
     }
     return false;
+  }
+
+  // ===========================================================================
+  // POS CASHIER SHIFT MANAGEMENT
+  // ===========================================================================
+
+  /// Mengambil status shift kasir aktif saat ini untuk cabang yang ditentukan
+  /// GET /api/v1/cashier/shift/current
+  Future<Map<String, dynamic>?> getCurrentShiftApi({int? branchId}) async {
+    for (final base in candidateUrls) {
+      try {
+        final queryParams = <String, String>{};
+        if (branchId != null) queryParams['branch_id'] = branchId.toString();
+
+        final baseUri = Uri.parse('$base/cashier/shift/current');
+        final uri = baseUri.replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+
+        final headers = _buildHeaders(targetUri: uri);
+        if (branchId != null) headers['X-Branch-Id'] = branchId.toString();
+
+        final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Mengambil pengaturan jadwal shift dan status operasional real-time
+  /// GET /api/v1/cashier/shift/schedule
+  Future<Map<String, dynamic>?> getShiftScheduleApi({int? branchId}) async {
+    for (final base in candidateUrls) {
+      try {
+        final queryParams = <String, String>{};
+        if (branchId != null) queryParams['branch_id'] = branchId.toString();
+
+        final baseUri = Uri.parse('$base/cashier/shift/schedule');
+        final uri = baseUri.replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+
+        final headers = _buildHeaders(targetUri: uri);
+        if (branchId != null) headers['X-Branch-Id'] = branchId.toString();
+
+        final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Memperbarui pengaturan jadwal shift (Owner & Admin)
+  /// PUT /api/v1/cashier/shift/schedule
+  Future<Map<String, dynamic>?> updateShiftScheduleApi({
+    bool? enforcementEnabled,
+    String? openingTime,
+    String? closingTime,
+    int? graceMinutes,
+    int? branchId,
+    String? branchOpeningOverride,
+    String? branchClosingOverride,
+  }) async {
+    final payload = <String, dynamic>{
+      if (enforcementEnabled != null) 'shift_enforcement_enabled': enforcementEnabled,
+      if (openingTime != null) 'shift_opening_time': openingTime,
+      if (closingTime != null) 'shift_closing_time': closingTime,
+      if (graceMinutes != null) 'shift_grace_period_minutes': graceMinutes,
+      if (branchId != null) 'branch_id': branchId,
+      if (branchOpeningOverride != null) 'branch_opening_override': branchOpeningOverride,
+      if (branchClosingOverride != null) 'branch_closing_override': branchClosingOverride,
+    };
+
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/cashier/shift/schedule');
+        final headers = _buildHeaders(isJson: true, targetUri: uri);
+        if (branchId != null) headers['X-Branch-Id'] = branchId.toString();
+
+        final response = await http.put(
+          uri,
+          headers: headers,
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 12));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Mengambil daftar riwayat shift kasir yang telah ditutup
+  /// GET /api/v1/cashier/shift/history
+  Future<Map<String, dynamic>?> getShiftHistoryApi({
+    int? branchId,
+    int page = 1,
+    int perPage = 20,
+    String? status,
+  }) async {
+    for (final base in candidateUrls) {
+      try {
+        final queryParams = <String, String>{
+          'page': page.toString(),
+          'per_page': perPage.toString(),
+        };
+        if (branchId != null) queryParams['branch_id'] = branchId.toString();
+        if (status != null && status.isNotEmpty) queryParams['status'] = status;
+
+        final baseUri = Uri.parse('$base/cashier/shift/history');
+        final uri = baseUri.replace(queryParameters: queryParams);
+
+        final headers = _buildHeaders(targetUri: uri);
+        if (branchId != null) headers['X-Branch-Id'] = branchId.toString();
+
+        final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Membuka shift kasir baru dengan modal awal (Opening Cash Float)
+  /// POST /api/v1/cashier/shift/open
+  Future<Map<String, dynamic>?> openShiftApi({
+    required double openingCashFloat,
+    String? notes,
+    int? branchId,
+  }) async {
+    final payload = <String, dynamic>{
+      'opening_cash_float': openingCashFloat,
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+      if (branchId != null) 'branch_id': branchId,
+    };
+
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/cashier/shift/open');
+        final headers = _buildHeaders(isJson: true, targetUri: uri);
+        if (branchId != null) headers['X-Branch-Id'] = branchId.toString();
+
+        final response = await http.post(
+          uri,
+          headers: headers,
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        } else if (response.statusCode >= 400) {
+          String message = 'Gagal membuka shift (HTTP ${response.statusCode})';
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map) {
+              if (errBody['message'] != null) message = errBody['message'].toString();
+              if (errBody['errors'] != null && errBody['errors'] is Map) {
+                final firstErr = (errBody['errors'] as Map).values.first;
+                if (firstErr is List && firstErr.isNotEmpty) message = firstErr.first.toString();
+              }
+            }
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Menutup shift kasir aktif dengan input uang fisik riil dan selisih
+  /// POST /api/v1/cashier/shift/close
+  Future<Map<String, dynamic>?> closeShiftApi({
+    required double actualCashCounted,
+    String? differenceReason,
+    String? closingNotes,
+    int? shiftId,
+  }) async {
+    final payload = <String, dynamic>{
+      'actual_cash_counted': actualCashCounted,
+      if (differenceReason != null && differenceReason.isNotEmpty) 'difference_reason': differenceReason,
+      if (closingNotes != null && closingNotes.isNotEmpty) 'closing_notes': closingNotes,
+      if (shiftId != null) 'shift_id': shiftId,
+    };
+
+    for (final base in candidateUrls) {
+      try {
+        final uri = Uri.parse('$base/cashier/shift/close');
+        final headers = _buildHeaders(isJson: true, targetUri: uri);
+
+        final response = await http.post(
+          uri,
+          headers: headers,
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 15));
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _saveWorkingUrl(base);
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        } else if (response.statusCode >= 400) {
+          String message = 'Gagal menutup shift (HTTP ${response.statusCode})';
+          try {
+            final errBody = jsonDecode(response.body);
+            if (errBody is Map) {
+              if (errBody['message'] != null) message = errBody['message'].toString();
+              if (errBody['errors'] != null && errBody['errors'] is Map) {
+                final firstErr = (errBody['errors'] as Map).values.first;
+                if (firstErr is List && firstErr.isNotEmpty) message = firstErr.first.toString();
+              }
+            }
+          } catch (_) {}
+          throw ApiException(message, statusCode: response.statusCode);
+        }
+      } on ApiException {
+        rethrow;
+      } catch (_) {}
+    }
+    return null;
   }
 }
 

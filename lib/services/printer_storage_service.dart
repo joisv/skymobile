@@ -160,6 +160,23 @@ class PrinterStorageService {
     return PrinterDeviceModel.defaultVsc();
   }
 
+  /// Hapus atau kosongkan printer utama yang tersimpan
+  Future<void> clearPrimaryPrinter({String? customPath}) async {
+    await init();
+    _primaryPrinter = const PrinterDeviceModel(
+      name: 'Belum Ada Printer Dipilih',
+      address: '',
+      isConnected: false,
+    );
+    await _persist(customPath: customPath);
+  }
+
+  /// Cek apakah printer utama telah dikonfigurasi
+  bool get hasConfiguredPrimaryPrinter =>
+      _primaryPrinter != null &&
+      _primaryPrinter!.address.trim().isNotEmpty &&
+      _primaryPrinter!.name != 'Belum Ada Printer Dipilih';
+
   /// Cek apakah alamat MAC tertentu merupakan printer utama
   bool isPrimaryPrinter(String address) {
     return _primaryPrinter?.address.toLowerCase() == address.toLowerCase();

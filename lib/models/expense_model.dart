@@ -31,20 +31,26 @@ class ExpenseModel {
 
   factory ExpenseModel.fromJson(Map<String, dynamic> json) {
     final amt = (json['amount'] as num?)?.toDouble() ?? 0.0;
+    final affId = json['affiliate_id'] ?? json['branch_id'];
+    final affName = json['affiliate_name'] ?? json['branch_name'] ?? (json['branch'] is Map ? (json['branch'] as Map)['name'] : null);
+    final uName = json['user_name'] ?? json['requested_by_name'] ?? (json['requested_by'] is Map ? (json['requested_by'] as Map)['name'] : null);
+    final notes = json['notes'] ?? json['title'];
+    final spent = json['spent_at'] ?? json['disbursed_at'] ?? json['created_at'];
+
     return ExpenseModel(
       id: json['id'] is int ? json['id'] as int : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
-      affiliateId: json['affiliate_id'] is int
-          ? json['affiliate_id'] as int
-          : int.tryParse(json['affiliate_id']?.toString() ?? '0') ?? 0,
-      affiliateName: json['affiliate_name'] as String? ?? 'Pusat',
-      userId: json['user_id'] as String?,
-      userName: json['user_name'] as String? ?? 'Staff',
+      affiliateId: affId is int
+          ? affId
+          : int.tryParse(affId?.toString() ?? '0') ?? 0,
+      affiliateName: affName?.toString() ?? 'Pusat',
+      userId: json['user_id']?.toString() ?? json['requested_by']?.toString(),
+      userName: uName?.toString() ?? 'Staff',
       amount: amt,
       amountFormatted: json['amount_formatted'] as String? ?? '',
       category: json['category'] as String? ?? 'operasional',
       categoryLabel: json['category_label'] as String? ?? '',
-      notes: json['notes'] as String?,
-      spentAt: json['spent_at'] != null ? DateTime.tryParse(json['spent_at'].toString()) : null,
+      notes: notes?.toString(),
+      spentAt: spent != null ? DateTime.tryParse(spent.toString()) : null,
       spentAtFormatted: json['spent_at_formatted'] as String? ?? '',
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) : null,
     );
@@ -82,17 +88,37 @@ class ExpenseSummaryModel {
     required this.categories,
   });
 
-  factory ExpenseSummaryModel.fromJson(Map<String, dynamic> json) {
-    final catRaw = json['categories'] as Map<String, dynamic>? ?? {};
+  factory ExpenseSummaryModel.fromJson(dynamic json) {
+    if (json is! Map) {
+      return const ExpenseSummaryModel(
+        totalExpenses: 0.0,
+        totalExpensesFormatted: 'Rp 0',
+        count: 0,
+        categories: {},
+      );
+    }
+    final map = json;
+    final catRaw = (map['categories'] is Map ? map['categories'] as Map : null) ??
+        (map['by_category'] is Map ? map['by_category'] as Map : null) ??
+        {};
     final catMap = <String, double>{};
     catRaw.forEach((k, v) {
-      catMap[k] = (v as num?)?.toDouble() ?? 0.0;
+      if (v is num) {
+        catMap[k.toString()] = v.toDouble();
+      } else if (v is Map && v['total'] is num) {
+        catMap[k.toString()] = (v['total'] as num).toDouble();
+      }
     });
 
+    final totalExp = (map['total_expenses'] as num?)?.toDouble() ??
+        (map['totalExpenses'] as num?)?.toDouble() ??
+        0.0;
+    final count = map['count'] is int ? map['count'] as int : int.tryParse(map['count']?.toString() ?? '0') ?? 0;
+
     return ExpenseSummaryModel(
-      totalExpenses: (json['total_expenses'] as num?)?.toDouble() ?? 0.0,
-      totalExpensesFormatted: json['total_expenses_formatted'] as String? ?? '',
-      count: json['count'] is int ? json['count'] as int : int.tryParse(json['count']?.toString() ?? '0') ?? 0,
+      totalExpenses: totalExp,
+      totalExpensesFormatted: map['total_expenses_formatted'] as String? ?? 'Rp ${totalExp.toInt()}',
+      count: count,
       categories: catMap,
     );
   }
@@ -116,17 +142,34 @@ class ExpenseResponseModel {
   });
 
   factory ExpenseResponseModel.fromJson(Map<String, dynamic> json) {
-    final list = (json['data'] as List<dynamic>?)
-            ?.map((e) => ExpenseModel.fromJson(e as Map<String, dynamic>))
-            .toList() ??
-        [];
+    List<ExpenseModel> list = [];
+    dynamic summaryData;
+
+    final dataField = json['data'];
+    if (dataField is List) {
+      list = dataField
+          .whereType<Map>()
+          .map((e) => ExpenseModel.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } else if (dataField is Map) {
+      final expensesList = dataField['expenses'] ?? dataField['data'] ?? dataField['items'];
+      if (expensesList is List) {
+        list = expensesList
+            .whereType<Map>()
+            .map((e) => ExpenseModel.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+      summaryData = dataField['summary'];
+    }
+
+    summaryData ??= json['summary'];
 
     return ExpenseResponseModel(
-      status: json['status'] as String? ?? 'success',
-      period: json['period'] as String? ?? '',
-      startDate: json['start_date'] as String? ?? '',
-      endDate: json['end_date'] as String? ?? '',
-      summary: ExpenseSummaryModel.fromJson(json['summary'] as Map<String, dynamic>? ?? {}),
+      status: json['status']?.toString() ?? (json['success'] == true ? 'success' : 'success'),
+      period: json['period']?.toString() ?? '',
+      startDate: json['start_date']?.toString() ?? '',
+      endDate: json['end_date']?.toString() ?? '',
+      summary: ExpenseSummaryModel.fromJson(summaryData),
       data: list,
     );
   }

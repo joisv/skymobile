@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/booking_repository.dart';
 import '../../models/booking_model.dart';
+import '../../models/cash_drawer_shift_model.dart';
 import '../../models/iphone_model.dart';
 import '../../routes/app_routes.dart';
 import '../../services/api_service.dart';
@@ -8,8 +9,8 @@ import '../../services/auth_service.dart';
 import '../../services/thermal_print_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
-import '../payment/payment_deposit_screen.dart';
 import '../../widgets/app_header.dart';
+import '../../widgets/app_cached_network_image.dart';
 import 'widgets/dashboard_skeleton.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -34,6 +35,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
   final TextEditingController _queueSearchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _queueSearchQuery = '';
+  ShiftScheduleModel? _shiftSchedule;
 
   @override
   void initState() {
@@ -112,12 +114,78 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
   /// Navigasi ke rute lain dengan memastikan keyboard tidak terbuka saat kembali
   Future<T?> _navigateAndRefresh<T>(String routeName, {Object? arguments}) async {
     unfocusSearch();
+    if (routeName == AppRoutes.createBooking) {
+      final schedule = _shiftSchedule ?? await widget.repository.getShiftSchedule();
+      if (!schedule.canCreateBooking) {
+        _showDashboardShiftRequiredDialog(schedule);
+        return null;
+      }
+    }
     final result = await Navigator.pushNamed<T>(context, routeName, arguments: arguments);
     if (mounted) {
       unfocusSearch();
       _loadDashboard();
     }
     return result;
+  }
+
+  void _showDashboardShiftRequiredDialog(ShiftScheduleModel schedule) {
+    final isClosed = schedule.operationalState == ShiftOperationalState.closed;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isClosed ? Colors.grey.shade100 : Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                isClosed ? Icons.lock_clock_rounded : Icons.point_of_sale_rounded,
+                color: isClosed ? Colors.grey.shade700 : Colors.amber.shade800,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                isClosed ? 'Shift Kasir Ditutup' : 'Shift Kasir Belum Dibuka',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          isClosed
+              ? 'Shift kasir untuk hari ini telah selesai ditutup (${schedule.shiftClosingTime}). Transaksi booking baru hanya dapat dibuat saat shift kasir aktif.'
+              : 'Shift kasir belum dibuka untuk cabang ini. Anda harus membuka shift kasir terlebih dahulu sebelum melayani dan memproses booking baru.',
+          style: const TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          if (!isClosed)
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _navigateAndRefresh(AppRoutes.cashierShift);
+              },
+              icon: const Icon(Icons.vpn_key_rounded, size: 16),
+              label: const Text('Buka Shift Kasir'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   /// Cek apakah cache dashboard sudah kedaluwarsa (>= 5 menit) dan muat ulang secara otomatis jika perlu
@@ -140,6 +208,9 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
             _isLoading = false;
           });
         }
+        widget.repository.getShiftSchedule().then((s) {
+          if (mounted) setState(() => _shiftSchedule = s);
+        }).catchError((_) {});
         return;
       }
     }
@@ -181,11 +252,17 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
         pendingTransferCount: pendingTransferCount,
       );
 
+      ShiftScheduleModel? schedule;
+      try {
+        schedule = await widget.repository.getShiftSchedule(forceRefresh: forceRefresh);
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _dashboardData = data;
           _readyInventory = readyUnits;
           _pendingTransferCount = pendingTransferCount;
+          if (schedule != null) _shiftSchedule = schedule;
           _isLoading = false;
         });
       }
@@ -339,7 +416,16 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
 
         return Scaffold(
           backgroundColor: AppTheme.background,
-          appBar: AppHeader(isTablet: isTablet),
+          appBar: AppHeader(
+            isTablet: isTablet,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.point_of_sale_rounded, color: Color(0xFF0284C7)),
+                tooltip: 'Shift Kasir & Buku Kas',
+                onPressed: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift).then((_) => _loadDashboard()),
+              ),
+            ],
+          ),
           body: bodyContent,
           floatingActionButton: isTablet ? null : _buildStitchFloatingActionButton(),
         );
@@ -373,6 +459,58 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
         items.sort((a, b) => b.id.compareTo(a.id));
         break;
     }
+  }
+
+  Widget _buildShiftBadgeHeader() {
+    final state = _shiftSchedule?.operationalState ?? ShiftOperationalState.notOpened;
+    Color bg;
+    Color fg;
+    String text;
+
+    switch (state) {
+      case ShiftOperationalState.open:
+        bg = const Color(0xFFDCFCE7);
+        fg = const Color(0xFF15803D);
+        text = 'AKTIF';
+        break;
+      case ShiftOperationalState.closingSoon:
+        bg = const Color(0xFFFEF3C7);
+        fg = const Color(0xFFB45309);
+        text = 'MENDEKATI TUTUP';
+        break;
+      case ShiftOperationalState.closingOverdue:
+        bg = const Color(0xFFFEE2E2);
+        fg = const Color(0xFFB91C1C);
+        text = 'LEWAT TUTUP';
+        break;
+      case ShiftOperationalState.openingRequired:
+        bg = const Color(0xFFFFEDD5);
+        fg = const Color(0xFFC2410C);
+        text = 'WAJIB BUKA';
+        break;
+      case ShiftOperationalState.closed:
+        bg = const Color(0xFFF1F5F9);
+        fg = const Color(0xFF475569);
+        text = 'DITUTUP';
+        break;
+      case ShiftOperationalState.notOpened:
+        bg = const Color(0xFFF1F5F9);
+        fg = const Color(0xFF64748B);
+        text = 'BELUM DIBUKA';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: fg),
+      ),
+    );
   }
 
   Widget _buildOfflineBanner() {
@@ -433,6 +571,100 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: _buildOperationalMetricsSection(metrics),
+        ),
+
+        // Quick Action: Shift Kasir & Buku Kas (POS Cash Drawer)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: InkWell(
+            onTap: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift).then((_) => _loadDashboard()),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBAE6FD), width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.point_of_sale_rounded,
+                      color: Color(0xFF0284C7),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Flexible(
+                              child: Text(
+                                'Shift Kasir & Buku Kas',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            _buildShiftBadgeHeader(),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _shiftSchedule?.statusMessage ?? 'Buka/tutup shift, modal awal & mutasi kas fisik',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF64748B),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0284C7),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Buka',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        SizedBox(width: 3),
+                        Icon(Icons.chevron_right_rounded, size: 14, color: Colors.white),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
 
         // Quick Action khusus Affiliate: Transfer iPhone Masuk & Terima iPhone
@@ -1264,7 +1496,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     double radius = 12,
     bool isOverdue = false,
   }) {
-    final photo = iphone.resolvedPhotoUrl;
+    final photo = iphone.resolvedThumbnailUrl ?? iphone.resolvedPhotoUrl;
     final fallbackBg = isOverdue
         ? const Color(0xFFFEE2E2)
         : AppTheme.surfaceContainerLow;
@@ -1286,34 +1518,30 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
         child: (photo != null && photo.isNotEmpty)
-            ? Image.network(
-                photo,
+            ? AppCachedNetworkImage(
+                imageUrl: photo,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
                 cacheWidth: (size * 2).clamp(48.0, 200.0).toInt(),
                 cacheHeight: (size * 2).clamp(48.0, 200.0).toInt(),
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Center(
+                placeholder: (context) => Center(
+                  child: SizedBox(
+                    width: size * 0.35,
+                    height: size * 0.35,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(fallbackColor),
+                    ),
+                  ),
+                ),
+                errorWidget: (context, error) => Center(
                   child: Icon(
                     isOverdue ? Icons.schedule_rounded : Icons.phone_iphone_rounded,
                     color: fallbackColor,
                     size: size * 0.5,
                   ),
                 ),
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Center(
-                    child: SizedBox(
-                      width: size * 0.35,
-                      height: size * 0.35,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        value: loadingProgress.expectedTotalBytes != null
-                            ? loadingProgress.cumulativeBytesLoaded /
-                                loadingProgress.expectedTotalBytes!
-                            : null,
-                      ),
-                    ),
-                  );
-                },
               )
             : Center(
                 child: Icon(
@@ -1331,704 +1559,26 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     final isRented = b.status == BookingStatus.rented;
     final now = DateTime.now();
     final isOverdue = isRented && b.endDate.isBefore(now);
-    final overdueHours = isOverdue ? now.difference(b.endDate).inHours.clamp(1, 999) : 0;
 
-    final date = isPickup ? b.startDate : b.endDate;
-    final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
-    final timeStr = isToday
-        ? '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')} WIB'
-        : '${Formatters.date(date)} • ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')} WIB';
-
-    if (isOverdue) {
-      // Overdue Return Card
-      return Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFFDFD),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFFCA5A5), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.red.withValues(alpha: 0.03),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: InkWell(
-          onTap: () => _navigateAndRefresh(AppRoutes.bookingDetail, arguments: b),
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFEE2E2),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'RETURN • OVERDUE',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFDC2626),
-                            ),
-                          ),
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.warning_amber_rounded, size: 14, color: Color(0xFFDC2626)),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                '+$overdueHours Jam Terlambat',
-                                style: const TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFFDC2626),
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEE2E2),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        '+ Denda Rp 50.000',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFFDC2626),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // Device info
-                Row(
-                  children: [
-                    _buildDeviceThumbnail(b.iphone, size: 44, radius: 12, isOverdue: true),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  b.customerName,
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                flex: 2,
-                                child: Text(
-                                  '#${b.bookingCode}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                  textAlign: TextAlign.end,
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${b.iphone.modelName} • ${b.iphone.color} • SN: ${b.iphone.serialNumber}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textSecondary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              Icon(Icons.person_outline_rounded, size: 12.5, color: AppTheme.textSecondary),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  'Dibuat oleh: ${b.userName ?? "Kasir"}',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.textSecondary,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Divider(height: 1, color: Color(0xFFFECACA)),
-                const SizedBox(height: 10),
-
-                // Footer
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 2,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          'Tarif Sewa: ${Formatters.formatCurrency(b.price)}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFFDC2626),
-                          ),
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFFDC2626)),
-                            const SizedBox(width: 4),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 150),
-                              child: const Text(
-                                'Denda terlambat belum lunas',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: Color(0xFFDC2626),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        IconButton(
-                          onPressed: () => _confirmDeleteBooking(b),
-                          icon: const Icon(Icons.delete_outline_rounded, size: 19, color: AppTheme.error),
-                          tooltip: 'Hapus Booking',
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.all(4),
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        ),
-                        ElevatedButton(
-                          onPressed: () {
-                            _navigateAndRefresh(
-                              AppRoutes.paymentDeposit,
-                              arguments: {
-                                'booking': b,
-                                'initialPaymentType': PaymentTypeOption.penalty,
-                                'initialAmount': b.estimatedLateFee > 0 ? b.estimatedLateFee : 50000.0,
-                                'isReturnFlow': true,
-                              },
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFB91C1C),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          ),
-                          child: const FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Proses Telat & Denda',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                SizedBox(width: 4),
-                                Icon(Icons.receipt_long_rounded, size: 15, color: Colors.white),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (!isPickup) {
-      // Normal Return Card
-      return Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.cardBorder),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: InkWell(
-          onTap: () => _navigateAndRefresh(AppRoutes.bookingDetail, arguments: b),
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE0F2FE),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'RETURN',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0369A1),
-                        ),
-                      ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.schedule_rounded, size: 14, color: AppTheme.textSecondary),
-                        const SizedBox(width: 4),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 140),
-                          child: Text(
-                            timeStr,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'Menunggu Pengembalian',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // Device info
-                Row(
-                  children: [
-                    _buildDeviceThumbnail(b.iphone, size: 44, radius: 12),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  b.customerName,
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                flex: 2,
-                                child: Text(
-                                  '#${b.bookingCode}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                  textAlign: TextAlign.end,
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${b.iphone.modelName} • ${b.iphone.color} • SN: ${b.iphone.serialNumber}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textSecondary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              Icon(Icons.person_outline_rounded, size: 12.5, color: AppTheme.textSecondary),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  'Dibuat oleh: ${b.userName ?? "Kasir"}',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.textSecondary,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Divider(height: 1, color: AppTheme.cardBorder),
-                const SizedBox(height: 10),
-
-                // Footer
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      'Tarif Biaya Sewa: ${Formatters.formatCurrency(b.price)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        IconButton(
-                          onPressed: () => _confirmDeleteBooking(b),
-                          icon: const Icon(Icons.delete_outline_rounded, size: 19, color: AppTheme.error),
-                          tooltip: 'Hapus Booking',
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.all(4),
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        ),
-                        ElevatedButton(
-                          onPressed: () {
-                            _navigateAndRefresh(
-                              AppRoutes.bookingDetail,
-                              arguments: b,
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFE0F2FE),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          ),
-                          child: const FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Inspeksi & Refund',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF0369A1),
-                                  ),
-                                ),
-                                SizedBox(width: 4),
-                                Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF0369A1)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Pickup Card
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: InkWell(
-        onTap: () => _navigateAndRefresh(AppRoutes.bookingDetail, arguments: b),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0284C7),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'PICKUP',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.schedule_rounded, size: 14, color: AppTheme.textSecondary),
-                      const SizedBox(width: 4),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 140),
-                        child: Text(
-                          timeStr,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  _buildPaymentStatusBadge(b.paymentStatus),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Device info
-              Row(
-                children: [
-                  _buildDeviceThumbnail(b.iphone, size: 44, radius: 12),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                b.customerName,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimary,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              flex: 2,
-                              child: Text(
-                                '#${b.bookingCode}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textSecondary,
-                                ),
-                                textAlign: TextAlign.end,
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${b.iphone.modelName} • ${b.iphone.color} • SN: ${b.iphone.serialNumber}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textSecondary,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Icon(Icons.person_outline_rounded, size: 12.5, color: AppTheme.textSecondary),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                'Dibuat oleh: ${b.userName ?? "Kasir"}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppTheme.textSecondary,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Divider(height: 1, color: AppTheme.cardBorder),
-              const SizedBox(height: 10),
-
-              // Footer
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    'Tarif Biaya Sewa: ${Formatters.formatCurrency(b.price)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => _confirmDeleteBooking(b),
-                    icon: const Icon(Icons.delete_outline_rounded, size: 19, color: AppTheme.error),
-                    tooltip: 'Hapus Booking',
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    return _buildStitchQueueItem(
+      booking: b,
+      type: isPickup ? 'pickup' : 'return',
+      isOverdue: isOverdue,
+      time: Formatters.date(b.startDate),
+      statusBadge: '',
+      statusBadgeBg: Colors.transparent,
+      statusBadgeColor: Colors.transparent,
+      customerName: b.customerName,
+      bookingCode: '#${b.bookingCode}',
+      deviceDesc: '${b.iphone.modelName} • ${b.iphone.color} • SN: ${b.iphone.serialNumber}',
+      paymentStatus: b.paymentStatus,
+      jaminanType: b.jaminanType,
+      onDetail: () {
+        _navigateAndRefresh(AppRoutes.bookingDetail, arguments: b);
+      },
+      onDelete: () => _confirmDeleteBooking(b),
     );
   }
-
   Widget _buildTabletQuickActionsCard() {
     return Container(
       padding: const EdgeInsets.all(14),
@@ -2155,6 +1705,37 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+
+          // Wide Button: Shift Kasir & Buku Kas
+          SizedBox(
+            width: double.infinity,
+            height: 38,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                _navigateAndRefresh(AppRoutes.cashierShift);
+              },
+              icon: const Icon(Icons.point_of_sale_rounded, size: 16, color: Color(0xFF0284C7)),
+              label: const Text(
+                'Shift Kasir & Buku Kas',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0284C7),
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFF0F9FF),
+                foregroundColor: const Color(0xFF0284C7),
+                elevation: 0,
+                side: const BorderSide(color: Color(0xFFBAE6FD)),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
           ),
         ],
       ),
@@ -2502,7 +2083,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                           ),
                           const SizedBox(height: 1),
                           Text(
-                            storage.isNotEmpty ? '$storage • $colors' : colors,
+                            storage.isNotEmpty ? '$storage â€¢ $colors' : colors,
                             style: TextStyle(
                               fontSize: 9.5,
                               color: AppTheme.textSecondary,
@@ -3064,52 +2645,58 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
             ),
           )
         else
-          ...displayItems.map((b) {
-            final isPickup = b.status == BookingStatus.confirmed || b.status == BookingStatus.pending;
-            final isRented = b.status == BookingStatus.rented;
-            final now = DateTime.now();
-            final isOverdue = isRented && b.endDate.isBefore(now);
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: displayItems.length,
+            itemBuilder: (context, index) {
+              final b = displayItems[index];
+              final isPickup = b.status == BookingStatus.confirmed || b.status == BookingStatus.pending;
+              final isRented = b.status == BookingStatus.rented;
+              final now = DateTime.now();
+              final isOverdue = isRented && b.endDate.isBefore(now);
 
-            String timeStr = Formatters.date(b.startDate);
-            String statusBadge = 'Terkonfirmasi';
-            Color badgeBg = AppTheme.successContainer;
-            Color badgeColor = AppTheme.onSuccessContainer;
+              String timeStr = Formatters.date(b.startDate);
+              String statusBadge = 'Terkonfirmasi';
+              Color badgeBg = AppTheme.successContainer;
+              Color badgeColor = AppTheme.onSuccessContainer;
 
-            if (isOverdue) {
-              timeStr = 'TELAT PENGEMBALIAN';
-              statusBadge = '+ Denda Telat';
-              badgeBg = AppTheme.errorContainer;
-              badgeColor = AppTheme.error;
-            } else if (isRented) {
-              timeStr = Formatters.date(b.endDate);
-              statusBadge = 'Sedang Disewa';
-              badgeBg = AppTheme.surfaceContainerLow;
-              badgeColor = AppTheme.textSecondary;
-            } else if (b.status == BookingStatus.pending) {
-              statusBadge = 'Menunggu Pembayaran';
-              badgeBg = AppTheme.surfaceContainerLow;
-              badgeColor = AppTheme.textSecondary;
-            }
+              if (isOverdue) {
+                timeStr = 'TELAT PENGEMBALIAN';
+                statusBadge = '+ Denda Telat';
+                badgeBg = AppTheme.errorContainer;
+                badgeColor = AppTheme.error;
+              } else if (isRented) {
+                timeStr = Formatters.date(b.endDate);
+                statusBadge = 'Sedang Disewa';
+                badgeBg = AppTheme.surfaceContainerLow;
+                badgeColor = AppTheme.textSecondary;
+              } else if (b.status == BookingStatus.pending) {
+                statusBadge = 'Menunggu Pembayaran';
+                badgeBg = AppTheme.surfaceContainerLow;
+                badgeColor = AppTheme.textSecondary;
+              }
 
-            return _buildStitchQueueItem(
-              booking: b,
-              type: isPickup ? 'pickup' : 'return',
-              isOverdue: isOverdue,
-              time: timeStr,
-              statusBadge: statusBadge,
-              statusBadgeBg: badgeBg,
-              statusBadgeColor: badgeColor,
-              customerName: b.customerName,
-              bookingCode: '#${b.bookingCode}',
-              deviceDesc: '${b.iphone.modelName} • ${b.iphone.color} • SN: ${b.iphone.serialNumber}',
-              paymentStatus: b.paymentStatus,
-              jaminanType: b.jaminanType,
-              onDetail: () {
-                _navigateAndRefresh(AppRoutes.bookingDetail, arguments: b);
-              },
-              onDelete: () => _confirmDeleteBooking(b),
-            );
-          }),
+              return _buildStitchQueueItem(
+                booking: b,
+                type: isPickup ? 'pickup' : 'return',
+                isOverdue: isOverdue,
+                time: timeStr,
+                statusBadge: statusBadge,
+                statusBadgeBg: badgeBg,
+                statusBadgeColor: badgeColor,
+                customerName: b.customerName,
+                bookingCode: '#${b.bookingCode}',
+                deviceDesc: '${b.iphone.modelName} • ${b.iphone.color} • SN: ${b.iphone.serialNumber}',
+                paymentStatus: b.paymentStatus,
+                jaminanType: b.jaminanType,
+                onDetail: () {
+                  _navigateAndRefresh(AppRoutes.bookingDetail, arguments: b);
+                },
+                onDelete: () => _confirmDeleteBooking(b),
+              );
+            },
+          ),
       ],
     );
   }
@@ -3256,55 +2843,26 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     );
   }
 
-  Widget _buildPaymentStatusBadge(PaymentStatus status) {
-    Color bg;
-    Color textColor;
-    String label;
-    IconData icon;
+  String _formatQueueDate(DateTime dt, [String? customTime]) {
+    final local = Formatters.toWib(dt);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    final day = local.day.toString().padLeft(2, '0');
+    final month = months[local.month - 1];
+    final year = (local.year % 100).toString().padLeft(2, '0');
 
-    switch (status) {
-      case PaymentStatus.paid:
-        bg = const Color(0xFFDCFCE7); // green-100
-        textColor = const Color(0xFF047857); // green-700
-        label = 'Lunas';
-        icon = Icons.check_circle_rounded;
-        break;
-      case PaymentStatus.partial:
-        bg = const Color(0xFFFEF3C7); // amber-100
-        textColor = const Color(0xFFB45309); // amber-700
-        label = 'DP / Sebagian';
-        icon = Icons.pending_rounded;
-        break;
-      case PaymentStatus.unpaid:
-        bg = const Color(0xFFFEE2E2); // red-100
-        textColor = const Color(0xFFB91C1C); // red-700
-        label = 'Belum Bayar';
-        icon = Icons.error_outline_rounded;
-        break;
+    String timeStr;
+    if (customTime != null && customTime.trim().isNotEmpty) {
+      final parts = customTime.trim().split(':');
+      if (parts.length >= 2) {
+        timeStr = '${parts[0].padLeft(2, '0')}:${parts[1].padLeft(2, '0')}';
+      } else {
+        timeStr = customTime.trim();
+      }
+    } else {
+      timeStr = '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: textColor),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-            ),
-          ),
-        ],
-      ),
-    );
+    return '$day $month $year $timeStr';
   }
 
   Widget _buildStitchQueueItem({
@@ -3323,232 +2881,304 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     required VoidCallback onDetail,
     required VoidCallback onDelete,
   }) {
+    // 1. Warna teks kode booking merepresentasikan status pembayaran
+    // @switch($booking->payment_status)
+    //   @case('partial') text-yellow-600
+    //   @case('paid') text-green-600
+    //   @default text-red-600
+    Color paymentCodeColor;
+    switch (paymentStatus) {
+      case PaymentStatus.paid:
+        paymentCodeColor = const Color(0xFF16A34A); // bg-green-600
+        break;
+      case PaymentStatus.partial:
+        paymentCodeColor = const Color(0xFFD97706); // bg-amber-600
+        break;
+      case PaymentStatus.unpaid:
+        paymentCodeColor = const Color(0xFFDC2626); // bg-red-600
+        break;
+    }
+
+    // 2. Booking status badge merepresentasikan status booking
+    // @switch($booking->status)
+    //   @case('pending') Menunggu Pembayaran (bg-yellow-500)
+    //   @case('confirmed') Dikonfirmasi (bg-green-500)
+    //   @case('returned') Dikembalikan (bg-blue-500)
+    //   @case('cancelled') Dibatalkan (bg-red-500)
+    //   @default {{ ucfirst($booking->status) }} (bg-gray-400)
+    Color bookingStatusBg;
+    String bookingStatusText;
+    switch (booking.status) {
+      case BookingStatus.pending:
+        bookingStatusBg = const Color(0xFFEAB308); // bg-yellow-500
+        bookingStatusText = 'Menunggu Pembayaran';
+        break;
+      case BookingStatus.confirmed:
+        bookingStatusBg = const Color(0xFF22C55E); // bg-green-500
+        bookingStatusText = 'Dikonfirmasi';
+        break;
+      case BookingStatus.returned:
+        bookingStatusBg = const Color(0xFF3B82F6); // bg-blue-500
+        bookingStatusText = 'Dikembalikan';
+        break;
+      case BookingStatus.cancelled:
+        bookingStatusBg = const Color(0xFFEF4444); // bg-red-500
+        bookingStatusText = 'Dibatalkan';
+        break;
+      case BookingStatus.rented:
+        bookingStatusBg = const Color(0xFF9CA3AF); // bg-gray-400
+        bookingStatusText = 'Disewa';
+        break;
+    }
+
+    final targetDate = (booking.status == BookingStatus.rented || booking.status == BookingStatus.returned)
+        ? booking.endDate
+        : booking.startDate;
+    final targetTime = (booking.status == BookingStatus.rented || booking.status == BookingStatus.returned)
+        ? booking.endTime
+        : booking.startTime;
+    final formattedDate = _formatQueueDate(targetDate, targetTime);
+    final displayCode = bookingCode.startsWith('#') ? bookingCode : '#$bookingCode';
+
+    final rawIphoneName = booking.iphone.name.toLowerCase().contains(booking.iphone.color.toLowerCase())
+        ? booking.iphone.name
+        : '${booking.iphone.name} ${booking.iphone.color}'.trim();
+    // Hapus kata 'default' pada akhir nama iPhone jika ada (case-insensitive)
+    final cleanIphoneName = rawIphoneName.replaceAll(RegExp(r'\s+default$', caseSensitive: false), '').trim();
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isOverdue ? AppTheme.errorBorder : AppTheme.cardBorder,
+          color: const Color(0xFFE2E8F0),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: InkWell(
-        onTap: onDetail,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: InkWell(
+          onTap: onDetail,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Row: Type pill + Time + Status right pill
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: isOverdue
-                                ? AppTheme.errorContainer
-                                : (type == 'pickup' ? AppTheme.secondary : AppTheme.surfaceContainerHigh),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            isOverdue ? 'RETURN • OVERDUE' : type.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              color: isOverdue
-                                  ? AppTheme.onErrorContainer
-                                  : (type == 'pickup' ? Colors.white : AppTheme.secondary),
-                            ),
-                          ),
+              // Header: Kode Booking & Tanggal dengan background putih
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Color(0xFFF1F5F9),
+                    ),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        displayCode,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: paymentCodeColor,
                         ),
-                        const SizedBox(width: 6),
-                        Flexible(
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      formattedDate,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF64748B),
+                      ),
+                      textAlign: TextAlign.end,
+                      maxLines: 1,
+                    ),
+                  ],
+                ),
+              ),
+
+              // Card Content
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Baris 1: Nama Customer (Kiri) & Badge Status Booking (Kanan)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
                           child: Text(
-                            time,
-                            style: TextStyle(
-                              fontSize: 11,
+                            customerName,
+                            style: const TextStyle(
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: isOverdue ? AppTheme.error : AppTheme.textPrimary,
+                              color: Color(0xFF1E293B),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: statusBadgeBg,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      statusBadge,
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
-                        color: statusBadgeColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Middle row: Phone thumbnail + Customer Name + Model
-              Row(
-                children: [
-                  _buildDeviceThumbnail(
-                    booking.iphone,
-                    size: 40,
-                    radius: 10,
-                    isOverdue: isOverdue,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                customerName,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textPrimary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: bookingStatusBg,
+                              borderRadius: BorderRadius.circular(4),
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              bookingCode,
-                              style: TextStyle(
-                                fontSize: 11,
+                            child: Text(
+                              bookingStatusText,
+                              style: const TextStyle(
+                                fontSize: 10.5,
                                 fontWeight: FontWeight.w600,
-                                color: AppTheme.textSecondary,
+                                color: Colors.white,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          deviceDesc,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppTheme.textSecondary,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Icon(Icons.person_outline_rounded, size: 12, color: AppTheme.textSecondary),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                'Dibuat oleh: ${booking.userName ?? "Kasir"}',
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  color: AppTheme.textSecondary,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              const Divider(height: 1, color: Color(0xFFF1F5F9)),
-              const SizedBox(height: 10),
+                    const SizedBox(height: 4),
 
-              // Footer Row: Status Pembayaran + Tarif (Kiri) & Action Buttons (Delete & Detail) (Kanan)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Row(
+                    // Baris 2: Model iPhone & Warna (dikurangi 2-3 pt, kata default dihapus)
+                    Text(
+                      cleanIphoneName,
+                      style: const TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+
+                    // Baris 3: Serial Number (SN) Unit & Creator
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _buildPaymentStatusBadge(paymentStatus),
-                        const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            'Tarif: ${Formatters.formatCurrency(booking.price)}',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
+                            booking.iphone.serialNumber.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF94A3B8),
+                              letterSpacing: 0.5,
                             ),
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            'Dibuat oleh: ${booking.userName ?? "Kasir"}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w400,
+                              color: Color(0xFF94A3B8),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.end,
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Tombol Hapus Booking (tempat sampah merah)
-                      IconButton(
-                        onPressed: onDelete,
-                        icon: const Icon(Icons.delete_outline_rounded, size: 19, color: AppTheme.error),
-                        tooltip: 'Hapus Booking',
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                      ),
-                      const SizedBox(width: 4),
 
-                      // Tombol Detail Booking
-                      OutlinedButton.icon(
-                        onPressed: onDetail,
-                        icon: Icon(Icons.visibility_outlined, size: 14, color: AppTheme.textPrimary),
-                        label: Text(
-                          'Detail',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary,
-                          ),
+                    if (booking.hasAddons) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Add-on (${booking.addonDevices.length}): ${booking.addonDevices.map((a) => a.name).join(", ")}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF15803D),
                         ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          side: BorderSide(color: AppTheme.cardBorder),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                  ),
-                ],
+
+                    const SizedBox(height: 12),
+                    const Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
+                    const SizedBox(height: 12),
+
+                    // Baris 4: Nominal Transaksi & Tombol Hapus (Flex Between, font nominal dikurangi 2-3 pt)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                const TextSpan(
+                                  text: 'Rp',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const TextSpan(text: ' '),
+                                TextSpan(
+                                  text: Formatters.formatCurrency(booking.price).replaceAll('Rp ', ''),
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Material(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(8),
+                          child: InkWell(
+                            onTap: onDelete,
+                            borderRadius: BorderRadius.circular(8),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                              child: Text(
+                                'hapus',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

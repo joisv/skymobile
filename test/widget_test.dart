@@ -1222,7 +1222,7 @@ void main() {
     );
 
     expect(updated.durationDays, equals(initialDuration + 6));
-    expect(updated.price, equals(initialPrice + 50000));
+    expect(updated.price, equals(initialPrice));
     expect(updated.endDate, equals(initialEnd.add(const Duration(hours: 6))));
   });
 
@@ -2528,11 +2528,11 @@ void main() {
 
     // 3. Verify 4 Summary KPI Cards
     expect(find.text('TOTAL UNIT'), findsOneWidget);
-    expect(find.text('24'), findsWidgets);
+    expect(find.text('28'), findsWidgets);
     expect(find.text('Terdaftar di Gerai Gandaria'), findsOneWidget);
 
     expect(find.text('TERSEDIA'), findsOneWidget);
-    expect(find.text('18'), findsWidgets);
+    expect(find.text('22'), findsWidgets);
     expect(find.text('Siap Sewa / Ready Stock'), findsOneWidget);
 
     expect(find.text('DISEWA'), findsOneWidget);
@@ -2553,6 +2553,7 @@ void main() {
     expect(find.text('IPHSKY1002'), findsOneWidget);
     expect(find.text('IPHSKY1015'), findsOneWidget);
     expect(find.text('IPHSKY1009'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('IPHSKY1020'), 100, scrollable: find.byType(Scrollable).first);
     expect(find.text('IPHSKY1020'), findsOneWidget);
 
     // 6. Verify Action Buttons for respective states

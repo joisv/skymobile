@@ -88,6 +88,9 @@ class BookingModel {
   final BookingStatus status;
   final PaymentStatus paymentStatus;
   final IphoneModel iphone;
+  final List<IphoneModel> addonDevices;
+  final double primarySubtotal;
+  final double addonSubtotal;
   final String? notes;
   final double discount;
   final double downPayment;
@@ -121,6 +124,9 @@ class BookingModel {
     required this.status,
     required this.paymentStatus,
     required this.iphone,
+    this.addonDevices = const [],
+    double? primarySubtotal,
+    this.addonSubtotal = 0.0,
     this.notes,
     this.discount = 0.0,
     this.downPayment = 0.0,
@@ -135,7 +141,10 @@ class BookingModel {
     this.userName,
     this.userId,
     this.createdAt,
-  }) : _explicitLateFee = estimatedLateFee;
+  })  : primarySubtotal = primarySubtotal ?? (price - addonSubtotal),
+        _explicitLateFee = estimatedLateFee;
+
+  bool get hasAddons => addonDevices.isNotEmpty;
 
   bool get canPickup => status == BookingStatus.confirmed;
   bool get canReturn => status == BookingStatus.rented || status == BookingStatus.confirmed;
@@ -305,6 +314,29 @@ class BookingModel {
       );
     }
 
+    List<IphoneModel> parsedAddons = [];
+    if (json['addon_devices'] is List) {
+      parsedAddons = (json['addon_devices'] as List)
+          .whereType<Map<String, dynamic>>()
+          .map((m) => IphoneModel.fromJson(m))
+          .toList();
+    } else if (json['addon_items'] is List) {
+      for (final item in json['addon_items'] as List) {
+        if (item is Map<String, dynamic>) {
+          if (item['asset'] is Map<String, dynamic>) {
+            parsedAddons.add(IphoneModel.fromJson(item['asset'] as Map<String, dynamic>));
+          } else {
+            parsedAddons.add(IphoneModel.fromJson(item));
+          }
+        }
+      }
+    }
+
+    final parsedPrice = double.tryParse(json['price']?.toString() ?? '0') ?? 0.0;
+    final parsedAddonSubtotal = double.tryParse(json['addon_subtotal']?.toString() ?? '0') ?? 0.0;
+    final parsedPrimarySubtotal = double.tryParse(json['primary_subtotal']?.toString() ?? '') ??
+        (parsedPrice >= parsedAddonSubtotal ? (parsedPrice - parsedAddonSubtotal) : parsedPrice);
+
     return BookingModel(
       id: json['id'] is int
           ? json['id'] as int
@@ -330,11 +362,14 @@ class BookingModel {
       durationDays: json['duration'] is int
           ? json['duration'] as int
           : int.tryParse(json['duration']?.toString() ?? '1') ?? 1,
-      price: double.tryParse(json['price']?.toString() ?? '0') ?? 0.0,
+      price: parsedPrice,
       deposit: double.tryParse(json['deposit']?.toString() ?? '0') ?? 0.0,
       status: BookingStatus.fromString(json['status']?.toString() ?? 'pending'),
       paymentStatus: PaymentStatus.fromString(json['payment_status']?.toString() ?? 'unpaid'),
       iphone: iphoneModel,
+      addonDevices: parsedAddons,
+      primarySubtotal: parsedPrimarySubtotal,
+      addonSubtotal: parsedAddonSubtotal,
       notes: json['notes']?.toString(),
       discount: double.tryParse(json['discount']?.toString() ?? json['discount_amount']?.toString() ?? '0') ?? 0.0,
       downPayment: double.tryParse(json['total_paid']?.toString() ?? json['down_payment']?.toString() ?? json['dp']?.toString() ?? '0') ?? 0.0,
@@ -380,6 +415,9 @@ class BookingModel {
     BookingStatus? status,
     PaymentStatus? paymentStatus,
     IphoneModel? iphone,
+    List<IphoneModel>? addonDevices,
+    double? primarySubtotal,
+    double? addonSubtotal,
     String? notes,
     double? discount,
     double? downPayment,
@@ -413,6 +451,9 @@ class BookingModel {
       status: status ?? this.status,
       paymentStatus: paymentStatus ?? this.paymentStatus,
       iphone: iphone ?? this.iphone,
+      addonDevices: addonDevices ?? this.addonDevices,
+      primarySubtotal: primarySubtotal ?? this.primarySubtotal,
+      addonSubtotal: addonSubtotal ?? this.addonSubtotal,
       notes: notes ?? this.notes,
       discount: discount ?? this.discount,
       downPayment: downPayment ?? this.downPayment,
@@ -428,5 +469,44 @@ class BookingModel {
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'booking_code': bookingCode,
+      'customer_name': customerName,
+      'customer_phone': customerPhone,
+      'customer_email': customerEmail,
+      'address': address,
+      'pickup_type': pickupType,
+      'jaminan_type': jaminanType,
+      'kia': kia,
+      'start_booking_date': startDate.toIso8601String(),
+      'end_booking_date': endDate.toIso8601String(),
+      'start_time': startTime,
+      'end_time': endTime,
+      'duration': durationDays,
+      'price': price,
+      'deposit': deposit,
+      'status': status.name,
+      'payment_status': paymentStatus.name,
+      'iphone': iphone.toJson(),
+      'addon_devices': addonDevices.map((a) => a.toJson()).toList(),
+      'primary_subtotal': primarySubtotal,
+      'addon_subtotal': addonSubtotal,
+      'notes': notes,
+      'discount': discount,
+      'down_payment': downPayment,
+      'is_late': isLate,
+      'diff_hours': diffHours,
+      'hours_late': hoursLate,
+      'late_minutes': lateMinutes,
+      'estimated_late_fee': _explicitLateFee,
+      'returns': returns,
+      'user_name': userName,
+      'user_id': userId,
+      'created_at': createdAt?.toIso8601String(),
+    };
   }
 }

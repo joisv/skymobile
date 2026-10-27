@@ -19,6 +19,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/booking/booking_detail_screen.dart';
 import '../screens/booking/booking_list_screen.dart';
 import '../screens/booking/create_booking_screen.dart';
+import '../screens/cashier/cashier_shift_screen.dart';
 import '../screens/dashboard/expenses_screen.dart';
 import '../screens/dashboard/notification_list_screen.dart';
 import '../screens/dashboard/sales_report_screen.dart';
@@ -73,6 +74,7 @@ class AppRoutes {
   static const String unitSchedule = '/unit-schedule';
   static const String dashboard = '/dashboard';
   static const String salesReport = '/sales-report';
+  static const String cashierShift = '/cashier/shift';
   static const String branchExpenses = '/expenses';
   static const String notifications = '/notifications';
   static const String account = '/account';
@@ -576,6 +578,23 @@ class AppRoutes {
           builder: (_) => ExpensesScreen(
             repository: repository,
             initialAffiliateId: initialAffiliateId,
+          ),
+          settings: settings,
+        );
+
+      case cashierShift:
+      case '/shift':
+      case '/cashier-shift':
+        int? branchId;
+        if (settings.arguments is int) {
+          branchId = settings.arguments as int;
+        } else if (settings.arguments is Map<String, dynamic>) {
+          branchId = (settings.arguments as Map<String, dynamic>)['branchId'] as int?;
+        }
+        return MaterialPageRoute(
+          builder: (_) => CashierShiftScreen(
+            repository: repository,
+            branchId: branchId,
           ),
           settings: settings,
         );

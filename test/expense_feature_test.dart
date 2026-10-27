@@ -129,6 +129,50 @@ void main() {
       expect(serialized['amount'], 75000.0);
     });
 
+    test('ExpenseResponseModel handles PHP empty array for summary and by_category without type error', () {
+      final backendResponse = {
+        'success': true,
+        'data': {
+          'branch_id': 4,
+          'is_consolidated': false,
+          'start_date': '2026-10-27',
+          'end_date': '2026-10-27',
+          'summary': {
+            'total_expenses': 0.0,
+            'cash_drawer_expenses': 0.0,
+            'count': 0,
+            'by_category': [], // Empty array from PHP
+            'categories': [], // Empty array from PHP
+          },
+          'expenses': [
+            {
+              'id': 1,
+              'expense_number': 'EXP-GNT-261027-0001',
+              'branch_id': 4,
+              'branch_name': 'Genteng Pusat',
+              'category': 'operasional',
+              'title': 'Beli sapu & pembersih lantai',
+              'amount': 25000.0,
+              'requested_by_name': 'Kasir Utama',
+              'disbursed_at': '2026-10-27T10:00:00Z',
+              'created_at': '2026-10-27T10:00:00Z',
+            }
+          ],
+        },
+      };
+
+      final parsed = ExpenseResponseModel.fromJson(backendResponse);
+      expect(parsed.status, 'success');
+      expect(parsed.data.length, 1);
+      expect(parsed.data.first.id, 1);
+      expect(parsed.data.first.affiliateId, 4);
+      expect(parsed.data.first.affiliateName, 'Genteng Pusat');
+      expect(parsed.data.first.notes, 'Beli sapu & pembersih lantai');
+      expect(parsed.data.first.userName, 'Kasir Utama');
+      expect(parsed.summary.totalExpenses, 0.0);
+      expect(parsed.summary.categories, isEmpty);
+    });
+
     test('exportClosingReportEscPos contains branch expenses and drawer reconciliation', () {
       final repo = BookingRepository();
       final reportData = {

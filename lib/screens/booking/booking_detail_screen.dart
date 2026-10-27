@@ -14,6 +14,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../payment/payment_deposit_screen.dart';
 import 'widgets/extend_duration_modal.dart';
+import '../../widgets/app_cached_network_image.dart';
 
 class BookingDetailScreen extends StatelessWidget {
   final BookingModel booking;
@@ -235,7 +236,7 @@ class BookingDetailScreen extends StatelessWidget {
     double size = 56,
     double radius = 10,
   }) {
-    final photo = iphone.resolvedPhotoUrl;
+    final photo = iphone.resolvedThumbnailUrl ?? iphone.resolvedPhotoUrl;
     return Container(
       width: size,
       height: size,
@@ -247,29 +248,26 @@ class BookingDetailScreen extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
         child: (photo != null && photo.isNotEmpty)
-            ? Image.network(
-                photo,
+            ? AppCachedNetworkImage(
+                imageUrl: photo,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
                 cacheWidth: (size * 2).clamp(48.0, 240.0).toInt(),
                 cacheHeight: (size * 2).clamp(48.0, 240.0).toInt(),
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Center(
+                placeholder: (_) => Center(
+                  child: SizedBox(
+                    width: size * 0.35,
+                    height: size * 0.35,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.secondary),
+                    ),
+                  ),
+                ),
+                errorWidget: (_, __) => Center(
                   child: Icon(Icons.phone_iphone_rounded, color: AppTheme.secondary, size: size * 0.5),
                 ),
-                loadingBuilder: (_, child, progress) {
-                  if (progress == null) return child;
-                  return Center(
-                    child: SizedBox(
-                      width: size * 0.35,
-                      height: size * 0.35,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        value: progress.expectedTotalBytes != null
-                            ? progress.cumulativeBytesLoaded / progress.expectedTotalBytes!
-                            : null,
-                      ),
-                    ),
-                  );
-                },
               )
             : Center(
                 child: Icon(Icons.phone_iphone_rounded, color: AppTheme.secondary, size: size * 0.5),
@@ -926,7 +924,7 @@ class BookingDetailScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        'Varian Warna: ${booking.iphone.color} • Grade A+ (Mulus / Siap Pakai)',
+                        'Varian Warna: ${booking.iphone.color} â€¢ Grade A+ (Mulus / Siap Pakai)',
                         style: const TextStyle(
                           fontSize: 11.5,
                           color: Color(0xFF64748B),
@@ -1232,7 +1230,7 @@ class BookingDetailScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Terlambat: ${booking.lateDurationFormatted} • Estimasi Denda: ${Formatters.currency(booking.estimatedLateFee)}',
+                          'Terlambat: ${booking.lateDurationFormatted} â€¢ Estimasi Denda: ${Formatters.currency(booking.estimatedLateFee)}',
                           style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF991B1B)),
                         ),
                         const SizedBox(height: 2),
@@ -1372,7 +1370,7 @@ class BookingDetailScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
-                  isPaid ? '✓ LUNAS' : 'Belum Lunas',
+                  isPaid ? 'âœ“ LUNAS' : 'Belum Lunas',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -1407,11 +1405,73 @@ class BookingDetailScreen extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                Formatters.formatCurrency(booking.price),
+                Formatters.formatCurrency(booking.hasAddons ? booking.primarySubtotal : booking.price),
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
               ),
             ],
           ),
+
+          if (booking.hasAddons) ...[
+            const SizedBox(height: 10),
+            ...booking.addonDevices.map((addon) {
+              final itemRate = addon.dailyRate > 0 ? addon.dailyRate : 10000.0;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          const Icon(Icons.devices_other_rounded, size: 14, color: Color(0xFF16A34A)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Add-on: ${addon.name} ($durationText)',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  'Aset: ${addon.assetCode.isNotEmpty ? addon.assetCode : addon.serialNumber}',
+                                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      Formatters.formatCurrency(itemRate),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 6),
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Subtotal Sewa iPhone', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                Text(Formatters.formatCurrency(booking.primarySubtotal), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Subtotal Add-on', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                Text(Formatters.formatCurrency(booking.addonSubtotal), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF15803D))),
+              ],
+            ),
+          ],
 
           const SizedBox(height: 14),
 
@@ -1536,7 +1596,7 @@ class BookingDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      isConnected ? 'Bluetooth POS • Kertas 58mm Siap' : 'Bluetooth POS • Siap Terhubung',
+                      isConnected ? 'Bluetooth POS â€¢ Kertas 58mm Siap' : 'Bluetooth POS â€¢ Siap Terhubung',
                       style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1620,7 +1680,7 @@ class BookingDetailScreen extends StatelessWidget {
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('● ', style: TextStyle(color: Color(0xFF16A34A), fontSize: 8)),
+                    Text('â— ', style: TextStyle(color: Color(0xFF16A34A), fontSize: 8)),
                     Text(
                       'Siap Cetak',
                       style: TextStyle(
@@ -1810,7 +1870,7 @@ class BookingDetailScreen extends StatelessWidget {
         _buildReceiptJaggedEdge(isTop: false),
         const SizedBox(height: 8),
         Text(
-          '— Lebar Kertas Standar VSC MP-58C (32 Karakter) —',
+          'â€” Lebar Kertas Standar VSC MP-58C (32 Karakter) â€”',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600),
         ),
@@ -1925,7 +1985,7 @@ class BookingDetailScreen extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text(
-                          '● ',
+                          'â— ',
                           style: TextStyle(
                             color: Color(0xFF10B981),
                             fontSize: 10,
@@ -2405,7 +2465,7 @@ class BookingDetailScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      '● ',
+                      'â— ',
                       style: TextStyle(color: Color(0xFF10B981), fontSize: 9),
                     ),
                     Text(
@@ -2704,11 +2764,36 @@ class BookingDetailScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          _buildFinancialRow(
-            'Tarif Sewa (${booking.durationDays} Jam)',
-            Formatters.currency(booking.price),
-            isBold: true,
-          ),
+          if (booking.hasAddons) ...[
+            _buildFinancialRow(
+              'Sewa iPhone (${booking.iphone.fullName})',
+              Formatters.currency(booking.primarySubtotal),
+              isBold: true,
+            ),
+            const SizedBox(height: 6),
+            ...booking.addonDevices.map((addon) {
+              final itemRate = addon.dailyRate > 0 ? addon.dailyRate : 10000.0;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: _buildFinancialRow(
+                  'Add-on: ${addon.name}',
+                  '+ ${Formatters.currency(itemRate)}',
+                  color: const Color(0xFF15803D),
+                ),
+              );
+            }),
+            _buildFinancialRow(
+              'Total Tarif Sewa (${booking.durationDays} Jam)',
+              Formatters.currency(booking.price),
+              isBold: true,
+            ),
+          ] else ...[
+            _buildFinancialRow(
+              'Tarif Sewa (${booking.durationDays} Jam)',
+              Formatters.currency(booking.price),
+              isBold: true,
+            ),
+          ],
           if (booking.deposit > 0) ...[
             const SizedBox(height: 8),
             _buildFinancialRow(

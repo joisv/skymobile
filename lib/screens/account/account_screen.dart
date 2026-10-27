@@ -611,7 +611,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       children: [
                         _buildMetricBox('Hardware Target', 'VSC MP-58C Bluetooth', Icons.print_rounded, const Color(0xFF0F172A)),
                         const SizedBox(width: 10),
-                        _buildMetricBox('Backend API', 'https://skyrental.id', Icons.cloud_done_rounded, const Color(0xFF0284C7)),
+                        _buildMetricBox('Backend API', ApiService().backendHost, Icons.cloud_done_rounded, const Color(0xFF0284C7)),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -744,7 +744,7 @@ class _AccountScreenState extends State<AccountScreen> {
                           _buildTechSpecRow('Standar Kertas', 'Thermal 58mm (Lebar Cetak 48mm)', icon: Icons.receipt_outlined),
                           _buildTechSpecRow('Kapasitas Karakter', '32 Kolom (Monospaced)', icon: Icons.format_align_left_rounded),
                           _buildTechSpecRow('Protokol Cetak', 'ESC/POS Standard Command Set', icon: Icons.code_rounded),
-                          _buildTechSpecRow('Backend API', 'Laravel 11 (skyrental.id/api/v1)', icon: Icons.cloud_outlined),
+                          _buildTechSpecRow('Backend API', 'Laravel 11 (${ApiService().baseUrl.replaceFirst(RegExp(r'^https?://'), '')})', icon: Icons.cloud_outlined),
                           _buildTechSpecRow('Keamanan Jaringan', 'HTTPS Strict TLS (UsesCleartext=false)', icon: Icons.lock_outline, isHighlighted: true),
                           _buildTechSpecRow('Otentikasi', 'Laravel Sanctum Bearer Token', icon: Icons.key_outlined),
                           _buildTechSpecRow('Hak Akses (RBAC)', 'Super Admin, Admin Cabang, Staff Kasir', icon: Icons.admin_panel_settings_outlined),
@@ -1227,6 +1227,30 @@ class _AccountScreenState extends State<AccountScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Category: KASIR & BUKU KAS
+            _buildTabletCategorySection(
+              title: 'KASIR & BUKU KAS',
+              children: [
+                _buildTabletSidebarItem(
+                  key: 'cashierShift',
+                  icon: Icons.point_of_sale_rounded,
+                  title: 'Shift Kasir & Buku Kas',
+                  subtitle: 'Buka/tutup shift, saldo modal awal & mutasi kas fisik',
+                  trailingBadge: 'Shift POS',
+                  trailingBadgeColor: const Color(0xFF0284C7),
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift),
+                ),
+                _buildTabletSidebarItem(
+                  key: 'branchExpenses',
+                  icon: Icons.payments_outlined,
+                  title: 'Pengeluaran Operasional',
+                  subtitle: 'Catat biaya kasir & operasional cabang',
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.branchExpenses),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
             // Category 1: TOKO & OUTLET
             _buildTabletCategorySection(
               title: 'TOKO & OUTLET',
@@ -2386,7 +2410,7 @@ class _AccountScreenState extends State<AccountScreen> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _buildMetricBox('Backend API', 'https://skyrental.id/api/v1', Icons.cloud_done_rounded, const Color(0xFF0284C7)),
+                  _buildMetricBox('Backend API', ApiService().baseUrl, Icons.cloud_done_rounded, const Color(0xFF0284C7)),
                   const SizedBox(width: 12),
                   _buildMetricBox('Protokol Transport', 'HTTPS / Strict TLS', Icons.security_rounded, const Color(0xFF7C3AED)),
                   const SizedBox(width: 12),
@@ -2593,7 +2617,7 @@ class _AccountScreenState extends State<AccountScreen> {
               _buildTechSpecRow('Protokol Cetak Struk', 'ESC/POS Standard Command Set', icon: Icons.code_rounded),
               _buildTechSpecRow('Format Dokumen Kasir', 'Slip Serah Terima, Slip Pengembalian, Pelunasan, & Rekap Closing', icon: Icons.description_outlined),
               _buildTechSpecRow('Framework Mobile POS', 'Flutter SDK (Mobile & Tablet Adaptive Master-Detail)', icon: Icons.devices_rounded),
-              _buildTechSpecRow('Backend API Host', 'Laravel 11 REST API (https://skyrental.id/api/v1)', icon: Icons.cloud_outlined),
+              _buildTechSpecRow('Backend API Host', 'Laravel 11 REST API (${ApiService().baseUrl})', icon: Icons.cloud_outlined),
               _buildTechSpecRow('Keamanan Jaringan', 'HTTPS / Strict TLS Transport (Cleartext Disabled)', icon: Icons.lock_outline, isHighlighted: true),
               _buildTechSpecRow('Manajemen Sesi Kasir', 'Laravel Sanctum Bearer Token dengan Restorasi Sesi Otomatis', icon: Icons.key_outlined),
               _buildTechSpecRow('Role-Based Access Control', 'Super Admin, Admin Cabang (Affiliate), dan Staff Kasir', icon: Icons.admin_panel_settings_outlined),
@@ -2948,6 +2972,28 @@ class _AccountScreenState extends State<AccountScreen> {
               ]),
               const SizedBox(height: 20),
             ],
+
+            _buildSectionHeader('KASIR & BUKU KAS'),
+            _buildMenuContainer([
+              _buildMenuItem(
+                icon: Icons.point_of_sale_rounded,
+                iconColor: const Color(0xFF0284C7),
+                title: 'Shift Kasir & Buku Kas',
+                subtitle: 'Buka/tutup shift, saldo modal awal & mutasi kas fisik',
+                trailingBadge: 'Shift POS',
+                trailingBadgeColor: const Color(0xFF0284C7),
+                onTap: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift),
+              ),
+              const Divider(height: 1, indent: 56),
+              _buildMenuItem(
+                icon: Icons.payments_outlined,
+                iconColor: const Color(0xFF16A34A),
+                title: 'Pengeluaran Operasional',
+                subtitle: 'Catat biaya kasir & operasional cabang',
+                onTap: () => Navigator.of(context).pushNamed(AppRoutes.branchExpenses),
+              ),
+            ]),
+            const SizedBox(height: 20),
 
             _buildSectionHeader('TOKO & OUTLET'),
             _buildMenuContainer([
