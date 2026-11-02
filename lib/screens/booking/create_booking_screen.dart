@@ -9,6 +9,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_header.dart';
+import '../payment/payment_deposit_screen.dart';
 
 /// Formatter otomatis nomor WhatsApp (8123-4567-8901)
 class _PhoneHyphenFormatter extends TextInputFormatter {
@@ -65,13 +66,17 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   // Options & Selections
   String _countryCode = '+62';
   final List<Map<String, String>> _countryCodes = const [
-    {'code': '+62', 'flag': 'ðŸ‡®ðŸ‡©', 'name': 'Indonesia (+62)'},
-    {'code': '+60', 'flag': 'ðŸ‡²ðŸ‡¾', 'name': 'Malaysia (+60)'},
-    {'code': '+65', 'flag': 'ðŸ‡¸ðŸ‡¬', 'name': 'Singapura (+65)'},
-    {'code': '+66', 'flag': 'ðŸ‡¹ðŸ‡­', 'name': 'Thailand (+66)'},
-    {'code': '+63', 'flag': 'ðŸ‡µðŸ‡­', 'name': 'Filipina (+63)'},
-    {'code': '+84', 'flag': 'ðŸ‡»ðŸ‡³', 'name': 'Vietnam (+84)'},
+    {'code': '+62', 'flag': '🇮🇩', 'name': 'Indonesia (+62)'},
+    {'code': '+60', 'flag': '🇲🇾', 'name': 'Malaysia (+60)'},
+    {'code': '+65', 'flag': '🇸🇬', 'name': 'Singapura (+65)'},
+    {'code': '+66', 'flag': '🇹🇭', 'name': 'Thailand (+66)'},
+    {'code': '+63', 'flag': '🇵🇭', 'name': 'Filipina (+63)'},
+    {'code': '+84', 'flag': '🇻🇳', 'name': 'Vietnam (+84)'},
   ];
+
+  // Step 3 Checkout state
+  String _selectedPaymentStatus = 'paid'; // 'paid' (Lunas Sekarang - default POS), 'unpaid' (Bayar Saat Pickup), 'dp' (DP / Panjar)
+  String _selectedPaymentChannel = 'QRIS'; // 'QRIS', 'Tunai', 'Transfer Bank'
 
   String _jaminanType = 'KTP';
   final List<Map<String, String>> _jaminanOptions = const [
@@ -122,10 +127,31 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
   double get _primaryPrice {
     if (_selectedUnit == null) return 0.0;
-    if (!_isCustomDurationMode && _selectedDurationOption != null) {
-      return _selectedDurationOption!.price;
+    if (!_isCustomDurationMode) {
+      if (_selectedDurationOption != null && _selectedDurationOption!.price > 0) {
+        return _selectedDurationOption!.price;
+      }
+      return _selectedUnit!.dailyRate > 0 ? _selectedUnit!.dailyRate : 100000.0;
     }
     return _customPrice;
+  }
+
+  void _selectUnit(IphoneModel unit) {
+    setState(() {
+      _selectedUnit = unit;
+      _isCustomDurationMode = false;
+      if (unit.availableDurations.isNotEmpty) {
+        _selectedDurationOption = unit.availableDurations.first;
+      } else {
+        _selectedDurationOption = IphoneDurationOption(
+          id: 1,
+          name: '24 Jam',
+          hours: 24,
+          price: unit.dailyRate > 0 ? unit.dailyRate : 100000.0,
+        );
+      }
+    });
+    _fetchAvailableAddons();
   }
 
   DateTime _startDate = DateTime.now();
@@ -144,8 +170,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     _startDate = DateTime.now();
     _startTime = TimeOfDay.now();
     if (widget.initialIphone != null) {
-      _selectedUnit = widget.initialIphone;
-      _selectedDurationOption = widget.initialIphone!.availableDurations.firstOrNull;
+      _selectUnit(widget.initialIphone!);
     }
     _fetchAvailableUnits();
     _checkShiftSchedule();
@@ -221,9 +246,9 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     if (currentSelected != null) {
       final found = updatedList.where((u) => u.id == currentSelected.id).firstOrNull;
       if (found != null) {
-        matchedUnit = _isUnitAvailableForBooking(found) ? found : null;
+        matchedUnit = found;
       } else {
-        matchedUnit = _isUnitAvailableForBooking(currentSelected) ? currentSelected : null;
+        matchedUnit = currentSelected;
         if (_searchQuery.trim().isEmpty && matchedUnit != null && !updatedList.any((u) => u.id == matchedUnit!.id)) {
           updatedList.insert(0, matchedUnit);
         }
@@ -235,13 +260,21 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       _currentPage = result.currentPage;
       _lastPage = result.lastPage;
       _totalUnits = result.total;
-      _selectedUnit = matchedUnit;
-      if (_selectedDurationOption != null && matchedUnit != null) {
-        _selectedDurationOption = matchedUnit.availableDurations
-            .where((d) => d.hours == _selectedDurationOption!.hours)
-            .firstOrNull ?? matchedUnit.availableDurations.firstOrNull;
-      } else {
-        _selectedDurationOption = matchedUnit?.availableDurations.firstOrNull;
+      _selectedUnit = matchedUnit ?? currentSelected;
+      if (_selectedUnit != null) {
+        if (_selectedDurationOption != null) {
+          _selectedDurationOption = _selectedUnit!.availableDurations
+              .where((d) => d.hours == _selectedDurationOption!.hours)
+              .firstOrNull ?? _selectedDurationOption;
+        } else {
+          _selectedDurationOption = _selectedUnit!.availableDurations.firstOrNull ??
+              IphoneDurationOption(
+                id: 1,
+                name: '24 Jam',
+                hours: 24,
+                price: _selectedUnit!.dailyRate > 0 ? _selectedUnit!.dailyRate : 100000.0,
+              );
+        }
       }
       _isLoadingUnits = false;
       _isLoadingMoreUnits = false;
@@ -347,6 +380,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       _startDate = DateTime.now();
       _startTime = TimeOfDay.now();
       _phoneErrorText = null;
+      _selectedPaymentStatus = 'paid';
+      _selectedPaymentChannel = 'QRIS';
     });
     _fetchAvailableUnits(reset: true);
   }
@@ -374,10 +409,13 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   }
 
   int get _durationHoursToSubmit {
-    if (!_isCustomDurationMode && _selectedDurationOption != null) {
-      return _selectedDurationOption!.hours;
+    if (!_isCustomDurationMode) {
+      if (_selectedDurationOption != null && _selectedDurationOption!.hours > 0) {
+        return _selectedDurationOption!.hours;
+      }
+      return 24;
     }
-    return _customHours;
+    return _customHours > 0 ? _customHours : 24;
   }
 
   DateTime get _endDateTime => _startDateTime.add(Duration(hours: _durationHoursToSubmit));
@@ -500,6 +538,16 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   bool _validateSection2() {
     if (_selectedUnit == null) {
       _showSnackbar('Silakan pilih salah satu unit iPhone yang tersedia.', isError: true);
+      return false;
+    }
+
+    if (_durationHoursToSubmit < 1) {
+      _showSnackbar('Silakan tentukan durasi sewa yang valid.', isError: true);
+      return false;
+    }
+
+    if (_primaryPrice <= 0) {
+      _showSnackbar('Tarif sewa unit belum terhitung.', isError: true);
       return false;
     }
 
@@ -691,57 +739,112 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isClosed ? Colors.grey.shade100 : Colors.amber.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                isClosed ? Icons.lock_clock_rounded : Icons.point_of_sale_rounded,
-                color: isClosed ? Colors.grey.shade700 : Colors.amber.shade800,
-                size: 24,
-              ),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        backgroundColor: Colors.white,
+        elevation: 8,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Centered Warning / Shift Icon
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: isClosed ? const Color(0xFFF1F5F9) : const Color(0xFFFEF3C7),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isClosed ? Icons.lock_clock_rounded : Icons.point_of_sale_rounded,
+                    color: isClosed ? const Color(0xFF475569) : const Color(0xFFD97706),
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Cohesive Centered Title
+                Text(
+                  isClosed ? 'Shift Kasir Ditutup' : 'Shift Kasir Belum Dibuka',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+
+                // Descriptive Message with Balanced Line Height
+                Text(
+                  isClosed
+                      ? 'Shift kasir untuk hari ini telah ditutup (${schedule.shiftClosingTime}). Transaksi booking baru hanya dapat dibuat saat shift kasir aktif.'
+                      : 'Transaksi booking dan penerimaan kas tidak dapat diproses karena shift kasir belum dibuka untuk cabang ini.\n\nSilakan buka shift kasir dan masukkan modal awal (float) terlebih dahulu.',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: Color(0xFF64748B),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+
+                // Proportional Touch-Friendly Action Buttons (44px height)
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 44,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            foregroundColor: const Color(0xFF475569),
+                          ),
+                          child: const Text(
+                            'Batal',
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (!isClosed) ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SizedBox(
+                          height: 44,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              Navigator.pushNamed(context, AppRoutes.cashierShift).then((_) => _checkShiftSchedule());
+                            },
+                            icon: const Icon(Icons.vpn_key_rounded, size: 16),
+                            label: const Text(
+                              'Buka Shift Kasir',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              elevation: 0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                isClosed ? 'Shift Kasir Ditutup' : 'Shift Kasir Belum Dibuka',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          isClosed
-              ? 'Shift kasir untuk hari ini telah ditutup (${schedule.shiftClosingTime}). Transaksi booking baru hanya dapat dibuat saat shift kasir aktif.'
-              : 'Transaksi booking dan penerimaan kas tidak dapat diproses karena shift kasir belum dibuka untuk cabang ini.\n\nSilakan buka shift kasir dan masukkan modal awal (float) terlebih dahulu.',
-          style: const TextStyle(fontSize: 13, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Batal'),
           ),
-          if (!isClosed)
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pushNamed(context, AppRoutes.cashierShift).then((_) => _checkShiftSchedule());
-              },
-              icon: const Icon(Icons.vpn_key_rounded, size: 16),
-              label: const Text('Buka Shift Kasir'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -793,7 +896,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                   InkWell(
                     onTap: () => Navigator.pushNamed(context, AppRoutes.cashierShift).then((_) => _checkShiftSchedule()),
                     child: const Text(
-                      'Buka Shift Kasir Sekarang â†’',
+                      'Buka Shift Kasir Sekarang →',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -941,6 +1044,19 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           : _emailController.text.trim();
       final fullPhone = _formatPhoneNumber(_phoneController.text.trim());
 
+      PaymentStatus calculatedStatus;
+      double calculatedAmount;
+      if (_selectedPaymentStatus == 'paid') {
+        calculatedStatus = PaymentStatus.paid;
+        calculatedAmount = _grandTotal;
+      } else if (_selectedPaymentStatus == 'dp') {
+        calculatedStatus = PaymentStatus.partial;
+        calculatedAmount = _grandTotal * 0.5;
+      } else {
+        calculatedStatus = PaymentStatus.unpaid;
+        calculatedAmount = 0;
+      }
+
       final newBooking = await widget.repository.createBooking(
         customerName: _nameController.text.trim(),
         customerPhone: fullPhone,
@@ -960,12 +1076,21 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         pickupType: 'pickup',
         paymentStatus: PaymentStatus.unpaid,
         amountPaid: 0,
+        paymentMethod: _selectedPaymentChannel,
         notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
       );
 
       if (mounted) {
         setState(() => _isSubmitting = false);
-        Navigator.pushReplacementNamed(context, AppRoutes.paymentDeposit, arguments: newBooking);
+        Navigator.pushReplacementNamed(
+          context,
+          AppRoutes.paymentDeposit,
+          arguments: {
+            'booking': newBooking,
+            'initialPaymentType': _selectedPaymentStatus == 'dp' ? PaymentTypeOption.dp : PaymentTypeOption.pelunasan,
+            'initialAmount': _selectedPaymentStatus == 'dp' ? (_grandTotal * 0.5) : _grandTotal,
+          },
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -1021,20 +1146,20 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         children: [
           _buildTabletSubHeader(context),
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
             child: _buildShiftWarningBanner(),
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
                     flex: 66,
                     child: RepaintBoundary(
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.only(bottom: 340),
+                        padding: const EdgeInsets.only(bottom: 60),
                         physics: const ClampingScrollPhysics(),
                         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                         child: Form(key: _formKey, child: _buildTabletLeftColumn(context)),
@@ -1045,17 +1170,19 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                   Expanded(
                     flex: 34,
                     child: RepaintBoundary(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        physics: const ClampingScrollPhysics(),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _buildTabletTopRightNavButtons(context),
-                            const SizedBox(height: 16),
-                            _buildTabletLivePreviewCard(context),
-                          ],
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              physics: const ClampingScrollPhysics(),
+                              child: _buildTabletLivePreviewCard(context),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildTabletActionNavButtons(context),
+                        ],
                       ),
                     ),
                   ),
@@ -1209,50 +1336,59 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     );
   }
 
-  Widget _buildTabletTopRightNavButtons(BuildContext context) {
-    final String nextLabel = _currentStep < 3 ? 'Lanjut' : 'Konfirmasi';
+  Widget _buildTabletActionNavButtons(BuildContext context) {
+    final String nextLabel = _currentStep == 1
+        ? 'Lanjut ke Unit & Durasi'
+        : (_currentStep == 2 ? 'Lanjut ke Pembayaran' : 'Konfirmasi & Buat Booking');
+
     return RepaintBoundary(
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFFE2E8F0)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
             ),
           ],
         ),
         child: Row(
           children: [
             if (_currentStep > 1) ...[
-              OutlinedButton(
-                key: _currentStep == 2
-                    ? const Key('btn_prev_to_step_1')
-                    : const Key('btn_prev_to_step_2'),
-                onPressed: _prevStep,
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.arrow_back_rounded, size: 15, color: Color(0xFF334155)),
-                    SizedBox(width: 4),
-                    Text('Kembali', style: TextStyle(color: Color(0xFF334155), fontWeight: FontWeight.w600, fontSize: 12.5)),
-                  ],
+              SizedBox(
+                height: 48,
+                child: OutlinedButton(
+                  key: _currentStep == 2
+                      ? const Key('btn_prev_to_step_1')
+                      : const Key('btn_prev_to_step_2'),
+                  onPressed: _prevStep,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.arrow_back_rounded, size: 16, color: Color(0xFF334155)),
+                      SizedBox(width: 6),
+                      Text(
+                        'Kembali',
+                        style: TextStyle(color: Color(0xFF334155), fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
             ],
             Expanded(
               child: SizedBox(
-                height: 42,
+                height: 48,
                 child: ElevatedButton(
                   key: _currentStep == 1
                       ? const Key('btn_next_to_step_2')
@@ -1268,10 +1404,11 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                     backgroundColor: _currentStep == 3 ? const Color(0xFF047857) : const Color(0xFF0F172A),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    elevation: 0,
                   ),
                   child: (_isSubmitting || _isValidatingPhone)
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           mainAxisSize: MainAxisSize.min,
@@ -1283,10 +1420,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 8),
                             Icon(
                               _currentStep == 3 ? Icons.check_circle_rounded : Icons.arrow_forward_rounded,
-                              size: 15,
+                              size: 16,
                             ),
                           ],
                         ),
@@ -1352,18 +1489,50 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('2. Unit iPhone & Durasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-          const SizedBox(height: 4),
-          const Text('Pilih Unit iPhone Tersedia', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('2. Unit iPhone & Durasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                  SizedBox(height: 2),
+                  Text('Pilih Unit iPhone Tersedia', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                ],
+              ),
+              if (_selectedUnit != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFBFDBFE)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF2563EB)),
+                      const SizedBox(width: 4),
+                      Text(
+                        _selectedUnit!.modelName,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8)),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
           _buildUnitSearchAndFilterBar(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           _buildUnitListWrap(isTablet: true),
           const SizedBox(height: 20),
+          const Divider(color: Color(0xFFE2E8F0)),
+          const SizedBox(height: 16),
           _buildDurationSelectionSection(),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           _buildSchedulePickerSection(),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           _buildAddonSelectionSection(),
         ],
       ),
@@ -1379,9 +1548,15 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Expanded(
-                child: Text('3. Estimasi Biaya & Konfirmasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('3. Estimasi Biaya & Konfirmasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                    SizedBox(height: 2),
+                    Text('Pilih status pelunasan transaksi dan metode pembayaran kasir.', style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                  ],
+                ),
               ),
-              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(6)),
@@ -1389,32 +1564,266 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          _buildBillingRow('Sewa ${_selectedUnit?.modelName ?? 'iPhone'}', Formatters.formatCurrency(_primaryPrice)),
-          if (_selectedAddonUnits.isNotEmpty) ...[
-            ..._selectedAddonUnits.map((addon) => _buildBillingRow(
-              'Add-on: ${addon.name}',
-              '+ ${Formatters.formatCurrency(_getAddonRentalPrice(addon))}',
-            )),
-            _buildBillingRow('Subtotal Add-on', Formatters.formatCurrency(_addonTotal)),
-          ],
-          _buildBillingRow('Deposit Fisik & Jaminan', 'Rp 0 (Jaminan ${_getJaminanLabel(_jaminanType)})'),
-          const Divider(color: Color(0xFFE2E8F0)),
-          _buildBillingRow('TOTAL TAGIHAN BAYAR DI KASIR', Formatters.formatCurrency(_grandTotal), isAccent: true),
-          const SizedBox(height: 18),
-          const Text('Catatan Tagihan', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+          const SizedBox(height: 14),
+          // Compact booking summary strip
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('UNIT TERPILIH', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.4)),
+                          const SizedBox(height: 2),
+                          Text(
+                            _selectedUnit != null
+                                ? '${_selectedUnit!.modelName} (SN: ${_selectedUnit!.serialNumber})'
+                                : 'Belum memilih unit iPhone',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text('TOTAL TAGIHAN', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.4)),
+                        const SizedBox(height: 2),
+                        Text(
+                          Formatters.formatCurrency(_grandTotal),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF166534)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                if (_selectedAddonUnits.isNotEmpty) ...[
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: Color(0xFFE2E8F0))),
+                  ..._selectedAddonUnits.map((addon) => _buildBillingRow(
+                    'Add-on: ${addon.name}',
+                    '+ ${Formatters.formatCurrency(_getAddonRentalPrice(addon))}',
+                  )),
+                  _buildBillingRow('Subtotal Add-on', Formatters.formatCurrency(_addonTotal)),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Payment Status
+          const Text('Status Pembayaran', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+          const SizedBox(height: 4),
+          const Text('Tentukan opsi pembayaran: bayar saat pengambilan, lunas sekarang, atau DP 50%.', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _buildPaymentStatusCard(
+                  value: 'unpaid',
+                  title: 'Bayar Saat Pickup',
+                  subtitle: 'Belum Lunas (Rp 0)',
+                  icon: Icons.storefront_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildPaymentStatusCard(
+                  value: 'paid',
+                  title: 'Lunas Sekarang',
+                  subtitle: 'Bayar Penuh Kasir',
+                  icon: Icons.check_circle_outline_rounded,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildPaymentStatusCard(
+                  value: 'dp',
+                  title: 'DP / Panjar',
+                  subtitle: 'Uang Muka 50%',
+                  icon: Icons.savings_outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // Payment Channel
+          const Text('Metode / Saluran Pembayaran', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+          const SizedBox(height: 4),
+          const Text('Pilih kanal pembayaran yang digunakan customer saat checkout.', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _buildPaymentChannelCard(
+                  value: 'QRIS',
+                  title: 'QRIS',
+                  subtitle: 'Statis / Dinamis',
+                  icon: Icons.qr_code_scanner_rounded,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildPaymentChannelCard(
+                  value: 'Tunai',
+                  title: 'Tunai',
+                  subtitle: 'Uang Fisik di Laci',
+                  icon: Icons.payments_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildPaymentChannelCard(
+                  value: 'Transfer Bank',
+                  title: 'Transfer Bank',
+                  subtitle: 'BCA / Mandiri / BRI',
+                  icon: Icons.account_balance_outlined,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // Notes
+          const Text('Catatan Khusus & Kebutuhan Tambahan', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
           const SizedBox(height: 6),
           TextFormField(
             controller: _notesController,
             maxLines: 2,
             decoration: InputDecoration(
-              hintText: 'Tambahkan catatan jika ada kebutuhan khusus...',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+              hintText: 'Tambahkan catatan jika ada kebutuhan khusus, identitas penjamin tambahan, dsb...',
+              hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF2563EB))),
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentStatusCard({
+    required String value,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    final isSelected = _selectedPaymentStatus == value;
+    return InkWell(
+      onTap: () => setState(() => _selectedPaymentStatus = value),
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+            width: isSelected ? 1.5 : 1.0,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(icon, size: 20, color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF64748B)),
+                if (isSelected)
+                  const Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF2563EB)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? const Color(0xFF1D4ED8) : const Color(0xFF0F172A),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: isSelected ? const Color(0xFF3B82F6) : const Color(0xFF64748B),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentChannelCard({
+    required String value,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    final isSelected = _selectedPaymentChannel == value;
+    return InkWell(
+      onTap: () => setState(() => _selectedPaymentChannel = value),
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+            width: isSelected ? 1.5 : 1.0,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(icon, size: 20, color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF64748B)),
+                if (isSelected)
+                  const Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF2563EB)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? const Color(0xFF1D4ED8) : const Color(0xFF0F172A),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: isSelected ? const Color(0xFF3B82F6) : const Color(0xFF64748B),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1576,6 +1985,60 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
               ),
             ),
           ],
+          const SizedBox(height: 12),
+          // Payment Preview
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Flexible(
+                      child: Text(
+                        'PEMBAYARAN & CHECKOUT',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _selectedPaymentStatus == 'paid' ? 'Lunas' : (_selectedPaymentStatus == 'dp' ? 'DP (50%)' : 'Saat Pickup'),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: _selectedPaymentStatus == 'paid' ? const Color(0xFF15803D) : const Color(0xFFD97706),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        'Kanal: $_selectedPaymentChannel',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _selectedPaymentStatus == 'paid'
+                          ? Formatters.formatCurrency(_grandTotal)
+                          : (_selectedPaymentStatus == 'dp'
+                              ? Formatters.formatCurrency(_grandTotal * 0.5)
+                              : '${Formatters.formatCurrency(_grandTotal)} (Saat Pickup)'),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 12),
           // Calculation Preview
           Container(
@@ -1768,7 +2231,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(_nameController.text.trim().isEmpty ? 'Customer' : _nameController.text.trim(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                Text('${_formatPhoneNumber(_phoneController.text.trim())} â€¢ Jaminan: ${_getJaminanLabel(_jaminanType)}', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                Text('${_formatPhoneNumber(_phoneController.text.trim())} • Jaminan: ${_getJaminanLabel(_jaminanType)}', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
               ],
             ),
           ),
@@ -1892,16 +2355,33 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
             return InkWell(
               onTap: () => setState(() => _jaminanType = val),
               borderRadius: BorderRadius.circular(20),
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF0F172A) : Colors.white,
+                  color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: isSelected ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0)),
+                  border: Border.all(
+                    color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                    width: isSelected ? 1.5 : 1.0,
+                  ),
                 ),
-                child: Text(
-                  label,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : const Color(0xFF334155)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isSelected) ...[
+                      const Icon(Icons.check_circle_rounded, size: 13, color: Color(0xFF2563EB)),
+                      const SizedBox(width: 5),
+                    ],
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                        color: isSelected ? const Color(0xFF1D4ED8) : const Color(0xFF334155),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             );
@@ -1935,63 +2415,83 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
   }
 
   Widget _buildPhoneField() {
+    final hasError = _phoneErrorText != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('Nomor Customer (WhatsApp Aktif)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.cardBorder),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: hasError ? const Color(0xFFDC2626) : const Color(0xFFCBD5E1),
+              width: hasError ? 1.5 : 1.0,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                height: 46,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.horizontal(left: Radius.circular(7)),
+                  border: Border(right: BorderSide(color: Color(0xFFE2E8F0))),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _countryCode,
+                    icon: const Icon(Icons.arrow_drop_down, size: 18),
+                    items: _countryCodes.map((item) {
+                      return DropdownMenuItem<String>(
+                        value: item['code'],
+                        child: Text(
+                          item['code']!,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.secondary),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) setState(() => _countryCode = val);
+                    },
+                  ),
+                ),
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _countryCode,
-                  icon: const Icon(Icons.arrow_drop_down, size: 18),
-                  items: _countryCodes.map((item) {
-                    return DropdownMenuItem<String>(
-                      value: item['code'],
-                      child: Text('${item['flag']} ${item['code']}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.secondary)),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    if (val != null) setState(() => _countryCode = val);
+              Expanded(
+                child: TextFormField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.next,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  autofillHints: null,
+                  scrollPadding: const EdgeInsets.only(bottom: 40),
+                  inputFormatters: [_PhoneHyphenFormatter()],
+                  decoration: InputDecoration(
+                    hintText: '8123-4567-8901',
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    isDense: true,
+                    errorText: _phoneErrorText,
+                  ),
+                  validator: (v) {
+                    final clean = (v ?? '').replaceAll(RegExp(r'\D'), '');
+                    return clean.length < 8 ? 'Nomor customer tidak boleh kosong (min 8 digit)' : null;
+                  },
+                  onChanged: (_) {
+                    if (_phoneErrorText != null) setState(() => _phoneErrorText = null);
                   },
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextFormField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                textInputAction: TextInputAction.next,
-                autocorrect: false,
-                enableSuggestions: false,
-                autofillHints: null,
-                scrollPadding: const EdgeInsets.only(bottom: 40),
-                inputFormatters: [_PhoneHyphenFormatter()],
-                decoration: InputDecoration(
-                  hintText: '8123-4567-8901',
-                  errorText: _phoneErrorText,
-                ),
-                validator: (v) {
-                  final clean = (v ?? '').replaceAll(RegExp(r'\D'), '');
-                  return clean.length < 8 ? 'Nomor customer tidak boleh kosong (min 8 digit)' : null;
-                },
-                onChanged: (_) {
-                  if (_phoneErrorText != null) setState(() => _phoneErrorText = null);
-                },
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -2280,114 +2780,117 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                     }
                     return;
                   }
-                  setState(() {
-                    _selectedUnit = unit;
-                    _selectedDurationOption = unit.availableDurations.firstOrNull;
-                    _isCustomDurationMode = false;
-                  });
+                  _selectUnit(unit);
                 },
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 child: Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                   decoration: BoxDecoration(
-                    color: isSelected ? AppTheme.surfaceContainerLow : (isUnavailable ? const Color(0xFFFFFBEB) : Colors.white),
-                    borderRadius: BorderRadius.circular(12),
+                    color: isSelected
+                        ? const Color(0xFFEFF6FF)
+                        : (isUnavailable ? const Color(0xFFFFFBEB) : Colors.white),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: isSelected ? AppTheme.secondary : (isUnavailable ? const Color(0xFFFDE68A) : AppTheme.cardBorder),
+                      color: isSelected
+                          ? const Color(0xFF2563EB)
+                          : (isUnavailable ? const Color(0xFFFDE68A) : const Color(0xFFE2E8F0)),
                       width: isSelected ? 1.5 : 1,
                     ),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: isOverlappingCurrentRental
-                              ? const Color(0xFFFEF3C7)
-                              : (isScheduleConflict ? const Color(0xFFFEF3C7) : AppTheme.surfaceContainer),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          isOverlappingCurrentRental
-                              ? Icons.lock_clock_rounded
-                              : (isMaintenance
-                                  ? Icons.build_rounded
-                                  : (isScheduleConflict ? Icons.calendar_month_rounded : Icons.phone_iphone_rounded)),
-                          color: isOverlappingCurrentRental
-                              ? const Color(0xFFB45309)
-                              : (isMaintenance
-                                  ? const Color(0xFFDC2626)
-                                  : (isScheduleConflict ? const Color(0xFFD97706) : AppTheme.primary)),
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Row(
                               children: [
+                                if (isSelected) ...[
+                                  const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF2563EB)),
+                                  const SizedBox(width: 5),
+                                ],
                                 Expanded(
-                                  child: Text(unit.modelName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? AppTheme.secondary.withValues(alpha: 0.12)
-                                        : (isOverlappingCurrentRental
-                                            ? const Color(0xFFFEF3C7)
-                                            : (isMaintenance
-                                                ? const Color(0xFFFEE2E2)
-                                                : (isScheduleConflict ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7)))),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? AppTheme.secondary.withValues(alpha: 0.3)
-                                          : (isOverlappingCurrentRental
-                                              ? const Color(0xFFFDE68A)
-                                              : (isMaintenance
-                                                  ? const Color(0xFFFECACA)
-                                                  : (isScheduleConflict ? const Color(0xFFFDE68A) : const Color(0xFF86EFAC)))),
-                                      width: 0.8,
-                                    ),
-                                  ),
                                   child: Text(
-                                    badgeLabel,
+                                    unit.modelName,
                                     style: TextStyle(
-                                      fontSize: 9,
+                                      fontSize: 12.5,
                                       fontWeight: FontWeight.bold,
-                                      color: badgeColor,
+                                      color: isSelected ? const Color(0xFF1D4ED8) : const Color(0xFF0F172A),
                                     ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 2),
-                            Builder(
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0xFFDBEAFE)
+                                  : (isOverlappingCurrentRental
+                                      ? const Color(0xFFFEF3C7)
+                                      : (isMaintenance
+                                          ? const Color(0xFFFEE2E2)
+                                          : (isScheduleConflict ? const Color(0xFFFEF3C7) : const Color(0xFFDCFCE7)))),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFF93C5FD)
+                                    : (isOverlappingCurrentRental
+                                        ? const Color(0xFFFDE68A)
+                                        : (isMaintenance
+                                            ? const Color(0xFFFECACA)
+                                            : (isScheduleConflict ? const Color(0xFFFDE68A) : const Color(0xFF86EFAC)))),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              badgeLabel,
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                                color: badgeColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Builder(
                               builder: (context) {
                                 final branchTag = unit.branchName?.trim().isNotEmpty == true
                                     ? unit.branchName!.trim()
                                     : (unit.affiliateName?.trim().isNotEmpty == true ? unit.affiliateName!.trim() : '');
-                                final tagPrefix = branchTag.isNotEmpty ? '$branchTag â€¢ ' : '';
+                                final tagPrefix = branchTag.isNotEmpty ? '$branchTag • ' : '';
                                 return Text(
                                   '${tagPrefix}SN: ${unit.serialNumber}',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textPrimary,
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: Color(0xFF64748B),
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 );
                               },
                             ),
-                            const SizedBox(height: 2),
-                            Text('${Formatters.formatCurrency(unit.dailyRate)} /hari', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.secondary)),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${Formatters.formatCurrency(unit.dailyRate)} /hari',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isSelected ? const Color(0xFF1D4ED8) : const Color(0xFF0F172A),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -2494,9 +2997,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                       setState(() {
                         _isCustomDurationMode = false;
                         _selectedDurationOption = item;
-                        if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
-                          _selectedUnit = null;
-                        }
                       });
                       _fetchAvailableUnits();
                     },
@@ -2527,9 +3027,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           onTap: () {
             setState(() {
               _isCustomDurationMode = !_isCustomDurationMode;
-              if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
-                _selectedUnit = null;
-              }
             });
             _fetchAvailableUnits();
           },
@@ -2582,9 +3079,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                           ? () {
                               setState(() {
                                 _customJumlah--;
-                                if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
-                                  _selectedUnit = null;
-                                }
                               });
                               _fetchAvailableUnits();
                             }
@@ -2596,9 +3090,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                       onPressed: () {
                         setState(() {
                           _customJumlah++;
-                          if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
-                            _selectedUnit = null;
-                          }
                         });
                         _fetchAvailableUnits();
                       },
@@ -2615,9 +3106,6 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                         if (v != null) {
                           setState(() {
                             _customUnit = v;
-                            if (_selectedUnit != null && !_isUnitAvailableForBooking(_selectedUnit!)) {
-                              _selectedUnit = null;
-                            }
                           });
                           _fetchAvailableUnits();
                         }
@@ -2836,7 +3324,7 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'SN: ${addon.serialNumber} â€¢ ${addon.assetCode}',
+                                'SN: ${addon.serialNumber} • ${addon.assetCode}',
                                 style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
                               ),
                             ],

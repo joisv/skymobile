@@ -292,98 +292,208 @@ class BookingDetailScreen extends StatelessWidget {
   Widget _buildTabletLayout(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: _buildTabletAppBar(context),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Left Column (~66% width)
-            Expanded(
-              flex: 66,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildTabletCustomerSection(context),
-                  const SizedBox(height: 16),
-                  _buildTabletHardwareSection(context),
-                  const SizedBox(height: 16),
-                  _buildTabletScheduleSection(context),
-                ],
-              ),
-            ),
-
-            const SizedBox(width: 20),
-
-            // Right Column (~34% width / Sidebar)
-            Expanded(
-              flex: 34,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildTabletFinancialSection(context),
-                  const SizedBox(height: 16),
-                  _buildTabletPrinterCard(context),
-                  const SizedBox(height: 16),
-                  _buildTabletReceiptSection(context),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _buildTabletBottomNav(context),
-    );
-  }
-
-  Widget _buildTabletBottomNav(BuildContext context) {
-    return Container(
-      height: 54,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      body: Row(
         children: [
-          _buildTabletNavItem(Icons.dashboard_outlined, 'Dashboard', false, () {
-            Navigator.pushNamedAndRemoveUntil(context, AppRoutes.dashboard, (route) => false);
-          }),
-          _buildTabletNavItem(Icons.assessment_outlined, 'Report', false, () {
-            Navigator.pushNamedAndRemoveUntil(context, AppRoutes.salesReport, (route) => false);
-          }),
-          _buildTabletNavItem(Icons.phone_iphone_rounded, 'Unit iPhone', false, () {
-            Navigator.pushNamed(context, AppRoutes.unitStatus);
-          }),
-          _buildTabletNavItem(Icons.settings_outlined, 'Settings', false, () {
-            Navigator.pushNamed(context, AppRoutes.account);
-          }),
+          // Vertical Navigation Rail / Sidebar on the left (matching MainNavigationScreen)
+          _buildTabletNavRail(context),
+
+          // Main Content Container (respects sidebar offset with proper height & overflow scroll)
+          Expanded(
+            child: Column(
+              children: [
+                _buildTabletAppBar(context),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Left Column (~58% width)
+                        Expanded(
+                          flex: 58,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildTabletCustomerSection(context),
+                              const SizedBox(height: 16),
+                              _buildTabletHardwareSection(context),
+                              const SizedBox(height: 16),
+                              _buildTabletScheduleSection(context),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(width: 20),
+
+                        // Right Column (~42% width / Sidebar)
+                        Expanded(
+                          flex: 42,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildTabletFinancialSection(context),
+                              const SizedBox(height: 16),
+                              _buildTabletPrinterCard(context),
+                              const SizedBox(height: 16),
+                              _buildTabletReceiptSection(context),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTabletNavItem(IconData icon, String label, bool isActive, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+  /// Slim vertical navigation rail / sidebar on the left side for landscape tablets.
+  /// Standardizes page layout to use global application shell sidebar and removes obsolete bottom nav.
+  Widget _buildTabletNavRail(BuildContext context) {
+    return Container(
+      width: 76,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          right: BorderSide(color: Color(0xFFE2E8F0), width: 1),
+        ),
+      ),
+      child: SafeArea(
+        right: false,
+        child: Column(
           children: [
-            Icon(icon, size: 18, color: isActive ? const Color(0xFF0F172A) : const Color(0xFF64748B)),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                color: isActive ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+            const SizedBox(height: 12),
+            // Top App / POS Brand Mark
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.storefront_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
             ),
+            const SizedBox(height: 20),
+
+            // Navigation Items
+            _buildTabletNavRailItem(
+              icon: Icons.dashboard_outlined,
+              activeIcon: Icons.dashboard_rounded,
+              label: 'Dashboard',
+              isActive: false,
+              onTap: () {
+                Navigator.pushNamedAndRemoveUntil(context, AppRoutes.dashboard, (route) => false);
+              },
+            ),
+            const SizedBox(height: 8),
+            _buildTabletNavRailItem(
+              icon: Icons.assessment_outlined,
+              activeIcon: Icons.assessment_rounded,
+              label: 'Report',
+              isActive: false,
+              onTap: () {
+                Navigator.pushNamedAndRemoveUntil(context, AppRoutes.salesReport, (route) => false);
+              },
+            ),
+            const SizedBox(height: 8),
+            _buildTabletNavRailItem(
+              icon: Icons.phone_iphone_outlined,
+              activeIcon: Icons.phone_iphone_rounded,
+              label: 'Unit iPhone',
+              isActive: false,
+              onTap: () {
+                Navigator.pushNamed(context, AppRoutes.unitStatus);
+              },
+            ),
+            const SizedBox(height: 8),
+            _buildTabletNavRailItem(
+              icon: Icons.settings_outlined,
+              activeIcon: Icons.settings_rounded,
+              label: 'Settings',
+              isActive: false,
+              onTap: () {
+                Navigator.pushNamed(context, AppRoutes.account);
+              },
+            ),
+
+            const Spacer(),
+            // Bottom Status / Sync Indicator
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFF10B981),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(height: 16),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabletNavRailItem({
+    required IconData icon,
+    required IconData activeIcon,
+    required String label,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 64,
+          constraints: const BoxConstraints(minHeight: 52),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFF0F172A) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isActive ? activeIcon : icon,
+                size: 20,
+                color: isActive ? Colors.white : const Color(0xFF64748B),
+              ),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                    color: isActive ? Colors.white : const Color(0xFF64748B),
+                  ),
+                  maxLines: 1,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -526,18 +636,44 @@ class BookingDetailScreen extends StatelessWidget {
 
             const Spacer(),
 
-            // Delete button (red trash)
-            InkWell(
-              onTap: () => _confirmDelete(context),
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEE2E2),
-                  borderRadius: BorderRadius.circular(8),
+            // Overflow menu (•••) for safe secondary/destructive actions
+            PopupMenuButton<String>(
+              tooltip: 'Menu Opsi Transaksi',
+              offset: const Offset(0, 44),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              onSelected: (value) {
+                if (value == 'delete') {
+                  _confirmDelete(context);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem<String>(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFDC2626)),
+                      SizedBox(width: 10),
+                      Text(
+                        'Hapus Transaksi',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFDC2626),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: const Icon(Icons.delete_outline_rounded, size: 19, color: Color(0xFFEF4444)),
+              ],
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: const Icon(Icons.more_horiz_rounded, size: 20, color: Color(0xFF64748B)),
               ),
             ),
           ],
@@ -609,27 +745,33 @@ class BookingDetailScreen extends StatelessWidget {
                       ),
                       InkWell(
                         onTap: () => _openWhatsApp(context, booking.customerPhone),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(8),
                         child: Container(
-                          padding: const EdgeInsets.all(5),
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: const Color(0xFFDCFCE7),
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFBBF7D0)),
                           ),
-                          child: const Icon(Icons.chat_bubble_outline_rounded, size: 14, color: Color(0xFF16A34A)),
+                          child: const Icon(Icons.chat_bubble_outline_rounded, size: 15, color: Color(0xFF16A34A)),
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 8),
                       InkWell(
                         onTap: () => _callPhone(context, booking.customerPhone),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(8),
                         child: Container(
-                          padding: const EdgeInsets.all(5),
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: const Color(0xFFE0F2FE),
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFBAE6FD)),
                           ),
-                          child: const Icon(Icons.phone_outlined, size: 14, color: Color(0xFF0284C7)),
+                          child: const Icon(Icons.phone_outlined, size: 15, color: Color(0xFF0284C7)),
                         ),
                       ),
                     ],
@@ -665,9 +807,9 @@ class BookingDetailScreen extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF0FDF4),
+                    color: const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: Row(
                     children: [
@@ -680,7 +822,7 @@ class BookingDetailScreen extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 9.5,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF16A34A),
+                                color: Color(0xFF64748B),
                                 letterSpacing: 0.4,
                               ),
                             ),
@@ -690,21 +832,32 @@ class BookingDetailScreen extends StatelessWidget {
                                   ? booking.jaminanType
                                   : '${booking.jaminanType} Fisik',
                               style: const TextStyle(
-                                fontSize: 14,
+                                fontSize: 13.5,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF15803D),
+                                color: Color(0xFF0F172A),
                               ),
                             ),
                           ],
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.all(6),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: const Color(0xFFDCFCE7),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFBBF7D0)),
                         ),
-                        child: const Icon(Icons.lock_outline_rounded, size: 18, color: Color(0xFF16A34A)),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.shield_outlined, size: 13, color: Color(0xFF16A34A)),
+                            SizedBox(width: 4),
+                            Text(
+                              'Diserahkan',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -731,16 +884,19 @@ class BookingDetailScreen extends StatelessWidget {
                   children: [
                     Icon(Icons.location_on_outlined, size: 15, color: Color(0xFF64748B)),
                     SizedBox(width: 6),
-                    Text(
-                      'ALAMAT DOMISILI KTP / DOMISILI PENGANTARAN',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF64748B),
-                        letterSpacing: 0.4,
+                    Expanded(
+                      child: Text(
+                        'ALAMAT DOMISILI KTP / DOMISILI PENGANTARAN',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF64748B),
+                          letterSpacing: 0.4,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Spacer(),
+                    SizedBox(width: 8),
                     Text(
                       'Terverifikasi',
                       style: TextStyle(
@@ -924,7 +1080,7 @@ class BookingDetailScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        'Varian Warna: ${booking.iphone.color} â€¢ Grade A+ (Mulus / Siap Pakai)',
+                        'Varian Warna: ${booking.iphone.color} • Grade A+ (Mulus / Siap Pakai)',
                         style: const TextStyle(
                           fontSize: 11.5,
                           color: Color(0xFF64748B),
@@ -932,13 +1088,13 @@ class BookingDetailScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
 
-                      // Sub Bar: Serial (SN) & ID Aset
+                      // Sub Bar: Serial (SN) in Monospace Pill & ID Aset
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFDBEAFE)),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
                         ),
                         child: Row(
                           children: [
@@ -950,12 +1106,21 @@ class BookingDetailScreen extends StatelessWidget {
                                 color: Color(0xFF64748B),
                               ),
                             ),
-                            Text(
-                              booking.iphone.serialNumber,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: const Color(0xFFCBD5E1)),
+                              ),
+                              child: Text(
+                                booking.iphone.serialNumber,
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  fontFamily: 'monospace',
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0F172A),
+                                ),
                               ),
                             ),
                             const Spacer(),
@@ -967,12 +1132,20 @@ class BookingDetailScreen extends StatelessWidget {
                                 color: Color(0xFF64748B),
                               ),
                             ),
-                            Text(
-                              booking.iphone.assetCode,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0284C7),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: const Color(0xFFBFDBFE)),
+                              ),
+                              child: Text(
+                                booking.iphone.assetCode,
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0284C7),
+                                ),
                               ),
                             ),
                           ],
@@ -998,31 +1171,8 @@ class BookingDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // 3 Accessories Cards Row
-          Row(
-            children: [
-              Expanded(
-                child: _buildTabletAccessoryCard(
-                  title: 'Kabel Data C-Lightning',
-                  subtitle: 'Original Apple Foxconn',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildTabletAccessoryCard(
-                  title: 'Adaptor 20W PD',
-                  subtitle: 'Fast Charging Bersertifikat',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildTabletAccessoryCard(
-                  title: 'Clear Case & Tempered',
-                  subtitle: 'Terpasang Presisi',
-                ),
-              ),
-            ],
-          ),
+          // 3 Accessories Inspection Checklist
+          const _TabletAccessoryChecklist(),
         ],
       ),
     );
@@ -1230,7 +1380,7 @@ class BookingDetailScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Terlambat: ${booking.lateDurationFormatted} â€¢ Estimasi Denda: ${Formatters.currency(booking.estimatedLateFee)}',
+                          'Terlambat: ${booking.lateDurationFormatted} • Estimasi Denda: ${Formatters.currency(booking.estimatedLateFee)}',
                           style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF991B1B)),
                         ),
                         const SizedBox(height: 2),
@@ -1247,71 +1397,85 @@ class BookingDetailScreen extends StatelessWidget {
             const SizedBox(height: 12),
           ],
 
-          // Tombol Pengembalian dan Denda
-          Row(
+          // Return & Penalty Action Buttons (Full-width vertical stack to prevent button overflow)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Tombol Pengembalian Unit
-              Expanded(
-                child: SizedBox(
-                  height: 44,
-                  child: ElevatedButton.icon(
-                    key: const Key('btn_tablet_return'),
-                    onPressed: booking.status == BookingStatus.returned
-                        ? null
-                        : () => _handleReturnAction(context),
-                    icon: Icon(
-                      booking.status == BookingStatus.returned
-                          ? Icons.check_circle_rounded
-                          : Icons.assignment_turned_in_rounded,
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                    label: Text(
-                      booking.status == BookingStatus.returned
-                          ? 'Unit Sudah Dikembalikan'
-                          : 'Pengembalian Unit',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: booking.status == BookingStatus.returned
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF10B981),
-                      disabledBackgroundColor: const Color(0xFFCBD5E1),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: 0,
-                    ),
+              // Primary Action Button (Pengembalian Unit)
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
+                  key: const Key('btn_tablet_return'),
+                  onPressed: booking.status == BookingStatus.returned
+                      ? null
+                      : () => _handleReturnAction(context),
+                  icon: Icon(
+                    booking.status == BookingStatus.returned
+                        ? Icons.check_circle_rounded
+                        : (booking.isCurrentlyLate && booking.estimatedLateFee > 0
+                            ? Icons.assignment_turned_in_rounded
+                            : Icons.assignment_turned_in_rounded),
+                    size: 19,
+                    color: Colors.white,
+                  ),
+                  label: Text(
+                    booking.status == BookingStatus.returned
+                        ? 'Unit Sudah Dikembalikan'
+                        : 'Pengembalian Unit',
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: booking.status == BookingStatus.returned
+                        ? const Color(0xFF94A3B8)
+                        : (booking.isCurrentlyLate && booking.estimatedLateFee > 0
+                            ? const Color(0xFFDC2626)
+                            : const Color(0xFF10B981)),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(height: 8),
 
-              // Tombol Denda
-              Expanded(
-                child: SizedBox(
-                  height: 44,
-                  child: ElevatedButton.icon(
-                    key: const Key('btn_tablet_penalty'),
-                    onPressed: () => _handlePenaltyAction(context),
-                    icon: Icon(
-                      booking.isCurrentlyLate && booking.estimatedLateFee > 0
-                          ? Icons.point_of_sale_rounded
-                          : Icons.gavel_rounded,
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                    label: Text(
-                      booking.estimatedLateFee > 0
-                          ? 'Bayar Denda (${Formatters.currency(booking.estimatedLateFee)})'
-                          : 'Denda Keterlambatan',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: booking.isCurrentlyLate && booking.estimatedLateFee > 0
+              // Secondary Action Button (Denda Keterlambatan)
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: OutlinedButton.icon(
+                  key: const Key('btn_tablet_penalty'),
+                  onPressed: booking.status == BookingStatus.returned
+                      ? null
+                      : () => _handlePenaltyAction(context),
+                  icon: Icon(
+                    Icons.warning_amber_rounded,
+                    size: 18,
+                    color: booking.isCurrentlyLate && booking.estimatedLateFee > 0
+                        ? const Color(0xFFDC2626)
+                        : const Color(0xFF64748B),
+                  ),
+                  label: Text(
+                    booking.isCurrentlyLate && booking.estimatedLateFee > 0
+                        ? 'Bayar Denda (${Formatters.currency(booking.estimatedLateFee)})'
+                        : 'Denda Keterlambatan',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: booking.isCurrentlyLate && booking.estimatedLateFee > 0
                           ? const Color(0xFFDC2626)
-                          : const Color(0xFF0F172A),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: 0,
+                          : const Color(0xFF334155),
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: booking.isCurrentlyLate && booking.estimatedLateFee > 0
+                          ? const Color(0xFFFECACA)
+                          : const Color(0xFFCBD5E1),
+                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
               ),
@@ -1370,7 +1534,7 @@ class BookingDetailScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
-                  isPaid ? 'âœ“ LUNAS' : 'Belum Lunas',
+                  isPaid ? '✓ Lunas' : 'Belum Lunas',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -1596,7 +1760,7 @@ class BookingDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      isConnected ? 'Bluetooth POS â€¢ Kertas 58mm Siap' : 'Bluetooth POS â€¢ Siap Terhubung',
+                      isConnected ? 'Bluetooth POS • Kertas 58mm Siap' : 'Bluetooth POS • Siap Terhubung',
                       style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1677,10 +1841,11 @@ class BookingDetailScreen extends StatelessWidget {
                   color: const Color(0xFFDCFCE7),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('â— ', style: TextStyle(color: Color(0xFF16A34A), fontSize: 8)),
+                    Container(width: 5, height: 5, decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle)),
+                    const SizedBox(width: 4),
                     Text(
                       'Siap Cetak',
                       style: TextStyle(
@@ -1870,7 +2035,7 @@ class BookingDetailScreen extends StatelessWidget {
         _buildReceiptJaggedEdge(isTop: false),
         const SizedBox(height: 8),
         Text(
-          'â€” Lebar Kertas Standar VSC MP-58C (32 Karakter) â€”',
+          '— Lebar Kertas Standar VSC MP-58C (32 Karakter) —',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600),
         ),
@@ -1984,13 +2149,15 @@ class BookingDetailScreen extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          'â— ',
-                          style: TextStyle(
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
                             color: Color(0xFF10B981),
-                            fontSize: 10,
+                            shape: BoxShape.circle,
                           ),
                         ),
+                        const SizedBox(width: 5),
                         Text(
                           _storeName,
                           style: const TextStyle(
@@ -2464,10 +2631,15 @@ class BookingDetailScreen extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
-                      'â— ',
-                      style: TextStyle(color: Color(0xFF10B981), fontSize: 9),
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF10B981),
+                        shape: BoxShape.circle,
+                      ),
                     ),
+                    const SizedBox(width: 4),
                     Text(
                       iphone.status.isNotEmpty ? iphone.status.toUpperCase() : 'READY',
                       style: const TextStyle(
@@ -3160,6 +3332,8 @@ class BookingDetailScreen extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: booking.isCurrentlyLate && booking.estimatedLateFee > 0
@@ -3570,3 +3744,116 @@ class _ReceiptJaggedEdgePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+
+/// Widget checklist interaktif untuk inspeksi kelengkapan paket unit iPhone
+class _TabletAccessoryChecklist extends StatefulWidget {
+  const _TabletAccessoryChecklist();
+
+  @override
+  State<_TabletAccessoryChecklist> createState() => _TabletAccessoryChecklistState();
+}
+
+class _TabletAccessoryChecklistState extends State<_TabletAccessoryChecklist> {
+  final Set<String> _checkedItems = {
+    'Kabel Data C-Lightning',
+    'Adaptor 20W PD',
+    'Clear Case & Tempered',
+  };
+
+  void _toggle(String item) {
+    setState(() {
+      if (_checkedItems.contains(item)) {
+        _checkedItems.remove(item);
+      } else {
+        _checkedItems.add(item);
+      }
+    });
+  }
+
+  Widget _buildCard({required String title, required String subtitle}) {
+    final isChecked = _checkedItems.contains(title);
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _toggle(title),
+          borderRadius: BorderRadius.circular(10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            decoration: BoxDecoration(
+              color: isChecked ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isChecked ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
+                width: isChecked ? 1.2 : 1.0,
+              ),
+            ),
+            child: Row(
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: Icon(
+                    isChecked ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                    key: ValueKey(isChecked),
+                    size: 18,
+                    color: isChecked ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isChecked ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 9.5,
+                          color: Color(0xFF64748B),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _buildCard(
+          title: 'Kabel Data C-Lightning',
+          subtitle: 'Original Apple Foxconn',
+        ),
+        const SizedBox(width: 10),
+        _buildCard(
+          title: 'Adaptor 20W PD',
+          subtitle: 'Fast Charging Bersertifikat',
+        ),
+        const SizedBox(width: 10),
+        _buildCard(
+          title: 'Clear Case & Tempered',
+          subtitle: 'Terpasang Presisi',
+        ),
+      ],
+    );
+  }
+}

@@ -270,34 +270,34 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         subtitle: _selectedBranchName,
         showBackButton: true,
         actions: [
-          IconButton(
-            tooltip: 'Tambah Biaya',
-            icon: const Icon(Icons.add_circle_outline, color: AppTheme.error),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.error,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
             onPressed: _openAddExpenseModal,
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text(
+              'Catat Biaya',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppTheme.error,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('Catat Biaya', style: TextStyle(fontWeight: FontWeight.bold)),
-        onPressed: _openAddExpenseModal,
-      ),
+      floatingActionButton: null,
       body: RefreshIndicator(
         onRefresh: _loadExpenses,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 96),
+          padding: const EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 40),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildBranchSelector(),
-              const SizedBox(height: 12),
-              _buildPeriodSelector(),
-              const SizedBox(height: 12),
-              _buildCategorySelector(),
-              const SizedBox(height: 16),
+              _buildStreamlinedFilterBar(),
+              const SizedBox(height: 14),
               _buildSummaryCard(),
               const SizedBox(height: 16),
               _buildExpenseListSection(),
@@ -308,272 +308,303 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     );
   }
 
-  Widget _buildBranchSelector() {
-    if (!_canSelectBranch) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.cardBorder),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.storefront, size: 20, color: AppTheme.accent),
-            const SizedBox(width: 8),
-            Text(
-              'Cabang: $_selectedBranchName',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final items = <DropdownMenuItem<int?>>[
-      const DropdownMenuItem<int?>(
-        value: null,
-        child: Text('Semua Cabang (Gabungan)', style: TextStyle(fontSize: 13)),
-      ),
-      ..._affiliates.map((aff) {
-        return DropdownMenuItem<int?>(
-          value: aff.id,
-          child: Text(aff.name, style: const TextStyle(fontSize: 13)),
-        );
-      }),
-    ];
-
-    if (_selectedAffiliateId != null && !_affiliates.any((a) => a.id == _selectedAffiliateId)) {
-      items.add(
-        DropdownMenuItem<int?>(
-          value: _selectedAffiliateId,
-          child: Text(_selectedBranchName, style: const TextStyle(fontSize: 13)),
-        ),
-      );
-    }
-
+  /// Single streamlined filter bar combining date ranges, expense categories, and branch selection
+  Widget _buildStreamlinedFilterBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.cardBorder),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.storefront, size: 20, color: AppTheme.accent),
-          const SizedBox(width: 8),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<int?>(
-                value: _selectedAffiliateId,
-                isExpanded: true,
-                hint: const Text('Pilih Cabang'),
-                items: items,
-                onChanged: (val) {
-                  setState(() {
-                    _selectedAffiliateId = val;
-                  });
-                  _loadExpenses();
-                },
-              ),
-            ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-    );
-  }
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 650;
 
-  Widget _buildPeriodSelector() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          ..._periodOptions.map((period) {
-            final isSelected = _selectedPeriod.toLowerCase() == period.toLowerCase() && _customDateRange == null;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(period, style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                selected: isSelected,
-                selectedColor: AppTheme.accent.withValues(alpha: 0.15),
-                backgroundColor: AppTheme.surface,
-                labelStyle: TextStyle(
-                  color: isSelected ? AppTheme.accent : AppTheme.textSecondary,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  side: BorderSide(
-                    color: isSelected ? AppTheme.accent : AppTheme.cardBorder,
+          final periodChips = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ..._periodOptions.map((period) {
+                  final isSelected = _selectedPeriod.toLowerCase() == period.toLowerCase() && _customDateRange == null;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(
+                        period,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected ? AppTheme.accent : AppTheme.textSecondary,
+                        ),
+                      ),
+                      selected: isSelected,
+                      selectedColor: AppTheme.accent.withValues(alpha: 0.12),
+                      backgroundColor: const Color(0xFFF8FAFC),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(
+                          color: isSelected ? AppTheme.accent : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() {
+                            _selectedPeriod = period;
+                            _customDateRange = null;
+                          });
+                          _loadExpenses();
+                        }
+                      },
+                    ),
+                  );
+                }),
+                ActionChip(
+                  avatar: Icon(
+                    Icons.calendar_month_outlined,
+                    size: 15,
+                    color: _customDateRange != null ? AppTheme.accent : AppTheme.textSecondary,
                   ),
+                  label: Text(
+                    _customDateRange != null ? _selectedPeriod : 'Kustom',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: _customDateRange != null ? FontWeight.bold : FontWeight.w500,
+                      color: _customDateRange != null ? AppTheme.accent : AppTheme.textSecondary,
+                    ),
+                  ),
+                  backgroundColor: _customDateRange != null ? AppTheme.accent.withValues(alpha: 0.12) : const Color(0xFFF8FAFC),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(
+                      color: _customDateRange != null ? AppTheme.accent : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onPressed: _pickCustomDateRange,
                 ),
-                onSelected: (selected) {
-                  if (selected) {
-                    setState(() {
-                      _selectedPeriod = period;
-                      _customDateRange = null;
-                    });
+              ],
+            ),
+          );
+
+          final categoryDropdown = Container(
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedCategory,
+                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF64748B)),
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                items: _categoryOptions.entries.map((entry) {
+                  return DropdownMenuItem<String>(
+                    value: entry.key,
+                    child: Text(entry.value),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _selectedCategory = val);
                     _loadExpenses();
                   }
                 },
               ),
-            );
-          }),
-          ActionChip(
-            avatar: Icon(Icons.calendar_month, size: 16, color: _customDateRange != null ? AppTheme.accent : AppTheme.textSecondary),
-            label: Text(
-              _customDateRange != null ? _selectedPeriod : 'Kustom',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: _customDateRange != null ? FontWeight.bold : FontWeight.normal,
-                color: _customDateRange != null ? AppTheme.accent : AppTheme.textSecondary,
-              ),
-            ),
-            backgroundColor: _customDateRange != null ? AppTheme.accent.withValues(alpha: 0.15) : AppTheme.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: BorderSide(
-                color: _customDateRange != null ? AppTheme.accent : AppTheme.cardBorder,
-              ),
-            ),
-            onPressed: _pickCustomDateRange,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategorySelector() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: _categoryOptions.entries.map((entry) {
-          final isSelected = _selectedCategory == entry.key;
-          return Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: FilterChip(
-              label: Text(entry.value, style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-              selected: isSelected,
-              selectedColor: AppTheme.error.withValues(alpha: 0.15),
-              backgroundColor: AppTheme.surface,
-              labelStyle: TextStyle(
-                color: isSelected ? AppTheme.error : AppTheme.textSecondary,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                  color: isSelected ? AppTheme.error : AppTheme.cardBorder,
-                ),
-              ),
-              onSelected: (selected) {
-                setState(() {
-                  _selectedCategory = entry.key;
-                });
-                _loadExpenses();
-              },
             ),
           );
-        }).toList(),
+
+          Widget? branchDropdown;
+          if (_canSelectBranch) {
+            final branchItems = <DropdownMenuItem<int?>>[
+              const DropdownMenuItem<int?>(
+                value: null,
+                child: Text('Semua Cabang', style: TextStyle(fontSize: 12.5)),
+              ),
+              ..._affiliates.map((aff) {
+                return DropdownMenuItem<int?>(
+                  value: aff.id,
+                  child: Text(aff.name, style: const TextStyle(fontSize: 12.5)),
+                );
+              }),
+            ];
+            if (_selectedAffiliateId != null && !_affiliates.any((a) => a.id == _selectedAffiliateId)) {
+              branchItems.add(
+                DropdownMenuItem<int?>(
+                  value: _selectedAffiliateId,
+                  child: Text(_selectedBranchName, style: const TextStyle(fontSize: 12.5)),
+                ),
+              );
+            }
+            branchDropdown = Container(
+              height: 38,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int?>(
+                  value: _selectedAffiliateId,
+                  hint: const Text('Pilih Cabang', style: TextStyle(fontSize: 12.5)),
+                  icon: const Icon(Icons.storefront_outlined, size: 17, color: Color(0xFF64748B)),
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                  items: branchItems,
+                  onChanged: (val) {
+                    setState(() => _selectedAffiliateId = val);
+                    _loadExpenses();
+                  },
+                ),
+              ),
+            );
+          }
+
+          if (isNarrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                periodChips,
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(child: categoryDropdown),
+                    if (branchDropdown != null) ...[
+                      const SizedBox(width: 8),
+                      Expanded(child: branchDropdown),
+                    ],
+                  ],
+                ),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: periodChips),
+              const SizedBox(width: 12),
+              categoryDropdown,
+              if (branchDropdown != null) ...[
+                const SizedBox(width: 10),
+                branchDropdown,
+              ],
+            ],
+          );
+        },
       ),
     );
   }
 
+  /// Sleek, compact expense summary card replacing oversized pink container
   Widget _buildSummaryCard() {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            Color(0xFFFEF2F2),
-            Colors.white,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.errorBorder),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
-                      color: AppTheme.error.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFECACA)),
                     ),
-                    child: const Icon(Icons.receipt_long, color: AppTheme.error, size: 20),
+                    child: const Icon(Icons.receipt_long_rounded, color: Color(0xFFDC2626), size: 20),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
                         'Total Pengeluaran Cabang',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w600,
-                          color: AppTheme.onErrorContainer,
+                          color: Color(0xFF64748B),
                         ),
                       ),
+                      const SizedBox(height: 1),
                       Text(
                         _selectedPeriod,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 11,
-                          color: AppTheme.textMuted,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF94A3B8),
                         ),
                       ),
                     ],
                   ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.errorBorder),
-                ),
-                child: Text(
-                  '${_summary.count} Biaya',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.error,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    Formatters.currency(_summary.totalExpenses),
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                      letterSpacing: -0.5,
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Text(
+                      '${_summary.count} Biaya',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF475569),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            Formatters.currency(_summary.totalExpenses),
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.error,
-              letterSpacing: -0.5,
-            ),
-          ),
           if (_summary.categories.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            const Divider(height: 1, color: AppTheme.errorBorder),
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -583,15 +614,16 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.cardBorder),
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: Text(
                     '$label: ${Formatters.currency(cat.value)}',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 11,
-                      color: AppTheme.textSecondary,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF475569),
                     ),
                   ),
                 );
@@ -642,38 +674,64 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
     if (_expenses.isEmpty) {
       return Container(
-        padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 16),
+        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
         decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.cardBorder),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(Icons.savings_outlined, size: 56, color: AppTheme.textMuted.withValues(alpha: 0.5)),
-            const SizedBox(height: 12),
-            Text(
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.savings_outlined,
+                size: 32,
+                color: Color(0xFF94A3B8),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
               'Belum ada catatan pengeluaran',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
+                color: Color(0xFF0F172A),
               ),
             ),
             const SizedBox(height: 4),
-            Text(
+            const Text(
               'Tidak ada biaya operasional tercatat pada periode ini.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 12,
-                color: AppTheme.textSecondary,
+                fontSize: 12.5,
+                color: Color(0xFF64748B),
               ),
             ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Catat Pengeluaran Baru'),
-              onPressed: _openAddExpenseModal,
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 44,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text(
+                  'Catat Pengeluaran Baru',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  foregroundColor: const Color(0xFF0F172A),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                ),
+                onPressed: _openAddExpenseModal,
+              ),
             ),
           ],
         ),

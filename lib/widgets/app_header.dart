@@ -261,7 +261,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                     ],
                   ),
 
-                  // Right: Actions, Date container & User profile (NO printer status)
+                  // Right: Actions, Date container & Consolidated Cashier Profile Popover
                   Flexible(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -297,9 +297,60 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                           ),
                           const SizedBox(width: 16),
 
-                          // Staff Profile Info with Initials Avatar & Online Badge
+                          // Staff Profile Info with Initials Avatar & Popover Dropdown
                           GestureDetector(
-                            onTap: () => Navigator.pushNamed(context, AppRoutes.account),
+                            onTapDown: (details) {
+                              final offset = details.globalPosition;
+                              showMenu<String>(
+                                context: context,
+                                position: RelativeRect.fromLTRB(offset.dx - 120, offset.dy + 12, offset.dx + 120, offset.dy + 200),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                items: const [
+                                  PopupMenuItem<String>(
+                                    value: 'shift',
+                                    height: 44,
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.point_of_sale_rounded, size: 18, color: Color(0xFF0284C7)),
+                                        SizedBox(width: 10),
+                                        Text('Shift Kasir & Buku Kas', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuDivider(height: 1),
+                                  PopupMenuItem<String>(
+                                    value: 'account',
+                                    height: 44,
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.person_outline_rounded, size: 18, color: Color(0xFF475569)),
+                                        SizedBox(width: 10),
+                                        Text('Pengaturan Akun & Profil', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: Color(0xFF0F172A))),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem<String>(
+                                    value: 'printer',
+                                    height: 44,
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.print_outlined, size: 18, color: Color(0xFF475569)),
+                                        SizedBox(width: 10),
+                                        Text('Pengaturan Printer Thermal', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: Color(0xFF0F172A))),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ).then((value) {
+                                if (value == 'shift') {
+                                  Navigator.pushNamed(context, AppRoutes.cashierShift);
+                                } else if (value == 'account') {
+                                  Navigator.pushNamed(context, AppRoutes.account);
+                                } else if (value == 'printer') {
+                                  Navigator.pushNamed(context, AppRoutes.printerSettings);
+                                }
+                              });
+                            },
                             child: Row(
                               children: [
                                 Stack(
@@ -370,6 +421,8 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                                     ),
                                   ],
                                 ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.arrow_drop_down_rounded, size: 20, color: Color(0xFF64748B)),
                               ],
                             ),
                           ),

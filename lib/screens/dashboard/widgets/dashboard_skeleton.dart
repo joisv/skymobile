@@ -298,7 +298,6 @@ class DashboardSkeleton extends StatelessWidget {
     );
   }
 
-
   Widget _buildTabletMetricsRowSkeleton() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -535,7 +534,7 @@ class DashboardSkeleton extends StatelessWidget {
 
   Widget _buildTabletPrinterSkeleton() {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
@@ -547,20 +546,22 @@ class DashboardSkeleton extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  SkeletonBox(width: 18, height: 18, borderRadius: 4),
-                  SizedBox(width: 8),
-                  SkeletonText(width: 90, height: 15),
-                ],
+              Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SkeletonBox(width: 18, height: 18, borderRadius: 4),
+                    SizedBox(width: 8),
+                    Flexible(child: SkeletonText(width: 80, height: 15)),
+                  ],
+                ),
               ),
-              SkeletonBox(width: 55, height: 20, borderRadius: 12),
+              SizedBox(width: 6),
+              SkeletonBox(width: 50, height: 18, borderRadius: 10),
             ],
           ),
-          SizedBox(height: 14),
-          SkeletonBox(width: double.infinity, height: 60, borderRadius: 12),
           SizedBox(height: 12),
-          SkeletonBox(width: double.infinity, height: 38, borderRadius: 10),
+          SkeletonBox(width: double.infinity, height: 34, borderRadius: 8),
         ],
       ),
     );
@@ -568,7 +569,7 @@ class DashboardSkeleton extends StatelessWidget {
 
   Widget _buildTabletReadyStockSkeleton() {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
@@ -580,13 +581,14 @@ class DashboardSkeleton extends StatelessWidget {
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              SkeletonText(width: 110, height: 15),
-              SkeletonBox(width: 70, height: 18, borderRadius: 6),
+              Flexible(child: SkeletonText(width: 85, height: 15)),
+              SizedBox(width: 6),
+              SkeletonBox(width: 55, height: 18, borderRadius: 6),
             ],
           ),
           const SizedBox(height: 14),
           ...List.generate(
-            4,
+            3,
             (i) => const Padding(
               padding: EdgeInsets.symmetric(vertical: 6),
               child: Row(
@@ -609,7 +611,7 @@ class DashboardSkeleton extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          const SkeletonBox(width: double.infinity, height: 38, borderRadius: 10),
+          const SkeletonBox(width: double.infinity, height: 34, borderRadius: 10),
         ],
       ),
     );

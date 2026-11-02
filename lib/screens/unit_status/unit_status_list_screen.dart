@@ -257,22 +257,22 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     switch (status.toLowerCase()) {
       case 'tersedia':
       case 'ready':
-        return const Color(0xFF059669); // Emerald Green
+        return const Color(0xFF15803D); // Green
       case 'disewa':
       case 'rented':
-        return const Color(0xFFD97706); // Amber / Orange
+      case 'dibooking':
+      case 'booked':
+        return const Color(0xFF1D4ED8); // Blue
       case 'terlambat':
       case 'overdue':
       case 'late':
-        return const Color(0xFFDC2626); // Crimson Red
+        return const Color(0xFFB91C1C); // Red
       case 'maintenance':
       case 'perawatan':
-        return const Color(0xFFE11D48); // Rose / Red
-      case 'dibooking':
-      case 'booked':
-        return const Color(0xFF2563EB); // Blue
+      case 'transferred':
+      case 'in_transit':
       default:
-        return AppTheme.textSecondary;
+        return const Color(0xFF475569); // Gray
     }
   }
 
@@ -280,22 +280,22 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     switch (status.toLowerCase()) {
       case 'tersedia':
       case 'ready':
-        return const Color(0xFFECFDF5);
+        return const Color(0xFFDCFCE7); // Green bg
       case 'disewa':
       case 'rented':
-        return const Color(0xFFFEF3C7);
+      case 'dibooking':
+      case 'booked':
+        return const Color(0xFFEFF6FF); // Blue bg
       case 'terlambat':
       case 'overdue':
       case 'late':
-        return const Color(0xFFFEF2F2);
+        return const Color(0xFFFEE2E2); // Red bg
       case 'maintenance':
       case 'perawatan':
-        return const Color(0xFFFEE2E2);
-      case 'dibooking':
-      case 'booked':
-        return const Color(0xFFEFF6FF);
+      case 'transferred':
+      case 'in_transit':
       default:
-        return const Color(0xFFF1F5F9);
+        return const Color(0xFFF1F5F9); // Gray bg
     }
   }
 
@@ -1173,23 +1173,23 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   ),
                 ),
               ),
-              // + Tambah iPhone Baru button (Hanya super-admin dan admin)
+              // + Tambah Unit button (Hanya super-admin dan admin)
               if (AuthService().canCreateIphone) ...[
                 const SizedBox(width: 12),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text(
-                    '+ Tambah iPhone Baru',
-                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-                  ),
+                ElevatedButton(
+                  key: const Key('btn_add_unit'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0F172A),
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     elevation: 0,
                   ),
                   onPressed: _showAddUnitDialog,
+                  child: const Text(
+                    '+ Tambah Unit',
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ],
@@ -1207,70 +1207,50 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     final maintenanceUnits = _summary['maintenance'] ?? 0;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
       child: Row(
         children: [
           _buildKpiCard(
-            icon: Icons.desktop_windows_outlined,
-            iconColor: const Color(0xFF7C3AED),
-            iconBg: const Color(0xFFFAF5FF),
-            borderColor: const Color(0xFFE9D5FF),
             count: totalUnits,
-            countColor: const Color(0xFF6B21A8),
+            countColor: const Color(0xFF0F172A),
             title: 'TOTAL UNIT',
             subtitle: _selectedAffiliate == 'Semua Cabang'
                 ? 'Terdaftar di Gerai Gandaria'
                 : 'Terdaftar di $_selectedAffiliate',
-            titleColor: const Color(0xFF6B21A8),
+            statusDotColor: const Color(0xFF64748B),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           _buildKpiCard(
-            icon: Icons.check_circle_outline_rounded,
-            iconColor: const Color(0xFF059669),
-            iconBg: const Color(0xFFECFDF5),
-            borderColor: const Color(0xFFA7F3D0),
             count: readyUnits,
-            countColor: const Color(0xFF059669),
+            countColor: const Color(0xFF15803D),
             title: 'TERSEDIA',
             subtitle: 'Siap Sewa / Ready Stock',
-            titleColor: const Color(0xFF059669),
+            statusDotColor: const Color(0xFF16A34A),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           _buildKpiCard(
-            icon: Icons.access_time_rounded,
-            iconColor: const Color(0xFFD97706),
-            iconBg: const Color(0xFFFFFBEB),
-            borderColor: const Color(0xFFFDE68A),
             count: rentedUnits,
-            countColor: const Color(0xFFD97706),
+            countColor: const Color(0xFF1D4ED8),
             title: 'DISEWA',
             subtitle: 'Sedang Digunakan Customer',
-            titleColor: const Color(0xFFD97706),
+            statusDotColor: const Color(0xFF2563EB),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           _buildKpiCard(
-            icon: Icons.warning_amber_rounded,
-            iconColor: const Color(0xFFDC2626),
-            iconBg: const Color(0xFFFEF2F2),
-            borderColor: const Color(0xFFFECACA),
             count: lateUnits,
-            countColor: const Color(0xFFDC2626),
+            countColor: const Color(0xFFB91C1C),
             title: 'TERLAMBAT',
             subtitle: 'Melewati Batas Sewa',
-            titleColor: const Color(0xFFDC2626),
+            statusDotColor: const Color(0xFFDC2626),
           ),
           if (maintenanceUnits > 0) ...[
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             _buildKpiCard(
-              icon: Icons.block_flipped,
-              iconColor: const Color(0xFFE11D48),
-              iconBg: const Color(0xFFFFF1F2),
-              borderColor: const Color(0xFFFECDD3),
               count: maintenanceUnits,
-              countColor: const Color(0xFFE11D48),
+              countColor: const Color(0xFF475569),
               title: 'PERAWATAN',
               subtitle: 'Inspeksi & Maintenance',
-              titleColor: const Color(0xFFE11D48),
+              statusDotColor: const Color(0xFF64748B),
             ),
           ],
         ],
@@ -1279,76 +1259,79 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   }
 
   Widget _buildKpiCard({
-    required IconData icon,
-    required Color iconColor,
-    required Color iconBg,
-    required Color borderColor,
     required int count,
     required Color countColor,
     required String title,
     required String subtitle,
-    required Color titleColor,
+    Color? statusDotColor,
   }) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
             ),
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: iconBg,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: borderColor.withValues(alpha: 0.5)),
-                  ),
-                  child: Icon(icon, size: 20, color: iconColor),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (statusDotColor != null) ...[
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: statusDotColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF64748B),
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
                 ),
                 Text(
                   count.toString(),
                   style: TextStyle(
-                    fontSize: 28,
+                    fontSize: 22,
                     fontWeight: FontWeight.w900,
                     color: countColor,
-                    letterSpacing: -1,
+                    letterSpacing: -0.5,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: titleColor,
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text(
               subtitle,
-              style: TextStyle(
-                fontSize: 11,
+              style: const TextStyle(
+                fontSize: 10.5,
                 fontWeight: FontWeight.w500,
-                color: titleColor.withValues(alpha: 0.75),
+                color: Color(0xFF94A3B8),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1618,19 +1601,16 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     final bhColor = _getBatteryColor(unit.batteryHealth);
     final statusColor = _getStatusColor(effectiveStatus);
     final statusBg = _getStatusBgColor(effectiveStatus);
-    final outlineColor = isOverdue ? const Color(0xFFDC2626) : _getModelOutlineColor(unit);
     final isMaintenance = effectiveStatus.toLowerCase() == 'perawatan' || effectiveStatus.toLowerCase() == 'maintenance';
     final isRented = isUnitRented;
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isOverdue
-              ? const Color(0xFFFECACA)
-              : (isMaintenance ? const Color(0xFFFECDD3) : const Color(0xFFE2E8F0)),
-          width: (isOverdue || isMaintenance) ? 1.5 : 1.0,
+          color: const Color(0xFFE2E8F0),
+          width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
@@ -1645,27 +1625,10 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header: Icon + Model/Storage + Status Badge & Branch Pill
+          // Header: Model & Specs (Left) + Status & Branch & Overflow Menu (Right)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Device Outline Icon Box
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: outlineColor.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: outlineColor.withValues(alpha: 0.25)),
-                ),
-                child: Icon(
-                  Icons.phone_iphone_rounded,
-                  color: outlineColor,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 10),
-
               // Model & Specs
               Expanded(
                 child: Column(
@@ -1695,6 +1658,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
 
               // Status Badge & Branch Pill
               Column(
@@ -1732,13 +1696,82 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                   _buildBranchBadge(unit.branchName ?? unit.affiliateName),
                 ],
               ),
+              const SizedBox(width: 4),
+
+              // Overflow Menu (•••)
+              PopupMenuButton<String>(
+                tooltip: 'Opsi Unit',
+                icon: const Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFF64748B)),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                onSelected: (value) {
+                  if (value == 'print') {
+                    _printBarcode(unit);
+                  } else if (value == 'edit') {
+                    _showEditUnitDialog(unit);
+                  } else if (value == 'return') {
+                    _handlePengembalian(unit);
+                  } else if (value == 'delete') {
+                    _confirmDeleteUnit(unit);
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'print',
+                    height: 38,
+                    child: Row(
+                      children: [
+                        Icon(Icons.print_outlined, size: 16, color: Color(0xFF475569)),
+                        SizedBox(width: 8),
+                        Text('Cetak Barcode / Label', style: TextStyle(fontSize: 12.5)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'edit',
+                    height: 38,
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_outlined, size: 16, color: Color(0xFF475569)),
+                        SizedBox(width: 8),
+                        Text('Edit Unit', style: TextStyle(fontSize: 12.5)),
+                      ],
+                    ),
+                  ),
+                  if (isOverdue || isRented)
+                    const PopupMenuItem(
+                      value: 'return',
+                      height: 38,
+                      child: Row(
+                        children: [
+                          Icon(Icons.assignment_return_outlined, size: 16, color: Color(0xFF475569)),
+                          SizedBox(width: 8),
+                          Text('Pengembalian Unit', style: TextStyle(fontSize: 12.5)),
+                        ],
+                      ),
+                    ),
+                  const PopupMenuDivider(height: 1),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    height: 38,
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFDC2626)),
+                        SizedBox(width: 8),
+                        Text('Hapus Unit', style: TextStyle(fontSize: 12.5, color: Color(0xFFDC2626))),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
-          // Identifiers Box: Asset Code | Serial Number
+          // Identifiers Box: Asset Code | Serial Number | Battery Health (inline, no progress bar, no grid icon)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             decoration: BoxDecoration(
               color: const Color(0xFFF8FAFC),
               borderRadius: BorderRadius.circular(8),
@@ -1746,65 +1779,58 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
             ),
             child: Row(
               children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      const Icon(Icons.grid_view_rounded, size: 13, color: Color(0xFF64748B)),
-                      if (unit.isAddon) ...[
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF3E8FF),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: const Color(0xFFD8B4FE)),
-                          ),
-                          child: const Text(
-                            'ADD-ON',
-                            style: TextStyle(
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF7E22CE),
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          unit.assetCode,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF0F172A),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                if (unit.isAddon) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3E8FF),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFFD8B4FE)),
+                    ),
+                    child: const Text(
+                      'ADD-ON',
+                      style: TextStyle(
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF7E22CE),
                       ),
-                    ],
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  unit.assetCode,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                    color: Color(0xFF0F172A),
                   ),
                 ),
+                const SizedBox(width: 8),
                 Container(width: 1, height: 12, color: const Color(0xFFCBD5E1)),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Row(
-                    children: [
-                      const Text('#', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          unit.serialNumber,
-                          style: const TextStyle(
-                            fontSize: 10.5,
-                            fontFamily: 'monospace',
-                            color: Color(0xFF64748B),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    'SN: ${unit.serialNumber}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: Color(0xFF64748B),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(width: 1, height: 12, color: const Color(0xFFCBD5E1)),
+                const SizedBox(width: 8),
+                Text(
+                  'BH: ${unit.batteryHealth}%',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: bhColor,
                   ),
                 ),
               ],
@@ -1817,43 +1843,72 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
           else if (isMaintenance)
             _buildMaintenanceBox(unit)
           else
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
 
-          // Battery Health Bar
-          Row(
-            children: [
-              Text(
-                'BH: ${unit.batteryHealth}%',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: bhColor,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(
-                    value: (unit.batteryHealth / 100.0).clamp(0.0, 1.0),
-                    backgroundColor: const Color(0xFFE2E8F0),
-                    valueColor: AlwaysStoppedAnimation<Color>(bhColor),
-                    minHeight: 5,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Action Buttons Row
-          if (isOverdue || isRented)
-            _buildRentedActions(unit, isOverdue: isOverdue)
-          else if (isMaintenance)
-            _buildMaintenanceActions(unit)
-          else
-            _buildTersediaActions(unit),
+          // Single Contextual Primary Action Button
+          _buildContextualActionButton(unit, isOverdue: isOverdue, isRented: isRented, isMaintenance: isMaintenance),
         ],
+      ),
+    );
+  }
+
+  Widget _buildContextualActionButton(IphoneModel unit, {required bool isOverdue, required bool isRented, required bool isMaintenance}) {
+    if (isOverdue || isRented) {
+      return SizedBox(
+        width: double.infinity,
+        height: 44,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.info_outline_rounded, size: 16),
+          label: const Text(
+            'Detail Rental',
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF0F172A),
+            side: const BorderSide(color: Color(0xFFCBD5E1)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onPressed: () => _showUnitDetail(unit),
+        ),
+      );
+    }
+
+    if (isMaintenance) {
+      return SizedBox(
+        width: double.infinity,
+        height: 44,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.check_rounded, size: 16, color: Color(0xFF059669)),
+          label: const Text(
+            'Selesai Servis',
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+          ),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Color(0xFF059669), width: 1.2),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onPressed: () => _handleSelesaiServis(unit),
+        ),
+      );
+    }
+
+    // Default: Tersedia
+    return SizedBox(
+      width: double.infinity,
+      height: 44,
+      child: ElevatedButton.icon(
+        icon: const Icon(Icons.receipt_long_rounded, size: 16),
+        label: const Text(
+          'Booking Unit',
+          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF0F172A),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          elevation: 0,
+        ),
+        onPressed: () => _handleBookingKasir(unit),
       ),
     );
   }
@@ -1863,67 +1918,21 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         ? branchName.trim()
         : '-';
 
-    Color borderColor;
-    Color bgColor;
-    Color textColor;
-    Color iconColor;
-    IconData icon;
-
-    final b = rawName.toLowerCase();
-    if (b.contains('purwoharjo')) {
-      borderColor = const Color(0xFFFDE68A);
-      bgColor = const Color(0xFFFFFBEB);
-      textColor = const Color(0xFFB45309);
-      iconColor = const Color(0xFFD97706);
-      icon = Icons.location_on_rounded;
-    } else if (b.contains('genteng')) {
-      borderColor = const Color(0xFFE9D5FF);
-      bgColor = const Color(0xFFFAF5FF);
-      textColor = const Color(0xFF6B21A8);
-      iconColor = const Color(0xFF7C3AED);
-      icon = Icons.location_on_rounded;
-    } else if (b.contains('siliragung')) {
-      borderColor = const Color(0xFFA7F3D0);
-      bgColor = const Color(0xFFECFDF5);
-      textColor = const Color(0xFF047857);
-      iconColor = const Color(0xFF059669);
-      icon = Icons.location_on_rounded;
-    } else if (rawName == '-') {
-      borderColor = const Color(0xFFE2E8F0);
-      bgColor = const Color(0xFFF8FAFC);
-      textColor = const Color(0xFF64748B);
-      iconColor = const Color(0xFF94A3B8);
-      icon = Icons.storefront_outlined;
-    } else {
-      borderColor = const Color(0xFFC7D2FE);
-      bgColor = const Color(0xFFEEF2FF);
-      textColor = const Color(0xFF4338CA);
-      iconColor = const Color(0xFF6366F1);
-      icon = Icons.location_on_rounded;
-    }
-
     return Container(
       margin: const EdgeInsets.only(top: 4),
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
       decoration: BoxDecoration(
-        color: bgColor,
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 9.5, color: iconColor),
-          const SizedBox(width: 3.5),
-          Text(
-            rawName,
-            style: TextStyle(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w600,
-              color: textColor,
-            ),
-          ),
-        ],
+      child: Text(
+        rawName,
+        style: const TextStyle(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF64748B),
+        ),
       ),
     );
   }
@@ -2067,163 +2076,6 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
       ),
     );
   }
-
-  Widget _buildTersediaActions(IphoneModel unit) {
-    return Row(
-      children: [
-        Expanded(
-          child: ElevatedButton.icon(
-            icon: const Icon(Icons.receipt_long_rounded, size: 14),
-            label: const Text('Booking Kasir', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F172A),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              elevation: 0,
-            ),
-            onPressed: () => _handleBookingKasir(unit),
-          ),
-        ),
-        const SizedBox(width: 6),
-        _buildQuickIconButton(
-          icon: Icons.print_outlined,
-          tooltip: 'Cetak Barcode / Label',
-          onPressed: () => _printBarcode(unit),
-        ),
-        const SizedBox(width: 4),
-        _buildQuickIconButton(
-          icon: Icons.edit_outlined,
-          tooltip: 'Edit Unit',
-          onPressed: () => _showEditUnitDialog(unit),
-        ),
-        const SizedBox(width: 4),
-        _buildQuickIconButton(
-          icon: Icons.delete_outline_rounded,
-          tooltip: 'Hapus Unit',
-          onPressed: () => _confirmDeleteUnit(unit),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRentedActions(IphoneModel unit, {bool isOverdue = false}) {
-    return Row(
-      children: [
-        Expanded(
-          child: ElevatedButton.icon(
-            icon: const Icon(Icons.arrow_upward_rounded, size: 14),
-            label: Text(
-              isOverdue ? 'Kembalikan (Telat)' : 'Pengembalian',
-              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isOverdue ? const Color(0xFFDC2626) : const Color(0xFFD97706),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              elevation: 0,
-            ),
-            onPressed: () => _handlePengembalian(unit),
-          ),
-        ),
-        const SizedBox(width: 6),
-        OutlinedButton(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF334155),
-            side: const BorderSide(color: Color(0xFFCBD5E1)),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          ),
-          onPressed: () => _showUnitDetail(unit),
-          child: const Text('Detail', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-        ),
-        const SizedBox(width: 4),
-        _buildQuickIconButton(
-          icon: Icons.edit_outlined,
-          tooltip: 'Edit Unit',
-          onPressed: () => _showEditUnitDialog(unit),
-        ),
-        const SizedBox(width: 4),
-        _buildQuickIconButton(
-          icon: Icons.delete_outline_rounded,
-          tooltip: 'Hapus Unit',
-          onPressed: () => _confirmDeleteUnit(unit),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMaintenanceActions(IphoneModel unit) {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.check_rounded, size: 14, color: Color(0xFF059669)),
-            label: const Text('Selesai Servis', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF059669))),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Color(0xFF059669), width: 1.2),
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-            ),
-            onPressed: () => _handleSelesaiServis(unit),
-          ),
-        ),
-        const SizedBox(width: 6),
-        OutlinedButton(
-          style: OutlinedButton.styleFrom(
-            backgroundColor: const Color(0xFFFFF1F2),
-            foregroundColor: const Color(0xFFE11D48),
-            side: const BorderSide(color: Color(0xFFFECDD3)),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          ),
-          onPressed: () => _showServiceLogDialog(unit),
-          child: const Text('Log Servis', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-        ),
-        const SizedBox(width: 4),
-        _buildQuickIconButton(
-          icon: Icons.edit_outlined,
-          tooltip: 'Edit Unit',
-          onPressed: () => _showEditUnitDialog(unit),
-        ),
-        const SizedBox(width: 4),
-        _buildQuickIconButton(
-          icon: Icons.delete_outline_rounded,
-          tooltip: 'Hapus Unit',
-          onPressed: () => _confirmDeleteUnit(unit),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuickIconButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onPressed,
-  }) {
-    return Container(
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: IconButton(
-        icon: Icon(icon, size: 14, color: const Color(0xFF64748B)),
-        tooltip: tooltip,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(),
-        onPressed: onPressed,
-      ),
-    );
-  }
-
-  // =========================================================================
-  // MOBILE BODY
-  // =========================================================================
 
   Widget _buildMobileBody() {
     return Column(

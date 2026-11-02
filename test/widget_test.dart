@@ -1032,7 +1032,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Pengembalian'), findsWidgets);
+    expect(find.text('Detail Rental'), findsWidgets);
   });
 
   testWidgets(
@@ -2189,21 +2189,17 @@ void main() {
     expect(find.textContaining('POS-MLBR-04'), findsNothing);
     expect(find.textContaining('Sync ID'), findsNothing);
 
-    // 3. Verify Profile Card (directly below App Bar)
-    expect(find.text('Admin SKYRental'), findsWidgets);
-    expect(find.text('SUPER-ADMIN'), findsWidgets);
-    expect(find.text('Ganti Akun'), findsOneWidget);
+    // 3. Verify Redundant Profile Card is removed from detail panel (user info in global AppHeader)
+    expect(find.text('Ganti Akun'), findsNothing);
 
-    // 4. Verify Master Sidebar Categories & Menu Items
-    expect(find.text('TOKO & OUTLET'), findsOneWidget);
+    // 4. Verify Master Sidebar Categories (Streamlined into 4 cohesive groups) & Menu Items
+    expect(find.text('OUTLET & RESI'), findsOneWidget);
+    expect(find.text('HARDWARE & CETAK'), findsOneWidget);
+    expect(find.text('PENGGUNA & KEAMANAN'), findsOneWidget);
+    expect(find.text('SISTEM & APLIKASI'), findsOneWidget);
     expect(find.text('Pengaturan Nama Toko & Outlet'), findsOneWidget);
     expect(find.text('Shift Operasional Kasir'), findsNothing);
-    expect(find.text('MITRA & CABANG AFFILIATE'), findsOneWidget);
-    expect(find.text('HARDWARE & RESI'), findsOneWidget);
-    expect(find.text('NOTIFIKASI OPERASIONAL'), findsOneWidget);
-    expect(find.text('KEAMANAN & AKUN'), findsOneWidget);
-    expect(find.text('TAMPILAN & TEMA'), findsOneWidget);
-    expect(find.text('TENTANG SISTEM'), findsOneWidget);
+    expect(find.text('Mitra Cabang & Affiliate'), findsOneWidget);
     expect(find.text('Keluar dari Akun Kasir'), findsOneWidget);
 
     // 5. Verify Default Active Detail Pane: Pengaturan Nama Toko & Outlet
@@ -2372,7 +2368,10 @@ void main() {
     expect(logoutPos.dy >= 62, isTrue);
 
     // Verify user can tap a menu item
-    await tester.tap(find.text('Tentang SKYRental POS'));
+    final aboutFinder = find.text('Tentang SKYRental POS');
+    await tester.ensureVisible(aboutFinder);
+    await tester.pumpAndSettle();
+    await tester.tap(aboutFinder);
     await tester.pumpAndSettle();
     expect(find.text('Tentang SKYRental POS'), findsWidgets);
   });
@@ -2458,25 +2457,9 @@ void main() {
     expect(find.text('#SKY260923BZBO'), findsOneWidget);
     expect(find.text('test'), findsWidgets);
 
-    // 9. Verify Simulasi Kosong toggle
-    final simulasiBtn = find.text('Simulasi Kosong');
-    expect(simulasiBtn, findsOneWidget);
-    await tester.ensureVisible(simulasiBtn);
-    await tester.pumpAndSettle();
-    await tester.tap(simulasiBtn);
-    await tester.pumpAndSettle();
-
-    // Verify empty state is displayed
-    expect(find.text('Tidak ada transaksi penjualan pada filter ini'), findsOneWidget);
-    final restoreBtn = find.text('Tampilkan Data');
-    expect(restoreBtn, findsOneWidget);
-
-    // Tap back to restore data
-    await tester.ensureVisible(restoreBtn);
-    await tester.pumpAndSettle();
-    await tester.tap(restoreBtn);
-    await tester.pumpAndSettle();
-    expect(find.text('#SKY260923BZBO'), findsOneWidget);
+    // 9. Verify debug helper link 'Simulasi Kosong' is removed in production
+    expect(find.text('Simulasi Kosong'), findsNothing);
+    expect(find.text('Tampilkan Data'), findsNothing);
 
     // 10. Verify Full-width Bottom Action Button
     final cetakRekapBtn = find.text('Cetak Rekap Kasir (58mm)');
@@ -2524,7 +2507,7 @@ void main() {
 
     // 2. Verify Sub-header Bar
     expect(find.text('Status Unit & Inventaris iPhone'), findsOneWidget);
-    expect(find.text('+ Tambah iPhone Baru'), findsOneWidget);
+    expect(find.text('+ Tambah Unit'), findsOneWidget);
 
     // 3. Verify 4 Summary KPI Cards
     expect(find.text('TOTAL UNIT'), findsOneWidget);
@@ -2557,8 +2540,8 @@ void main() {
     expect(find.text('IPHSKY1020'), findsOneWidget);
 
     // 6. Verify Action Buttons for respective states
-    expect(find.text('Booking Kasir'), findsWidgets);
-    expect(find.text('Pengembalian'), findsWidgets);
+    expect(find.text('Booking Unit'), findsWidgets);
+    expect(find.text('Detail Rental'), findsWidgets);
     expect(find.text('Selesai Servis'), findsWidgets);
 
     // 7. Verify Context Box Content
@@ -2886,8 +2869,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Find first Edit Unit icon button
-    final editButton = find.byTooltip('Edit Unit').first;
+    // Find first three-dot overflow button and open Edit Unit
+    final moreButton = find.byIcon(Icons.more_vert_rounded).first;
+    await tester.tap(moreButton);
+    await tester.pumpAndSettle();
+
+    final editButton = find.text('Edit Unit');
     await tester.tap(editButton);
     await tester.pumpAndSettle();
 
@@ -3882,7 +3869,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('+ Tambah iPhone Baru'), findsOneWidget);
+      expect(find.text('+ Tambah Unit'), findsOneWidget);
 
       // 2. As affiliate-admin -> hidden
       AuthService().setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
@@ -3897,7 +3884,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('+ Tambah iPhone Baru'), findsNothing);
+      expect(find.text('+ Tambah Unit'), findsNothing);
 
       // 3. As staff -> hidden
       AuthService().setCurrentUserForTest(AdminUserModel.defaultAdmin().copyWith(
@@ -3912,7 +3899,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('+ Tambah iPhone Baru'), findsNothing);
+      expect(find.text('+ Tambah Unit'), findsNothing);
     });
 
     testWidgets('AccountScreen: Mobile Shift Operasional Kasir is removed', (WidgetTester tester) async {

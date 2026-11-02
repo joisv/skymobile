@@ -133,57 +133,113 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     final isClosed = schedule.operationalState == ShiftOperationalState.closed;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      barrierDismissible: true,
+      builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isClosed ? Colors.grey.shade100 : Colors.amber.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                isClosed ? Icons.lock_clock_rounded : Icons.point_of_sale_rounded,
-                color: isClosed ? Colors.grey.shade700 : Colors.amber.shade800,
-                size: 24,
-              ),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        backgroundColor: Colors.white,
+        elevation: 8,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Centered Warning / Shift Icon
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: isClosed ? const Color(0xFFF1F5F9) : const Color(0xFFFEF3C7),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isClosed ? Icons.lock_clock_rounded : Icons.point_of_sale_rounded,
+                    color: isClosed ? const Color(0xFF475569) : const Color(0xFFD97706),
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Cohesive Centered Title
+                Text(
+                  isClosed ? 'Shift Kasir Ditutup' : 'Shift Kasir Belum Dibuka',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+
+                // Descriptive Message with Balanced Line Height
+                Text(
+                  isClosed
+                      ? 'Shift kasir untuk hari ini telah selesai ditutup (${schedule.shiftClosingTime}). Transaksi booking baru hanya dapat dibuat saat shift kasir aktif.'
+                      : 'Shift kasir belum dibuka untuk cabang ini. Anda harus membuka shift kasir terlebih dahulu sebelum melayani dan memproses booking baru.',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: Color(0xFF64748B),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+
+                // Proportional Touch-Friendly Action Buttons (44px height)
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 44,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            foregroundColor: const Color(0xFF475569),
+                          ),
+                          child: const Text(
+                            'Batal',
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (!isClosed) ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SizedBox(
+                          height: 44,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _navigateAndRefresh(AppRoutes.cashierShift);
+                            },
+                            icon: const Icon(Icons.vpn_key_rounded, size: 16),
+                            label: const Text(
+                              'Buka Shift Kasir',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              elevation: 0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                isClosed ? 'Shift Kasir Ditutup' : 'Shift Kasir Belum Dibuka',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          isClosed
-              ? 'Shift kasir untuk hari ini telah selesai ditutup (${schedule.shiftClosingTime}). Transaksi booking baru hanya dapat dibuat saat shift kasir aktif.'
-              : 'Shift kasir belum dibuka untuk cabang ini. Anda harus membuka shift kasir terlebih dahulu sebelum melayani dan memproses booking baru.',
-          style: const TextStyle(fontSize: 13, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Batal'),
           ),
-          if (!isClosed)
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _navigateAndRefresh(AppRoutes.cashierShift);
-              },
-              icon: const Icon(Icons.vpn_key_rounded, size: 16),
-              label: const Text('Buka Shift Kasir'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -418,19 +474,143 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
           backgroundColor: AppTheme.background,
           appBar: AppHeader(
             isTablet: isTablet,
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.point_of_sale_rounded, color: Color(0xFF0284C7)),
-                tooltip: 'Shift Kasir & Buku Kas',
-                onPressed: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift).then((_) => _loadDashboard()),
-              ),
-            ],
+            actions: isTablet
+                ? _buildTabletHeaderActions()
+                : [
+                    IconButton(
+                      icon: const Icon(Icons.point_of_sale_rounded, color: Color(0xFF0284C7)),
+                      tooltip: 'Shift Kasir & Buku Kas',
+                      onPressed: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift).then((_) => _loadDashboard()),
+                    ),
+                  ],
           ),
           body: bodyContent,
           floatingActionButton: isTablet ? null : _buildStitchFloatingActionButton(),
         );
       },
     );
+  }
+
+  /// Compact hardware & cash drawer status badges for tablet header
+  List<Widget> _buildTabletHeaderActions() {
+    final printService = ThermalPrintService();
+    final hasActiveShift = _shiftSchedule?.hasActiveShift ?? false;
+    final isClosed = _shiftSchedule?.operationalState == ShiftOperationalState.closed;
+
+    final badgeBg = hasActiveShift
+        ? const Color(0xFFF0F9FF)
+        : (isClosed ? const Color(0xFFF1F5F9) : const Color(0xFFFEF3C7));
+    final badgeBorder = hasActiveShift
+        ? const Color(0xFFBAE6FD)
+        : (isClosed ? const Color(0xFFE2E8F0) : const Color(0xFFFDE68A));
+    final badgeColor = hasActiveShift
+        ? const Color(0xFF0284C7)
+        : (isClosed ? const Color(0xFF64748B) : const Color(0xFFB45309));
+    final badgeIconColor = hasActiveShift
+        ? const Color(0xFF0284C7)
+        : (isClosed ? const Color(0xFF64748B) : const Color(0xFFD97706));
+    final dotColor = hasActiveShift
+        ? const Color(0xFF10B981)
+        : (isClosed ? const Color(0xFF94A3B8) : const Color(0xFFF59E0B));
+    final badgeText = hasActiveShift
+        ? 'Laci Kas'
+        : (isClosed ? 'Shift Ditutup' : 'Shift Belum Dibuka');
+
+    return [
+      // Compact Cash Drawer / Shift Status Badge
+      InkWell(
+        onTap: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift).then((_) => _loadDashboard()),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: badgeBg,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: badgeBorder),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.point_of_sale_rounded, size: 15, color: badgeIconColor),
+              const SizedBox(width: 6),
+              Text(
+                badgeText,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: badgeColor,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: dotColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(width: 8),
+
+      // Compact Printer Connectivity Status Badge
+      AnimatedBuilder(
+        animation: Listenable.merge([
+          printService.activePrinterNotifier,
+          printService.isConnectedNotifier,
+        ]),
+        builder: (context, _) {
+          final isConnected = printService.isConnectedNotifier.value;
+          final statusColor = isConnected ? const Color(0xFF047857) : const Color(0xFFDC2626);
+          final statusBg = isConnected ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2);
+          final statusBorder = isConnected ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA);
+
+          return InkWell(
+            onTap: () async {
+              unfocusSearch();
+              await Navigator.pushNamed(context, AppRoutes.printerSettings);
+              if (mounted) setState(() {});
+            },
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: statusBg,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: statusBorder),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.print_outlined, size: 15, color: statusColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    isConnected ? 'Printer On' : 'Printer Off',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: statusColor,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: isConnected ? AppTheme.success : AppTheme.error,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ];
   }
 
   void _sortQueueItems(List<BookingModel> items) {
@@ -979,26 +1159,30 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
               ),
             ),
             const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _loadDashboard(forceRefresh: true),
-              child: Row(
-                children: [
-                  Icon(Icons.autorenew_rounded, size: 15, color: AppTheme.secondary),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Perbarui',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.secondary,
-                    ),
+            Tooltip(
+              message: 'Perbarui Data',
+              child: InkWell(
+                onTap: () => _loadDashboard(forceRefresh: true),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
-                ],
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    size: 16,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
         // Row of 4 cards
         Row(
@@ -1037,7 +1221,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 5),
                     Wrap(
                       spacing: 4,
                       runSpacing: 4,
@@ -1086,7 +1270,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 5),
                     Wrap(
                       spacing: 4,
                       runSpacing: 4,
@@ -1136,24 +1320,24 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 5),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
                         value: utilizationFraction,
                         backgroundColor: const Color(0xFFE2E8F0),
                         color: const Color(0xFF2563EB),
-                        minHeight: 5,
+                        minHeight: 4,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
                         '$utilizationPercent% Utilitas Toko',
                         style: TextStyle(
-                          fontSize: 10.5,
+                          fontSize: 10,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.textSecondary,
                         ),
@@ -1189,15 +1373,15 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 5),
                     FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Row(
                         children: [
                           Container(
-                            width: 6,
-                            height: 6,
+                            width: 5,
+                            height: 5,
                             decoration: const BoxDecoration(
                               color: AppTheme.success,
                               shape: BoxShape.circle,
@@ -1233,16 +1417,16 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     required Widget content,
   }) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.cardBorder),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            blurRadius: 4,
+            offset: const Offset(0, 1.5),
           ),
         ],
       ),
@@ -1256,7 +1440,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 child: Text(
                   title,
                   style: TextStyle(
-                    fontSize: 11.5,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textSecondary,
                   ),
@@ -1265,17 +1449,17 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 ),
               ),
               Container(
-                width: 28,
-                height: 28,
+                width: 26,
+                height: 26,
                 decoration: BoxDecoration(
                   color: iconBg,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(7),
                 ),
-                child: Icon(icon, size: 16, color: iconColor),
+                child: Icon(icon, size: 15, color: iconColor),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           content,
         ],
       ),
@@ -1284,11 +1468,11 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
 
   Widget _buildQueueSearchBar({bool isTablet = false}) {
     return Container(
-      height: isTablet ? 38 : 40,
+      height: isTablet ? 44 : 40,
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.cardBorder),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
       ),
       child: TextField(
         controller: _queueSearchController,
@@ -1302,26 +1486,30 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
         style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
         decoration: InputDecoration(
           hintText: 'Cari customer, kode booking, nomor WA, unit iPhone, S/N...',
-          hintStyle: TextStyle(
-            fontSize: 12,
-            color: AppTheme.textSecondary.withValues(alpha: 0.7),
+          hintStyle: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFF64748B),
           ),
-          prefixIcon: Icon(Icons.search_rounded, size: 18, color: AppTheme.textSecondary),
+          prefixIcon: const Icon(Icons.search_rounded, size: 19, color: Color(0xFF64748B)),
           suffixIcon: _queueSearchQuery.isNotEmpty
-              ? IconButton(
-                  icon: Icon(Icons.close_rounded, size: 16, color: AppTheme.textSecondary),
-                  splashRadius: 16,
-                  padding: EdgeInsets.zero,
-                  onPressed: () {
-                    _queueSearchController.clear();
-                    setState(() {
-                      _queueSearchQuery = '';
-                    });
-                  },
+              ? Tooltip(
+                  message: 'Hapus pencarian',
+                  child: IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF475569)),
+                    splashRadius: 18,
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      _queueSearchController.clear();
+                      setState(() {
+                        _queueSearchQuery = '';
+                      });
+                    },
+                  ),
                 )
               : null,
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          contentPadding: EdgeInsets.symmetric(vertical: isTablet ? 12 : 10, horizontal: 12),
           isDense: true,
         ),
       ),
@@ -1607,19 +1795,19 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
           ),
           const SizedBox(height: 10),
 
-          // Wide Black Button: + Buat Booking Baru
+          // Primary Action 1: + Buat Booking Baru (prominent with at least 48px touch target)
           SizedBox(
             width: double.infinity,
-            height: 40,
+            height: 48,
             child: ElevatedButton.icon(
               onPressed: () {
                 _navigateAndRefresh(AppRoutes.createBooking);
               },
-              icon: const Icon(Icons.add_circle_outline_rounded, size: 16, color: Colors.white),
+              icon: const Icon(Icons.add_circle_outline_rounded, size: 18, color: Colors.white),
               label: const Text(
                 'Buat Booking Baru',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                   letterSpacing: 0.2,
@@ -1628,9 +1816,8 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                minimumSize: const Size(double.infinity, 48),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
               ),
@@ -1638,23 +1825,23 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
           ),
           const SizedBox(height: 8),
 
-          // Row with 2 buttons: Scan QR Booking & Cek Stok Unit
+          // Row with 2 primary buttons: Scan QR Booking & Cek Stok Unit (>= 48px touch target)
           Row(
             children: [
               Expanded(
                 child: SizedBox(
-                  height: 36,
+                  height: 48,
                   child: ElevatedButton.icon(
                     onPressed: () {
                       _navigateAndRefresh(AppRoutes.qrScanner);
                     },
-                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 14, color: Color(0xFF0369A1)),
+                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 16, color: Color(0xFF0369A1)),
                     label: const FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(
                         'Scan QR Booking',
                         style: TextStyle(
-                          fontSize: 10.5,
+                          fontSize: 11,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF0369A1),
                         ),
@@ -1664,9 +1851,8 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                       backgroundColor: const Color(0xFFE0F2FE),
                       foregroundColor: const Color(0xFF0369A1),
                       elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                      minimumSize: const Size(0, 48),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
@@ -1675,18 +1861,18 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
               const SizedBox(width: 8),
               Expanded(
                 child: SizedBox(
-                  height: 36,
+                  height: 48,
                   child: ElevatedButton.icon(
                     onPressed: () {
                       _navigateAndRefresh(AppRoutes.unitStatus);
                     },
-                    icon: Icon(Icons.inventory_2_outlined, size: 14, color: AppTheme.textPrimary),
+                    icon: Icon(Icons.inventory_2_outlined, size: 16, color: AppTheme.textPrimary),
                     label: FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(
                         'Cek Stok Unit',
                         style: TextStyle(
-                          fontSize: 10.5,
+                          fontSize: 11,
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textPrimary,
                         ),
@@ -1696,9 +1882,8 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                       backgroundColor: const Color(0xFFF1F5F9),
                       foregroundColor: AppTheme.textPrimary,
                       elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                      minimumSize: const Size(0, 48),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
@@ -1706,42 +1891,12 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
               ),
             ],
           ),
-          const SizedBox(height: 8),
-
-          // Wide Button: Shift Kasir & Buku Kas
-          SizedBox(
-            width: double.infinity,
-            height: 38,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                _navigateAndRefresh(AppRoutes.cashierShift);
-              },
-              icon: const Icon(Icons.point_of_sale_rounded, size: 16, color: Color(0xFF0284C7)),
-              label: const Text(
-                'Shift Kasir & Buku Kas',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0284C7),
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFF0F9FF),
-                foregroundColor: const Color(0xFF0284C7),
-                elevation: 0,
-                side: const BorderSide(color: Color(0xFFBAE6FD)),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 
+  /// Collapsed minimal 1-line status row for tablet printer card
   Widget _buildTabletPrinterCard() {
     final printService = ThermalPrintService();
     return AnimatedBuilder(
@@ -1758,10 +1913,8 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
           printerName = 'VSC MP-58C';
         }
 
-        final statusText = isConnected ? 'Terhubung' : 'Belum Terhubung';
-
         return Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: AppTheme.surface,
             borderRadius: BorderRadius.circular(16),
@@ -1776,63 +1929,9 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Header
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 6,
-                runSpacing: 4,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.print_outlined, size: 16, color: AppTheme.textPrimary),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Printer Kasir',
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isConnected ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 5,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: isConnected ? AppTheme.success : AppTheme.error,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          isConnected ? 'Online' : 'Offline',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: isConnected ? const Color(0xFF047857) : const Color(0xFFDC2626),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-
-              // Device Detail Box
+              // Minimal 1-line status row (Icon, Printer Kasir, Online/Offline badge)
               InkWell(
                 onTap: () async {
                   unfocusSearch();
@@ -1842,143 +1941,140 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                     setState(() {});
                   }
                 },
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0F7FF),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFDBEAFE)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(7),
-                        ),
-                        child: const Icon(
-                          Icons.bluetooth_connected_rounded,
-                          size: 16,
-                          color: Color(0xFF2563EB),
-                        ),
+                borderRadius: BorderRadius.circular(8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: isConnected ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(7),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              printerName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 1),
-                            Text(
-                              'Bluetooth Thermal 58mm',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                color: AppTheme.textSecondary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
+                      child: Icon(
+                        Icons.print_outlined,
+                        size: 15,
+                        color: isConnected ? const Color(0xFF2563EB) : const Color(0xFF64748B),
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Printer Kasir',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isConnected ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.battery_charging_full_rounded,
-                                size: 13,
-                                color: isConnected ? const Color(0xFF047857) : AppTheme.textSecondary,
-                              ),
-                              Text(
-                                isConnected ? ' 100%' : '',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  color: isConnected ? const Color(0xFF047857) : AppTheme.textSecondary,
-                                ),
-                              ),
-                            ],
+                          Container(
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: isConnected ? AppTheme.success : AppTheme.error,
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                          const SizedBox(height: 1),
+                          const SizedBox(width: 4),
                           Text(
-                            statusText,
+                            isConnected ? 'Online' : 'Offline',
                             style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.bold,
                               color: isConnected ? const Color(0xFF047857) : const Color(0xFFDC2626),
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 8),
 
-              // Button: Tes Cetak Nota Struk
+              // Button: Tes Cetak Nota Struk (visually disabled when offline)
               SizedBox(
                 width: double.infinity,
-                height: 38,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    try {
-                      final result = await ThermalPrintService().printTestPage();
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(result.isSuccess
-                                ? 'Tes cetak nota berhasil dikirim ke printer.'
-                                : 'Gagal tes cetak: ${result.message}'),
-                            backgroundColor: result.isSuccess ? const Color(0xFF047857) : AppTheme.error,
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Gagal tes cetak: $e'),
-                            backgroundColor: AppTheme.error,
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.receipt_outlined, size: 15, color: Color(0xFF2563EB)),
-                  label: const Text(
-                    'Tes Cetak Nota Struk',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2563EB),
-                    ),
-                  ),
+                height: 34,
+                child: ElevatedButton(
+                  onPressed: isConnected
+                      ? () async {
+                          try {
+                            final result = await ThermalPrintService().printTestPage();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(result.isSuccess
+                                      ? 'Tes cetak nota berhasil dikirim ke printer.'
+                                      : 'Gagal tes cetak: ${result.message}'),
+                                  backgroundColor: result.isSuccess ? const Color(0xFF047857) : AppTheme.error,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Gagal tes cetak: $e'),
+                                  backgroundColor: AppTheme.error,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFEFF6FF),
-                    foregroundColor: const Color(0xFF2563EB),
+                    backgroundColor: isConnected ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
+                    foregroundColor: isConnected ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                    disabledBackgroundColor: const Color(0xFFF1F5F9),
+                    disabledForegroundColor: const Color(0xFF94A3B8),
                     elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(
+                        color: isConnected ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.receipt_outlined,
+                          size: 13,
+                          color: isConnected ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Tes Cetak Nota Struk',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: isConnected ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -2054,80 +2150,91 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 ),
               ),
             )
-          else ...[
-            ...entries.take(maxStockDisplay).map((entry) {
-              final modelName = entry.key;
-              final units = entry.value;
-              final colors = units.map((u) => u.color).toSet().join(' & ');
-              final storage = units.first.storage;
-
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
+          else
+            // Clean max-height with smooth scrolling to prevent list overflow when items increase
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 180),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildDeviceThumbnail(units.first, size: 30, radius: 6),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            modelName,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
+                    ...entries.take(maxStockDisplay).map((entry) {
+                      final modelName = entry.key;
+                      final units = entry.value;
+                      final colors = units.map((u) => u.color).toSet().join(' & ');
+                      final storage = units.first.storage;
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            _buildDeviceThumbnail(units.first, size: 30, radius: 6),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    modelName,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.textPrimary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    storage.isNotEmpty ? '$storage • $colors' : colors,
+                                    style: TextStyle(
+                                      fontSize: 9.5,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            storage.isNotEmpty ? '$storage â€¢ $colors' : colors,
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE0F2FE),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '${units.length} Unit',
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0284C7),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    if (entries.length > maxStockDisplay)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, bottom: 6),
+                        child: Center(
+                          child: Text(
+                            '+ ${entries.length - maxStockDisplay} model iPhone lainnya',
                             style: TextStyle(
-                              fontSize: 9.5,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
                               color: AppTheme.textSecondary,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE0F2FE),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '${units.length} Unit',
-                        style: const TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0284C7),
                         ),
                       ),
-                    ),
                   ],
                 ),
-              );
-            }),
-            if (entries.length > maxStockDisplay)
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 6),
-                child: Center(
-                  child: Text(
-                    '+ ${entries.length - maxStockDisplay} model iPhone lainnya',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                ),
               ),
-          ],
+            ),
           const SizedBox(height: 8),
 
           // Button: Buka Katalog Lengkap
@@ -2946,6 +3053,33 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     // Hapus kata 'default' pada akhir nama iPhone jika ada (case-insensitive)
     final cleanIphoneName = rawIphoneName.replaceAll(RegExp(r'\s+default$', caseSensitive: false), '').trim();
 
+    final isPickup = type == 'pickup' || booking.status == BookingStatus.confirmed || booking.status == BookingStatus.pending;
+    final accentColor = isOverdue
+        ? const Color(0xFFDC2626)
+        : (isPickup ? const Color(0xFF2563EB) : const Color(0xFFD97706));
+
+    // Payment badge text & styling
+    String paymentBadgeText;
+    Color paymentBadgeBg;
+    Color paymentBadgeTextCol;
+    switch (paymentStatus) {
+      case PaymentStatus.paid:
+        paymentBadgeText = 'Lunas';
+        paymentBadgeBg = const Color(0xFFDCFCE7);
+        paymentBadgeTextCol = const Color(0xFF15803D);
+        break;
+      case PaymentStatus.partial:
+        paymentBadgeText = 'DP';
+        paymentBadgeBg = const Color(0xFFFEF3C7);
+        paymentBadgeTextCol = const Color(0xFFB45309);
+        break;
+      case PaymentStatus.unpaid:
+        paymentBadgeText = 'Pending';
+        paymentBadgeBg = const Color(0xFFFEE2E2);
+        paymentBadgeTextCol = const Color(0xFFB91C1C);
+        break;
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -2964,11 +3098,21 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(15),
-        child: InkWell(
-          onTap: onDetail,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        child: Stack(
+          children: [
+            // Subtle colored border accent on the left of each card for fast visual scanning
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 4,
+              child: Container(color: accentColor),
+            ),
+            InkWell(
+              onTap: onDetail,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
               // Header: Kode Booking & Tanggal dengan background putih
               Container(
                 width: double.infinity,
@@ -2984,7 +3128,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
+                    Flexible(
                       child: Text(
                         displayCode,
                         style: TextStyle(
@@ -2997,15 +3141,27 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      formattedDate,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF64748B),
+                    Flexible(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFF64748B)),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              formattedDate,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF64748B),
+                              ),
+                              textAlign: TextAlign.end,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
-                      textAlign: TextAlign.end,
-                      maxLines: 1,
                     ),
                   ],
                 ),
@@ -3036,22 +3192,49 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                         ),
                         const SizedBox(width: 6),
                         Flexible(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: bookingStatusBg,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              bookingStatusText,
-                              style: const TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: paymentBadgeBg,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    paymentBadgeText,
+                                    style: TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: paymentBadgeTextCol,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                                  decoration: BoxDecoration(
+                                    color: bookingStatusBg,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    bookingStatusText,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -3069,40 +3252,74 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
 
-                    // Baris 3: Serial Number (SN) Unit & Creator
+                    // Baris 3: Serial Number (SN) Unit dalam Monospace Pill Badge & Destructive Action Link (hapus)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        // Monospace S/N Pill Badge
                         Flexible(
-                          child: Text(
-                            booking.iphone.serialNumber.toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF94A3B8),
-                              letterSpacing: 0.5,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            child: Text(
+                              booking.iphone.serialNumber.toUpperCase(),
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF475569),
+                                letterSpacing: 0.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            'Dibuat oleh: ${booking.userName ?? "Kasir"}',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w400,
-                              color: Color(0xFF94A3B8),
+                        // Secondary Destructive Action: Subtle link with confirmation styling
+                        InkWell(
+                          onTap: onDelete,
+                          borderRadius: BorderRadius.circular(6),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.delete_outline_rounded, size: 12.5, color: Color(0xFF94A3B8)),
+                                SizedBox(width: 2),
+                                Text(
+                                  'hapus',
+                                  style: TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.end,
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 3),
+
+                    // Metadata Creator: positioned subtly in corner
+                    Text(
+                      'Dibuat oleh: ${booking.userName ?? "Kasir"}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFF94A3B8),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
 
                     if (booking.hasAddons) ...[
@@ -3119,11 +3336,11 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                       ),
                     ],
 
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     const Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
 
-                    // Baris 4: Nominal Transaksi & Tombol Hapus (Flex Between, font nominal dikurangi 2-3 pt)
+                    // Baris 4: Nominal Transaksi & Primary Constructive Action Button ("Detail")
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -3156,21 +3373,29 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                           ),
                         ),
                         const SizedBox(width: 8),
+                        // Primary Constructive Action Button: "Detail"
                         Material(
                           color: const Color(0xFF0F172A),
                           borderRadius: BorderRadius.circular(8),
                           child: InkWell(
-                            onTap: onDelete,
+                            onTap: onDetail,
                             borderRadius: BorderRadius.circular(8),
                             child: const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                              child: Text(
-                                'hapus',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                              padding: EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Detail',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  SizedBox(width: 4),
+                                  Icon(Icons.arrow_forward_rounded, size: 12, color: Colors.white),
+                                ],
                               ),
                             ),
                           ),
@@ -3182,6 +3407,8 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
               ),
             ],
           ),
+        ),
+          ],
         ),
       ),
     );

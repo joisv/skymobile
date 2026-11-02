@@ -398,7 +398,7 @@ Status Kasir: Telah Ditutup & Sesuai.
               _buildReceiptDetailRow('Nominal', Formatters.currency(tx.paidAmount)),
               _buildReceiptDetailRow('Tanggal', '${Formatters.date(tx.transactionDate)} ${tx.transactionDate.hour.toString().padLeft(2, '0')}:${tx.transactionDate.minute.toString().padLeft(2, '0')} WIB'),
               if (tx.notes != null && tx.notes!.isNotEmpty)
-                _buildReceiptDetailRow('Keterangan', tx.notes!.replaceAll('|', ' â€¢ ')),
+                _buildReceiptDetailRow('Keterangan', tx.notes!.replaceAll('|', ' • ')),
             ],
           ),
           actions: [
@@ -584,9 +584,9 @@ Status Kasir: Telah Ditutup & Sesuai.
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Left Column (Hero Omzet + Proporsi + Jenis Pembayaran + Rekonsiliasi)
+                          // Left Column (Cash Flow & Reconciliation Summary ~35% width)
                           Expanded(
-                            flex: 38,
+                            flex: 35,
                             child: _buildTabletLeftColumn(
                               totalRev: totalRev,
                               txCount: txCount,
@@ -604,9 +604,9 @@ Status Kasir: Telah Ditutup & Sesuai.
                             ),
                           ),
                           const SizedBox(width: 20),
-                          // Right Column (4 Stats + Populer Models + Transaction Table)
+                          // Right Column (Operational Analytics & Transaction Table ~65% width)
                           Expanded(
-                            flex: 62,
+                            flex: 65,
                             child: _buildTabletRightColumn(
                               cashIncome: cashIncome,
                               transferIncome: transferIncome,
@@ -904,192 +904,221 @@ Status Kasir: Telah Ditutup & Sesuai.
   Widget _buildTabletSubHeaderAndFilters() {
     final dateLabel = _getDateRangeLabel();
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.center,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Laporan Penjualan & Kasir',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    AuthService().isStaff
+                        ? 'Rekapitulasi omzet dan transaksi sewa dari booking yang dibuat oleh akun Anda.'
+                        : 'Rekapitulasi omzet, alur kas tunai, transaksi sewa iPhone, dan rekonsiliasi deposit harian.',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w400,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 14),
+            _buildExportMenuButton(),
+          ],
+        ),
+        const SizedBox(height: 14),
+        // Unified single-line filter bar across tablet viewport
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 6,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Row(
             children: [
-              const Text(
-                'Laporan Penjualan & Kasir',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF0F172A),
-                  letterSpacing: -0.5,
+              _buildBranchSelector(isMobile: false),
+              const SizedBox(width: 12),
+              Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
+              const SizedBox(width: 12),
+              // Segmented Period Filter
+              Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: _periodOptions.map((period) {
+                    final isSelected = _selectedPeriod == period && _customDateRange == null;
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedPeriod = period;
+                          _customDateRange = null;
+                          _currentPage = 1;
+                        });
+                        _loadReport(page: 1);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected ? const Color(0xFF0F172A) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          period,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                            color: isSelected ? Colors.white : const Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                AuthService().isStaff
-                    ? 'Rekapitulasi omzet dan transaksi sewa dari booking yang dibuat oleh akun Anda.'
-                    : 'Rekapitulasi omzet, alur kas tunai, transaksi sewa iPhone, dan rekonsiliasi deposit harian.',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w400,
+              const SizedBox(width: 12),
+              Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
+              const SizedBox(width: 12),
+              // Date Range Picker Button
+              InkWell(
+                onTap: _pickCustomDateRange,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: _customDateRange != null ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _customDateRange != null ? AppTheme.accent : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: 13,
+                        color: _customDateRange != null ? AppTheme.accent : const Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        dateLabel,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: _customDateRange != null ? AppTheme.accent : const Color(0xFF334155),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              ),
+              const Spacer(),
+              // Quick refresh indicator
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 18, color: Color(0xFF64748B)),
+                tooltip: 'Muat Ulang Laporan',
+                onPressed: () => _loadReport(page: _currentPage),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        Flexible(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildBranchSelector(isMobile: false),
-                const SizedBox(width: 8),
-                // Segmented Period Filter
-                Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: _periodOptions.map((period) {
-                      final isSelected = _selectedPeriod == period && _customDateRange == null;
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedPeriod = period;
-                            _customDateRange = null;
-                            _currentPage = 1;
-                          });
-                          _loadReport(page: 1);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFF0F172A) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            period,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                              color: isSelected ? Colors.white : const Color(0xFF475569),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-                const SizedBox(width: 8),
+      ],
+    );
+  }
 
-                // Date Range Picker Button
-                InkWell(
-                  onTap: _pickCustomDateRange,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _customDateRange != null ? AppTheme.accent : const Color(0xFFE2E8F0)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          size: 14,
-                          color: _customDateRange != null ? AppTheme.accent : const Color(0xFF64748B),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          dateLabel,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: _customDateRange != null ? AppTheme.accent : const Color(0xFF334155),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-
-                // Unduh Rekap Button
-                PopupMenuButton<String>(
-                  tooltip: 'Unduh & Ekspor Rekap',
-                  onSelected: (val) {
-                    if (val == 'escpos') _showClosingReportDialog();
-                    if (val == 'csv') _showCsvExportDialog();
-                    if (val == 'wa') _shareToWhatsApp();
-                  },
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: 'escpos',
-                      child: Row(
-                        children: [
-                          Icon(Icons.print_rounded, size: 18, color: AppTheme.primary),
-                          const SizedBox(width: 8),
-                          const Text('Cetak Tutup Kasir (58mm)'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'csv',
-                      child: Row(
-                        children: [
-                          Icon(Icons.table_chart_outlined, size: 18, color: AppTheme.accent),
-                          const SizedBox(width: 8),
-                          const Text('Ekspor Data CSV'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'wa',
-                      child: Row(
-                        children: [
-                          Icon(Icons.chat_outlined, size: 18, color: Color(0xFF10B981)),
-                          SizedBox(width: 8),
-                          Text('Salin Ringkasan WhatsApp'),
-                        ],
-                      ),
-                    ),
-                  ],
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.file_download_outlined, size: 16, color: Color(0xFF334155)),
-                        SizedBox(width: 6),
-                        Text(
-                          'Unduh Rekap',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF334155),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+  Widget _buildExportMenuButton() {
+    return PopupMenuButton<String>(
+      tooltip: 'Unduh & Ekspor Rekap',
+      onSelected: (val) {
+        if (val == 'escpos') _showClosingReportDialog();
+        if (val == 'csv') _showCsvExportDialog();
+        if (val == 'wa') _shareToWhatsApp();
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'escpos',
+          child: Row(
+            children: [
+              Icon(Icons.print_rounded, size: 18, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              const Text('Cetak Tutup Kasir (58mm)'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'csv',
+          child: Row(
+            children: [
+              Icon(Icons.table_chart_outlined, size: 18, color: AppTheme.accent),
+              const SizedBox(width: 8),
+              const Text('Ekspor Data CSV'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'wa',
+          child: Row(
+            children: [
+              Icon(Icons.chat_outlined, size: 18, color: Color(0xFF10B981)),
+              SizedBox(width: 8),
+              Text('Salin Ringkasan WhatsApp'),
+            ],
           ),
         ),
       ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFCBD5E1)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.file_download_outlined, size: 16, color: Color(0xFF334155)),
+            SizedBox(width: 6),
+            Text(
+              'Unduh Rekap',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF334155),
+              ),
+            ),
+            SizedBox(width: 4),
+            Icon(Icons.arrow_drop_down, size: 16, color: Color(0xFF64748B)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1311,7 +1340,14 @@ Status Kasir: Telah Ditutup & Sesuai.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildRevenueHeroCard(totalRev, txCount, aov, heldDep),
+        _buildRevenueHeroCard(
+          totalRev,
+          txCount,
+          aov,
+          heldDep,
+          cashIncome: cashIncome,
+          nonCashIncome: qrisIncome + transferIncome,
+        ),
         const SizedBox(height: 16),
         _buildExpensesReconciliationCard(
           grossCash: grossCash,
@@ -1321,14 +1357,14 @@ Status Kasir: Telah Ditutup & Sesuai.
           isTablet: true,
         ),
         const SizedBox(height: 16),
+        _buildPaymentTypeCard(typeBreakdown),
+        const SizedBox(height: 16),
         _buildPaymentProportionCard(
           cashIncome: cashIncome,
           transferIncome: transferIncome,
           qrisIncome: qrisIncome,
           totalRev: totalRev,
         ),
-        const SizedBox(height: 16),
-        _buildPaymentTypeCard(typeBreakdown),
       ],
     );
   }
@@ -1403,7 +1439,14 @@ Status Kasir: Telah Ditutup & Sesuai.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildRevenueHeroCard(totalRev, txCount, aov, heldDep),
+        _buildRevenueHeroCard(
+          totalRev,
+          txCount,
+          aov,
+          heldDep,
+          cashIncome: cashIncome,
+          nonCashIncome: qrisIncome + transferIncome,
+        ),
         const SizedBox(height: 14),
         _buildExpensesReconciliationCard(
           grossCash: grossCash,
@@ -1662,7 +1705,14 @@ Status Kasir: Telah Ditutup & Sesuai.
   // HERO REVENUE CARD (MATCHING DESIGN)
   // =========================================================================
 
-  Widget _buildRevenueHeroCard(double totalRev, int txCount, double aov, double heldDep) {
+  Widget _buildRevenueHeroCard(
+    double totalRev,
+    int txCount,
+    double aov,
+    double heldDep, {
+    double cashIncome = 0.0,
+    double nonCashIncome = 0.0,
+  }) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1775,7 +1825,101 @@ Status Kasir: Telah Ditutup & Sesuai.
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              // Quick Breakdown: Cash vs Non-Cash (QRIS/Transfer)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF10B981),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Cash (Tunai)',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  Formatters.currency(cashIncome),
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(width: 1, height: 24, color: Colors.white.withValues(alpha: 0.15)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF38BDF8),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'QRIS / Transfer',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  Formatters.currency(nonCashIncome),
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
               Divider(color: Colors.white.withValues(alpha: 0.12), height: 1),
               const SizedBox(height: 14),
               Row(
@@ -1962,75 +2106,90 @@ Status Kasir: Telah Ditutup & Sesuai.
 
   Widget _buildPaymentTypeCard(Map<String, double> typeBreakdown) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Jenis Pembayaran',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 14),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: _buildTypeBox('DP (UANG MUKA)', typeBreakdown['dp'] ?? 0.0, isPenalty: false)),
-              const SizedBox(width: 10),
-              Expanded(child: _buildTypeBox('PELUNASAN', typeBreakdown['payment'] ?? 0.0, isPenalty: false)),
+              const Text(
+                'Jenis Pembayaran',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  'Kategori',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(child: _buildTypeBox('EXTEND SEWA', typeBreakdown['extend'] ?? 0.0, isPenalty: false)),
-              const SizedBox(width: 10),
-              Expanded(child: _buildTypeBox('PENALTY / DENDA', typeBreakdown['penalty'] ?? 0.0, isPenalty: true)),
-            ],
-          ),
+          const SizedBox(height: 12),
+          _buildTypeInlineRow('DP (UANG MUKA)', typeBreakdown['dp'] ?? 0.0, Icons.savings_outlined, const Color(0xFF10B981)),
+          const Divider(height: 14, color: Color(0xFFF1F5F9)),
+          _buildTypeInlineRow('PELUNASAN', typeBreakdown['payment'] ?? 0.0, Icons.check_circle_outline_rounded, const Color(0xFF2563EB)),
+          const Divider(height: 14, color: Color(0xFFF1F5F9)),
+          _buildTypeInlineRow('EXTEND SEWA', typeBreakdown['extend'] ?? 0.0, Icons.update_rounded, const Color(0xFFEA580C)),
+          const Divider(height: 14, color: Color(0xFFF1F5F9)),
+          _buildTypeInlineRow('PENALTY / DENDA', typeBreakdown['penalty'] ?? 0.0, Icons.warning_amber_rounded, const Color(0xFFDC2626), isPenalty: true),
         ],
       ),
     );
   }
 
-  Widget _buildTypeBox(String label, double amount, {required bool isPenalty}) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isPenalty ? const Color(0xFFFEF2F2) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: isPenalty ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
+  Widget _buildTypeInlineRow(String label, double amount, IconData icon, Color color, {bool isPenalty = false}) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(icon, size: 14, color: color),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
             label,
             style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.bold,
-              color: isPenalty ? const Color(0xFFDC2626) : const Color(0xFF64748B),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: isPenalty ? const Color(0xFFDC2626) : const Color(0xFF334155),
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            Formatters.currency(amount),
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              color: isPenalty ? const Color(0xFFDC2626) : const Color(0xFF0F172A),
-              letterSpacing: -0.3,
-            ),
+        ),
+        Text(
+          Formatters.currency(amount),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: isPenalty ? const Color(0xFFDC2626) : const Color(0xFF0F172A),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -2048,53 +2207,131 @@ Status Kasir: Telah Ditutup & Sesuai.
     required int qrisCount,
     required int txCount,
   }) {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildMiniStatCard(
-            title: 'Kas Tunai',
-            amount: cash,
-            subtitle: '$cashCount Transaksi Tunai',
-            icon: Icons.payments_outlined,
-            iconColor: const Color(0xFF10B981),
-            iconBg: const Color(0xFFECFDF5),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _buildMiniStatCard(
-            title: 'Transfer Bank',
-            amount: transfer,
-            subtitle: '$transferCount Transaksi Transfer/VA',
-            icon: Icons.account_balance_outlined,
-            iconColor: const Color(0xFF2563EB),
-            iconBg: const Color(0xFFEFF6FF),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildStreamlinedStatItem(
+              title: 'Kas Tunai',
+              amount: cash,
+              subtitle: '$cashCount Transaksi',
+              icon: Icons.payments_outlined,
+              iconColor: const Color(0xFF10B981),
+              iconBg: const Color(0xFFECFDF5),
+            ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _buildMiniStatCard(
-            title: 'QRIS',
-            amount: qris,
-            subtitle: '$qrisCount Settlement QRIS',
-            icon: Icons.qr_code_2_rounded,
-            iconColor: const Color(0xFF9333EA),
-            iconBg: const Color(0xFFFAF5FF),
+          Container(width: 1, height: 36, color: const Color(0xFFF1F5F9)),
+          Expanded(
+            child: _buildStreamlinedStatItem(
+              title: 'Transfer Bank',
+              amount: transfer,
+              subtitle: '$transferCount Transaksi',
+              icon: Icons.account_balance_outlined,
+              iconColor: const Color(0xFF2563EB),
+              iconBg: const Color(0xFFEFF6FF),
+            ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _buildMiniStatCard(
-            title: 'Total Masuk',
-            amount: total,
-            subtitle: '$txCount Transaksi Selesai',
-            icon: Icons.account_balance_wallet_outlined,
-            iconColor: const Color(0xFFEA580C),
-            iconBg: const Color(0xFFFFF7ED),
-            valueColor: const Color(0xFFEA580C),
+          Container(width: 1, height: 36, color: const Color(0xFFF1F5F9)),
+          Expanded(
+            child: _buildStreamlinedStatItem(
+              title: 'QRIS',
+              amount: qris,
+              subtitle: '$qrisCount Transaksi',
+              icon: Icons.qr_code_2_rounded,
+              iconColor: const Color(0xFF9333EA),
+              iconBg: const Color(0xFFFAF5FF),
+            ),
           ),
-        ),
-      ],
+          Container(width: 1, height: 36, color: const Color(0xFFF1F5F9)),
+          Expanded(
+            child: _buildStreamlinedStatItem(
+              title: 'Total Masuk',
+              amount: total,
+              subtitle: '$txCount Transaksi',
+              icon: Icons.account_balance_wallet_outlined,
+              iconColor: const Color(0xFFEA580C),
+              iconBg: const Color(0xFFFFF7ED),
+              valueColor: const Color(0xFFEA580C),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStreamlinedStatItem({
+    required String title,
+    required double amount,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    Color? valueColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(icon, size: 14, color: iconColor),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            Formatters.currency(amount),
+            style: TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w900,
+              color: valueColor ?? const Color(0xFF0F172A),
+              letterSpacing: -0.3,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 10.5,
+              color: amount > 0 ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 
@@ -2358,39 +2595,18 @@ Status Kasir: Telah Ditutup & Sesuai.
                   ),
                 ),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${_simulateEmpty ? 0 : txCount} Transaksi Tercatat',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2563EB),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        _simulateEmpty = !_simulateEmpty;
-                      });
-                    },
-                    child: Text(
-                      _simulateEmpty ? 'Tampilkan Data' : 'Simulasi Kosong',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ),
-                ],
+              Text(
+                '$txCount Transaksi Tercatat',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2563EB),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          if (_simulateEmpty || transactions.isEmpty)
+          if (transactions.isEmpty)
             _buildEmptyTransactions()
           else ...[
             Opacity(
@@ -2521,10 +2737,10 @@ Status Kasir: Telah Ditutup & Sesuai.
           ),
           child: const Row(
             children: [
-              Expanded(flex: 20, child: Text('NO. RESI / JAM', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)))),
+              Expanded(flex: 25, child: Text('NO. RESI / JAM', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)))),
               Expanded(flex: 24, child: Text('CUSTOMER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)))),
-              Expanded(flex: 26, child: Text('UNIT & TIPE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)))),
-              Expanded(flex: 16, child: Text('METODE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)))),
+              Expanded(flex: 25, child: Text('UNIT & TIPE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)))),
+              Expanded(flex: 14, child: Text('METODE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)))),
               Expanded(flex: 16, child: Align(alignment: Alignment.centerRight, child: Text('NOMINAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))))),
               Expanded(flex: 10, child: Center(child: Text('STRUK', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B))))),
             ],
@@ -2555,7 +2771,7 @@ Status Kasir: Telah Ditutup & Sesuai.
           }
 
           final phoneText = tx.customerPhone.isNotEmpty && tx.customerPhone != '-' ? tx.customerPhone : '';
-          final customerSub = phoneText.isNotEmpty ? '$phoneText â€¢ $verificationTag' : verificationTag;
+          final customerSub = phoneText.isNotEmpty ? '$phoneText • $verificationTag' : verificationTag;
 
           Color badgeBg = const Color(0xFFEFF6FF);
           Color badgeColor = const Color(0xFF2563EB);
@@ -2601,15 +2817,20 @@ Status Kasir: Telah Ditutup & Sesuai.
               children: [
                 // No. Resi / Jam
                 Expanded(
-                  flex: 20,
+                  flex: 25,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         codeDisplay,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.visible,
                         style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
+                          fontFamily: 'monospace',
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
                           color: Color(0xFF0F172A),
                         ),
                       ),
@@ -2649,7 +2870,7 @@ Status Kasir: Telah Ditutup & Sesuai.
                 ),
                 // Unit & Tipe
                 Expanded(
-                  flex: 26,
+                  flex: 25,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -2693,7 +2914,7 @@ Status Kasir: Telah Ditutup & Sesuai.
                 ),
                 // Metode
                 Expanded(
-                  flex: 16,
+                  flex: 14,
                   child: Row(
                     children: [
                       Icon(methodIcon, size: 14, color: methodColor),
@@ -2748,12 +2969,17 @@ Status Kasir: Telah Ditutup & Sesuai.
                 Expanded(
                   flex: 10,
                   child: Center(
-                    child: IconButton(
-                      icon: const Icon(Icons.print_outlined, size: 18, color: Color(0xFF475569)),
-                      tooltip: 'Cetak Struk',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: () => _printReceiptForTransaction(tx),
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: IconButton(
+                        icon: const Icon(Icons.print_outlined, size: 18, color: Color(0xFF475569)),
+                        tooltip: 'Cetak Struk',
+                        splashRadius: 20,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                        onPressed: () => _printReceiptForTransaction(tx),
+                      ),
                     ),
                   ),
                 ),
@@ -3130,7 +3356,7 @@ Status Kasir: Telah Ditutup & Sesuai.
                                     style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                                   ),
                                   const SizedBox(width: 8),
-                                  Text('â€¢', style: TextStyle(color: AppTheme.textMuted)),
+                                  Text('•', style: TextStyle(color: AppTheme.textMuted)),
                                   const SizedBox(width: 8),
                                   Text(
                                     '$bCount Transaksi',

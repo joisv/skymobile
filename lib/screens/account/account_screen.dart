@@ -996,219 +996,29 @@ class _AccountScreenState extends State<AccountScreen> {
       body: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Left Master Sidebar (Sticky & Scrollable all the way to bottom)
+              // Left Master Sidebar (Sticky & Scrollable categories with pinned logout)
               SizedBox(
                 width: 340,
-                child: SingleChildScrollView(
-                  controller: _tabletSidebarScrollController,
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 24),
-                  child: _buildTabletMasterSidebar(),
-                ),
+                child: _buildTabletMasterSidebar(),
               ),
               const SizedBox(width: 20),
 
-              // Right Detail Pane (Independently Scrollable with Profile Card at top)
+              // Right Detail Pane (Independently Scrollable)
               Expanded(
                 child: SingleChildScrollView(
                   controller: _tabletDetailScrollController,
                   physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 40),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Admin Profile Card (spans right column only)
-                      _buildTabletProfileCard(),
-                      const SizedBox(height: 16),
-
-                      // Detail Content
-                      _buildDetailContent(),
-                    ],
-                  ),
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: _buildDetailContent(),
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildTabletProfileCard() {
-    final outletName = _outletNameController.text.trim().isNotEmpty
-        ? _outletNameController.text.trim()
-        : _user.outletName;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Blue Square Avatar with Green Online Dot
-          Stack(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [AppTheme.accent, AppTheme.primaryDark],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  _user.name.isNotEmpty ? _user.name.trim().substring(0, 1).toUpperCase() : 'A',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 16),
-
-          // User Info & Badges
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        _user.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDCFCE7),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF86EFAC)),
-                      ),
-                      child: const Text(
-                        'SUPER-ADMIN',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF15803D),
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.email_outlined, size: 13, color: Color(0xFF64748B)),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        _user.email,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                      ),
-                    ),
-                    const Text('  •  ', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-                    const Icon(Icons.storefront_outlined, size: 13, color: Color(0xFF64748B)),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        outletName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Right Status Pill & Switch Account Button
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.print_outlined, size: 14, color: Color(0xFF475569)),
-                SizedBox(width: 6),
-                Text(
-                  'Thermal 58mm ',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-                ),
-                Text(
-                  '(Siap)',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Color(0xFFCBD5E1)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              foregroundColor: const Color(0xFF334155),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            ),
-            onPressed: _showLogoutDialog,
-            icon: const Icon(Icons.swap_horiz_rounded, size: 16),
-            label: const Text(
-              'Ganti Akun',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1227,285 +1037,240 @@ class _AccountScreenState extends State<AccountScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Category: KASIR & BUKU KAS
-            _buildTabletCategorySection(
-              title: 'KASIR & BUKU KAS',
-              children: [
-                _buildTabletSidebarItem(
-                  key: 'cashierShift',
-                  icon: Icons.point_of_sale_rounded,
-                  title: 'Shift Kasir & Buku Kas',
-                  subtitle: 'Buka/tutup shift, saldo modal awal & mutasi kas fisik',
-                  trailingBadge: 'Shift POS',
-                  trailingBadgeColor: const Color(0xFF0284C7),
-                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift),
-                ),
-                _buildTabletSidebarItem(
-                  key: 'branchExpenses',
-                  icon: Icons.payments_outlined,
-                  title: 'Pengeluaran Operasional',
-                  subtitle: 'Catat biaya kasir & operasional cabang',
-                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.branchExpenses),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            // Category 1: TOKO & OUTLET
-            _buildTabletCategorySection(
-              title: 'TOKO & OUTLET',
-              children: [
-                _buildTabletSidebarItem(
-                  key: 'shopSettings',
-                  icon: Icons.storefront_rounded,
-                  title: 'Pengaturan Nama Toko & Outlet',
-                  subtitle: 'Konfigurasi identitas, alamat & WiFi',
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            if (AuthService().isSuperAdmin) ...[
-              // Category 2: MITRA & CABANG AFFILIATE
-              _buildTabletCategorySection(
-                title: 'MITRA & CABANG AFFILIATE',
-                children: [
-                  _buildTabletSidebarItem(
-                    key: 'affiliateList',
-                    icon: Icons.store_mall_directory_rounded,
-                    title: 'Mitra Cabang & Affiliate',
-                    subtitle: 'Kelola outlet cabang & komisi',
-                  ),
-                  _buildTabletSidebarItem(
-                    key: 'iphoneTransfer',
-                    icon: Icons.swap_horiz_rounded,
-                    title: 'Mutasi & Transfer Unit iPhone',
-                    subtitle: 'Riwayat pengiriman antar cabang',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Category: PENGGUNA & HAK AKSES
-              _buildTabletCategorySection(
-                title: 'PENGGUNA & HAK AKSES',
-                children: [
-                  _buildTabletSidebarItem(
-                    key: 'userList',
-                    icon: Icons.manage_accounts_rounded,
-                    title: 'Daftar Pengguna',
-                    subtitle: 'Kelola akun tim, tambah user baru & status',
-                    trailingBadge: 'User List',
-                    trailingBadgeColor: const Color(0xFFEA580C),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-            ],
-
-            if (AuthService().isAffiliate || AuthService().isAffiliateAdmin) ...[
-              _buildTabletCategorySection(
-                title: 'TRANSFER UNIT CABANG',
-                children: [
-                  _buildTabletSidebarItem(
-                    key: 'iphoneTransfer',
-                    icon: Icons.swap_horiz_rounded,
-                    title: 'Transfer iPhone Masuk',
-                    subtitle: 'Terima unit iPhone yang dikirim ke cabang',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-            ],
-
-            // Category 3: HARDWARE & RESI
-            _buildTabletCategorySection(
-              title: 'HARDWARE & RESI',
-              children: [
-                _buildTabletSidebarItem(
-                  key: 'printerSettings',
-                  icon: Icons.print_rounded,
-                  title: 'Pengaturan Thermal Printer',
-                  subtitle: _primaryPrinter.address.isNotEmpty
-                      ? '${_primaryPrinter.name} (${_primaryPrinter.address.substring(0, _primaryPrinter.address.length > 17 ? 17 : _primaryPrinter.address.length)})'
-                      : 'RPP02N (86:67:7A:20:9B:AD)',
-                  trailingBadge: 'Siap',
-                  trailingBadgeColor: const Color(0xFF15803D),
-                ),
-                _buildTabletSidebarItem(
-                  key: 'receiptFormat',
-                  icon: Icons.text_snippet_rounded,
-                  title: 'Format & Tampilan Resi',
-                  subtitle: 'Kustomisasi header, footer & barcode',
-                ),
-                _buildTabletSidebarItem(
-                  key: 'reprintReceipt',
-                  icon: Icons.receipt_long_rounded,
-                  title: 'Riwayat Cetak & Cetak Ulang',
-                  subtitle: 'Daftar resi transaksi serah-terima',
-                ),
-                _buildTabletSidebarItem(
-                  key: 'qrScanner',
-                  icon: Icons.qr_code_scanner_rounded,
-                  title: 'Scanner Kamera QR',
-                  subtitle: 'Pindai barcode resi & unit iPhone',
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            // Category 4: NOTIFIKASI OPERASIONAL
-            _buildTabletCategorySection(
-              title: 'NOTIFIKASI OPERASIONAL',
-              children: [
-                _buildTabletSidebarItem(
-                  key: 'notifications',
-                  icon: Icons.notifications_active_rounded,
-                  title: 'Pusat Notifikasi Operasional',
-                  subtitle: 'Pengingat pengembalian & jatuh tempo',
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            // Category 5: KEAMANAN & AKUN
-            _buildTabletCategorySection(
-              title: 'KEAMANAN & AKUN',
-              children: [
-                _buildTabletSidebarItem(
-                  key: 'messageTemplates',
-                  icon: Icons.message_rounded,
-                  title: 'Template Pesan WA & Telegram',
-                  subtitle: 'Ubah teks default notifikasi pelanggan',
-                ),
-                _buildTabletSidebarItem(
-                  key: 'changePassword',
-                  icon: Icons.lock_reset_rounded,
-                  title: 'Ubah Kata Sandi',
-                  subtitle: 'Perbarui kata sandi akun kasir',
-                ),
-                _buildTabletSidebarItem(
-                  key: 'rolePermissions',
-                  icon: Icons.badge_rounded,
-                  title: 'Role & Izin Akses',
-                  subtitle: _user.role,
-                  trailingBadge: 'Admin Penuh',
-                  trailingBadgeColor: const Color(0xFF475569),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            // Category 6: TAMPILAN & TEMA
-            _buildTabletCategorySection(
-              title: 'TAMPILAN & TEMA',
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _tabletSidebarScrollController,
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Category 1: OUTLET & RESI
+                    _buildTabletCategorySection(
+                      title: 'OUTLET & RESI',
+                      children: [
+                        _buildTabletSidebarItem(
+                          key: 'shopSettings',
+                          icon: Icons.storefront_rounded,
+                          title: 'Pengaturan Nama Toko & Outlet',
+                          subtitle: 'Konfigurasi identitas, alamat & kontak',
                         ),
-                        child: Icon(
-                          isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                          color: const Color(0xFF475569),
-                          size: 18,
+                        _buildTabletSidebarItem(
+                          key: 'receiptFormat',
+                          icon: Icons.text_snippet_rounded,
+                          title: 'Format & Tampilan Resi',
+                          subtitle: 'Kustomisasi header, footer & barcode',
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Mode Gelap (Dark Mode)',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF1E293B),
+                        if (AuthService().isSuperAdmin) ...[
+                          _buildTabletSidebarItem(
+                            key: 'affiliateList',
+                            icon: Icons.store_mall_directory_rounded,
+                            title: 'Mitra Cabang & Affiliate',
+                            subtitle: 'Kelola outlet cabang & komisi',
+                          ),
+                          _buildTabletSidebarItem(
+                            key: 'iphoneTransfer',
+                            icon: Icons.swap_horiz_rounded,
+                            title: 'Mutasi & Transfer Unit iPhone',
+                            subtitle: 'Riwayat pengiriman antar cabang',
+                          ),
+                        ] else if (AuthService().isAffiliate || AuthService().isAffiliateAdmin) ...[
+                          _buildTabletSidebarItem(
+                            key: 'iphoneTransfer',
+                            icon: Icons.swap_horiz_rounded,
+                            title: 'Transfer iPhone Masuk',
+                            subtitle: 'Terima unit iPhone yang dikirim ke cabang',
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Category 2: HARDWARE & CETAK
+                    _buildTabletCategorySection(
+                      title: 'HARDWARE & CETAK',
+                      children: [
+                        _buildTabletSidebarItem(
+                          key: 'printerSettings',
+                          icon: Icons.print_rounded,
+                          title: 'Pengaturan Thermal Printer',
+                          subtitle: _primaryPrinter.address.isNotEmpty
+                              ? '${_primaryPrinter.name} (${_primaryPrinter.address.substring(0, _primaryPrinter.address.length > 17 ? 17 : _primaryPrinter.address.length)})'
+                              : 'RPP02N (86:67:7A:20:9B:AD)',
+                          trailingBadge: 'Siap',
+                          trailingBadgeColor: const Color(0xFF15803D),
+                        ),
+                        _buildTabletSidebarItem(
+                          key: 'qrScanner',
+                          icon: Icons.qr_code_scanner_rounded,
+                          title: 'Scanner Kamera QR',
+                          subtitle: 'Pindai barcode resi & unit iPhone',
+                        ),
+                        _buildTabletSidebarItem(
+                          key: 'reprintReceipt',
+                          icon: Icons.receipt_long_rounded,
+                          title: 'Riwayat Cetak & Cetak Ulang',
+                          subtitle: 'Daftar resi transaksi serah-terima',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Category 3: PENGGUNA & KEAMANAN
+                    _buildTabletCategorySection(
+                      title: 'PENGGUNA & KEAMANAN',
+                      children: [
+                        if (AuthService().isSuperAdmin)
+                          _buildTabletSidebarItem(
+                            key: 'userList',
+                            icon: Icons.manage_accounts_rounded,
+                            title: 'Daftar Pengguna',
+                            subtitle: 'Kelola akun tim, tambah user baru & status',
+                            trailingBadge: 'User List',
+                            trailingBadgeColor: const Color(0xFFEA580C),
+                          ),
+                        _buildTabletSidebarItem(
+                          key: 'changePassword',
+                          icon: Icons.lock_reset_rounded,
+                          title: 'Ubah Kata Sandi',
+                          subtitle: 'Perbarui kata sandi akun kasir',
+                        ),
+                        _buildTabletSidebarItem(
+                          key: 'rolePermissions',
+                          icon: Icons.badge_rounded,
+                          title: 'Role & Izin Akses',
+                          subtitle: _user.role,
+                          trailingBadge: 'Admin Penuh',
+                          trailingBadgeColor: const Color(0xFF475569),
+                        ),
+                        _buildTabletSidebarItem(
+                          key: 'messageTemplates',
+                          icon: Icons.message_rounded,
+                          title: 'Template Pesan WA & Telegram',
+                          subtitle: 'Ubah teks default notifikasi pelanggan',
+                        ),
+                        _buildTabletSidebarItem(
+                          key: 'notifications',
+                          icon: Icons.notifications_active_rounded,
+                          title: 'Pusat Notifikasi Operasional',
+                          subtitle: 'Pengingat pengembalian & jatuh tempo',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Category 4: SISTEM & APLIKASI
+                    _buildTabletCategorySection(
+                      title: 'SISTEM & APLIKASI',
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                                  color: const Color(0xFF475569),
+                                  size: 18,
+                                ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Mode Gelap (Dark Mode)',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Transform.scale(
+                                scale: 0.8,
+                                child: Switch.adaptive(
+                                  value: isDark,
+                                  activeThumbColor: themeColor,
+                                  onChanged: (val) {
+                                    ThemeService().setThemeMode(val ? ThemeMode.dark : ThemeMode.light);
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      Transform.scale(
-                        scale: 0.8,
-                        child: Switch.adaptive(
-                          value: isDark,
-                          activeThumbColor: themeColor,
-                          onChanged: (val) {
-                            ThemeService().setThemeMode(val ? ThemeMode.dark : ThemeMode.light);
-                          },
+                        _buildTabletSidebarItem(
+                          key: 'themeSettings',
+                          icon: Icons.palette_outlined,
+                          title: 'Tema & Warna Aplikasi',
+                          subtitle: 'Palet 8 warna aksen aplikasi',
                         ),
-                      ),
-                    ],
-                  ),
+                        _buildTabletSidebarItem(
+                          key: 'serverConfig',
+                          icon: Icons.dns_rounded,
+                          title: 'Alamat Server & API Backend',
+                          subtitle: ApiService().baseUrl.replaceFirst('http://', '').replaceFirst('https://', ''),
+                          trailingBadge: 'LAN / LOCAL',
+                          trailingBadgeColor: const Color(0xFF475569),
+                        ),
+                        _buildTabletSidebarItem(
+                          key: 'appUpdates',
+                          icon: Icons.system_update_rounded,
+                          title: 'Pembaruan Aplikasi',
+                          subtitle: 'Periksa update APK resmi',
+                          trailingBadge: 'APK',
+                          trailingBadgeColor: const Color(0xFF2563EB),
+                          onTap: _checkForUpdatesManually,
+                        ),
+                        _buildTabletSidebarItem(
+                          key: 'aboutApp',
+                          icon: Icons.info_outline_rounded,
+                          title: 'Tentang SKYRental POS',
+                          subtitle: 'Spesifikasi PRD & sistem terminal kasir',
+                          trailingBadge: 'Versi 1.0.0',
+                          trailingBadgeColor: const Color(0xFF64748B),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                _buildTabletSidebarItem(
-                  key: 'themeSettings',
-                  icon: Icons.palette_outlined,
-                  title: 'Tema & Warna Aplikasi',
-                  subtitle: 'Palet 8 warna aksen aplikasi',
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            // Category 7: TENTANG SISTEM
-            _buildTabletCategorySection(
-              title: 'TENTANG SISTEM',
-              children: [
-                _buildTabletSidebarItem(
-                  key: 'serverConfig',
-                  icon: Icons.dns_rounded,
-                  title: 'Alamat Server & API Backend',
-                  subtitle: ApiService().baseUrl.replaceFirst('http://', '').replaceFirst('https://', ''),
-                  trailingBadge: 'LAN / LOCAL',
-                  trailingBadgeColor: const Color(0xFF475569),
-                ),
-                _buildTabletSidebarItem(
-                  key: 'appUpdates',
-                  icon: Icons.system_update_rounded,
-                  title: 'Pembaruan Aplikasi',
-                  subtitle: 'Periksa update APK resmi',
-                  trailingBadge: 'APK',
-                  trailingBadgeColor: const Color(0xFF2563EB),
-                  onTap: _checkForUpdatesManually,
-                ),
-                _buildTabletSidebarItem(
-                  key: 'aboutApp',
-                  icon: Icons.info_outline_rounded,
-                  title: 'Tentang SKYRental POS',
-                  subtitle: 'Spesifikasi PRD & sistem terminal kasir',
-                  trailingBadge: 'Versi 1.0.0',
-                  trailingBadgeColor: const Color(0xFF64748B),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Logout Outlined Red Button
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFFFECACA), width: 1.2),
-                backgroundColor: const Color(0xFFFEF2F2),
-                foregroundColor: const Color(0xFFDC2626),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              onPressed: _showLogoutDialog,
-              icon: const Icon(Icons.logout_rounded, size: 18, color: Color(0xFFDC2626)),
-              label: const Text(
-                'Keluar dari Akun Kasir',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFDC2626),
+            ),
+            const SizedBox(height: 8),
+
+            // Pinned Logout Button at the bottom
+            Container(
+              padding: const EdgeInsets.only(top: 8),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+              ),
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFFFECACA), width: 1.2),
+                  backgroundColor: const Color(0xFFFEF2F2),
+                  foregroundColor: const Color(0xFFDC2626),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _showLogoutDialog,
+                icon: const Icon(Icons.logout_rounded, size: 18, color: Color(0xFFDC2626)),
+                label: const Text(
+                  'Keluar dari Akun Kasir',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFDC2626),
+                  ),
                 ),
               ),
             ),
@@ -1821,161 +1586,168 @@ class _AccountScreenState extends State<AccountScreen> {
         ),
         const SizedBox(height: 16),
 
-        // CARD 1: PRATINJAU KERTAS THERMAL 58MM (LIVE RECEIPT PREVIEW)
-        _buildDetailCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'PRATINJAU KERTAS THERMAL 58MM (LIVE RECEIPT PREVIEW)',
+        // Two-Column Layout: Left Form + Right Live Receipt Preview
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // LEFT COLUMN: Real Input Fields
+            Expanded(
+              flex: 6,
+              child: _buildDetailCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'IDENTITAS RENTAL',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.6,
                         color: Color(0xFF475569),
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    const SizedBox(height: 14),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _buildDetailTextField(
+                            label: 'Nama Bisnis / Toko',
+                            controller: _shopNameController,
+                            prefixIcon: Icons.storefront_outlined,
+                            hint: 'SKYRental iPhone POS',
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: _buildDetailTextField(
+                            label: 'Nama Cabang / Outlet',
+                            controller: _outletNameController,
+                            prefixIcon: Icons.store_mall_directory_outlined,
+                            hint: 'Outlet Utama Malioboro',
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                      ],
                     ),
-                    child: const Text(
-                      '58mm Thermal Print Mode',
+                    const SizedBox(height: 12),
+                    _buildDetailTextField(
+                      label: 'Nomor Telepon / WhatsApp CS',
+                      controller: _phoneController,
+                      prefixIcon: Icons.phone_outlined,
+                      hint: '0812-3456-7890',
+                      keyboardType: TextInputType.phone,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildDetailTextField(
+                      label: 'Alamat Lengkap Outlet',
+                      controller: _addressController,
+                      prefixIcon: Icons.location_on_outlined,
+                      hint: 'Jl. Malioboro No. 45, Danurejan, D.I. Yogyakarta',
+                      maxLines: 3,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(color: Color(0xFFF1F5F9)),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'TEKS KAKI STRUK (FOOTER STRUK THERMAL)',
                       style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.6,
                         color: Color(0xFF475569),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Realistic Thermal Receipt Paper Preview
-              Center(
-                child: ThermalReceiptPaperPreview(
-                  formatSettings: _receiptFormatSettings,
-                  shopName: _shopNameController.text,
-                  outletName: _outletNameController.text,
-                  address: _addressController.text,
-                  phoneNumber: _phoneController.text,
-                  footerNote: _footerController.text,
-                  showHeaderBadge: false,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // CARD 2: IDENTITAS RENTAL
-        _buildDetailCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'IDENTITAS RENTAL',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.6,
-                  color: Color(0xFF475569),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: _buildDetailTextField(
-                      label: 'Nama Bisnis / Toko',
-                      controller: _shopNameController,
-                      prefixIcon: Icons.storefront_outlined,
-                      hint: 'SKYRental iPhone POS',
+                    const SizedBox(height: 14),
+                    _buildDetailTextField(
+                      label: 'Pesan / Catatan Struk',
+                      controller: _footerController,
+                      prefixIcon: Icons.receipt_outlined,
+                      hint: 'Terima kasih telah mempercayakan sewa iPhone kepada SKYRental',
+                      maxLines: 2,
                       onChanged: (_) => setState(() {}),
                     ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: _buildDetailTextField(
-                      label: 'Nama Cabang / Outlet',
-                      controller: _outletNameController,
-                      prefixIcon: Icons.store_mall_directory_outlined,
-                      hint: 'Outlet Utama Malioboro',
-                      onChanged: (_) => setState(() {}),
+                    const SizedBox(height: 8),
+                    const Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 14, color: Color(0xFF64748B)),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Dicetak di bagian bawah kertas resi transaksi serah-terima unit iPhone.',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _buildDetailTextField(
-                label: 'Nomor Telepon / WhatsApp CS',
-                controller: _phoneController,
-                prefixIcon: Icons.phone_outlined,
-                hint: '0812-3456-7890',
-                keyboardType: TextInputType.phone,
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 12),
-              _buildDetailTextField(
-                label: 'Alamat Lengkap Outlet',
-                controller: _addressController,
-                prefixIcon: Icons.location_on_outlined,
-                hint: 'Jl. Malioboro No. 45, Danurejan, D.I. Yogyakarta',
-                onChanged: (_) => setState(() {}),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // CARD 3: TEKS KAKI STRUK (FOOTER STRUK THERMAL)
-        _buildDetailCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'TEKS KAKI STRUK (FOOTER STRUK THERMAL)',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.6,
-                  color: Color(0xFF475569),
+                  ],
                 ),
               ),
-              const SizedBox(height: 14),
-              _buildDetailTextField(
-                label: 'Pesan / Catatan Struk',
-                controller: _footerController,
-                prefixIcon: Icons.receipt_outlined,
-                hint: 'Terima kasih telah mempercayakan sewa iPhone kepada SKYRental',
-                onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(width: 16),
+
+            // RIGHT COLUMN: Compact 58mm Live Receipt Preview
+            SizedBox(
+              width: 310,
+              child: _buildDetailCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'PRATINJAU KERTAS THERMAL 58MM (LIVE RECEIPT PREVIEW)',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                              color: Color(0xFF475569),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: const Text(
+                            '58mm Thermal Print Mode',
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF475569),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ThermalReceiptPaperPreview(
+                      formatSettings: _receiptFormatSettings,
+                      shopName: _shopNameController.text,
+                      outletName: _outletNameController.text,
+                      address: _addressController.text,
+                      phoneNumber: _phoneController.text,
+                      footerNote: _footerController.text,
+                      width: 278,
+                      maxHeight: 520,
+                      showHeaderBadge: false,
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-              const Row(
-                children: [
-                  Icon(Icons.info_outline, size: 14, color: Color(0xFF64748B)),
-                  SizedBox(width: 6),
-                  Text(
-                    'Dicetak di bagian bawah kertas resi transaksi serah-terima unit iPhone.',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ],
     );

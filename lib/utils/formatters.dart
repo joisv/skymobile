@@ -13,6 +13,21 @@ class Formatters {
     return buffer.toString();
   }
 
+  static String number(num amount) {
+    final intVal = amount.toInt();
+    final isNegative = intVal < 0;
+    final str = intVal.abs().toString();
+    final buffer = StringBuffer(isNegative ? '-' : '');
+    final length = str.length;
+    for (int i = 0; i < length; i++) {
+      if (i > 0 && (length - i) % 3 == 0) {
+        buffer.write('.');
+      }
+      buffer.write(str[i]);
+    }
+    return buffer.toString();
+  }
+
   static const List<String> _monthNames = [
     'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
     'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'

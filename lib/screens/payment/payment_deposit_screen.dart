@@ -204,7 +204,7 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
       _paymentType = widget.initialPaymentType!;
     }
 
-    double initialAmount = _totalAmount;
+    double initialAmount = _totalAmount > 0 ? _totalAmount : _totalBill;
     if (_paymentType == PaymentTypeOption.penalty) {
       initialAmount = widget.initialAmount ?? (_activeBooking?.estimatedLateFee ?? 0.0);
     } else if (_paymentType == PaymentTypeOption.extend) {
@@ -340,11 +340,12 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
   void _onPaymentTypeChanged(PaymentTypeOption type) {
     setState(() {
       _paymentType = type;
+      final effectiveTotal = _totalAmount > 0 ? _totalAmount : _totalBill;
       if (type == PaymentTypeOption.pelunasan) {
-        _amount = _totalAmount;
+        _amount = effectiveTotal;
       } else if (type == PaymentTypeOption.dp) {
         const minDp = 50000.0;
-        _amount = _totalAmount <= minDp ? _totalAmount : (_totalAmount * 0.5).clamp(minDp, _totalAmount);
+        _amount = effectiveTotal <= minDp ? effectiveTotal : (effectiveTotal * 0.5).clamp(minDp, effectiveTotal);
       } else if (type == PaymentTypeOption.penalty) {
         _amount = widget.initialAmount ?? (_activeBooking?.estimatedLateFee ?? 0.0);
       } else if (type == PaymentTypeOption.extend) {

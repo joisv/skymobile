@@ -102,23 +102,170 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final mediaSize = MediaQuery.sizeOf(context);
     final isTablet = mediaSize.width >= 900 || mediaSize.shortestSide >= 600;
 
+    final contentStack = IndexedStack(
+      index: _currentIndex,
+      children: [
+        _buildTabScreen(0),
+        _buildTabScreen(1),
+        _buildTabScreen(2),
+        _buildTabScreen(3),
+      ],
+    );
+
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          _buildTabScreen(0),
-          _buildTabScreen(1),
-          _buildTabScreen(2),
-          _buildTabScreen(3),
-        ],
-      ),
-      bottomNavigationBar: isTablet
-          ? _buildTabletBottomNav(context)
-          : _buildMobileBottomNav(context),
+      body: isTablet
+          ? Row(
+              children: [
+                _buildTabletNavRail(context),
+                Expanded(child: contentStack),
+              ],
+            )
+          : contentStack,
+      bottomNavigationBar: isTablet ? null : _buildMobileBottomNav(context),
     );
   }
 
-  /// Menu Navigasi Bawah Responsif Tablet (Identik dengan Desain di Halaman Konfirmasi Pembayaran)
+  /// Slim vertical navigation rail / sidebar on the left side for landscape tablets.
+  /// Maximizes vertical screen real estate while keeping active route indicators minimal and touch-friendly.
+  Widget _buildTabletNavRail(BuildContext context) {
+    return Container(
+      width: 76,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          right: BorderSide(color: Color(0xFFE2E8F0), width: 1),
+        ),
+      ),
+      child: SafeArea(
+        right: false,
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            // Top App / POS Brand Mark
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.storefront_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Navigation Items
+            _buildTabletNavRailItem(
+              icon: Icons.dashboard_outlined,
+              activeIcon: Icons.dashboard_rounded,
+              label: 'Dashboard',
+              isActive: _currentIndex == 0,
+              onTap: () => _onTabSelected(0),
+            ),
+            const SizedBox(height: 8),
+            _buildTabletNavRailItem(
+              icon: Icons.assessment_outlined,
+              activeIcon: Icons.assessment_rounded,
+              label: 'Report',
+              isActive: _currentIndex == 1,
+              onTap: () => _onTabSelected(1),
+            ),
+            const SizedBox(height: 8),
+            _buildTabletNavRailItem(
+              icon: Icons.phone_iphone_outlined,
+              activeIcon: Icons.phone_iphone_rounded,
+              label: 'Unit iPhone',
+              isActive: _currentIndex == 2,
+              onTap: () => _onTabSelected(2),
+            ),
+            const SizedBox(height: 8),
+            _buildTabletNavRailItem(
+              icon: Icons.settings_outlined,
+              activeIcon: Icons.settings_rounded,
+              label: 'Settings',
+              isActive: _currentIndex == 3,
+              onTap: () => _onTabSelected(3),
+            ),
+
+            const Spacer(),
+            // Bottom Status / Sync Indicator
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFF10B981),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabletNavRailItem({
+    required IconData icon,
+    required IconData activeIcon,
+    required String label,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 64,
+          constraints: const BoxConstraints(minHeight: 52),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFF0F172A) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isActive ? activeIcon : icon,
+                size: 20,
+                color: isActive ? Colors.white : const Color(0xFF64748B),
+              ),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                    color: isActive ? Colors.white : const Color(0xFF64748B),
+                  ),
+                  maxLines: 1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Menu Navigasi Bawah Responsif Tablet (Fallback helper untuk navigasi legacy)
   Widget _buildTabletBottomNav(BuildContext context) {
     return Container(
       height: 54,
