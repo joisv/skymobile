@@ -11,7 +11,9 @@ import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_header.dart';
 import '../../widgets/app_cached_network_image.dart';
+import '../../widgets/shift_warning_dialog.dart';
 import 'widgets/dashboard_skeleton.dart';
+import 'widgets/operational_metric_detail_sheet.dart';
 
 class DashboardScreen extends StatefulWidget {
   final BookingRepository repository;
@@ -402,12 +404,23 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
       }
     }
 
-    final pickupItems = allQueue
-        .where((b) => b.status == BookingStatus.confirmed || b.status == BookingStatus.pending)
-        .toList();
-    final returnItems = allQueue
-        .where((b) => b.status == BookingStatus.rented || b.status == BookingStatus.returned)
-        .toList();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    final pickupItems = allQueue.where((b) {
+      if (b.status != BookingStatus.confirmed) return false;
+      return b.startDate.year == today.year &&
+          b.startDate.month == today.month &&
+          b.startDate.day == today.day;
+    }).toList();
+
+    final returnItems = allQueue.where((b) {
+      if (b.status == BookingStatus.returned || b.status == BookingStatus.cancelled) return false;
+      final isRentedOrActive = b.status == BookingStatus.rented || b.status == BookingStatus.confirmed;
+      if (!isRentedOrActive) return false;
+      return b.isCurrentlyOverdue || b.endDate.isBefore(todayEnd) || b.endDate.isAtSameMomentAs(todayEnd);
+    }).toList();
 
     List<BookingModel> baseItems;
     if (_selectedQueueFilter == 'pickup') {
@@ -474,143 +487,12 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
           backgroundColor: AppTheme.background,
           appBar: AppHeader(
             isTablet: isTablet,
-            actions: isTablet
-                ? _buildTabletHeaderActions()
-                : [
-                    IconButton(
-                      icon: const Icon(Icons.point_of_sale_rounded, color: Color(0xFF0284C7)),
-                      tooltip: 'Shift Kasir & Buku Kas',
-                      onPressed: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift).then((_) => _loadDashboard()),
-                    ),
-                  ],
           ),
           body: bodyContent,
           floatingActionButton: isTablet ? null : _buildStitchFloatingActionButton(),
         );
       },
     );
-  }
-
-  /// Compact hardware & cash drawer status badges for tablet header
-  List<Widget> _buildTabletHeaderActions() {
-    final printService = ThermalPrintService();
-    final hasActiveShift = _shiftSchedule?.hasActiveShift ?? false;
-    final isClosed = _shiftSchedule?.operationalState == ShiftOperationalState.closed;
-
-    final badgeBg = hasActiveShift
-        ? const Color(0xFFF0F9FF)
-        : (isClosed ? const Color(0xFFF1F5F9) : const Color(0xFFFEF3C7));
-    final badgeBorder = hasActiveShift
-        ? const Color(0xFFBAE6FD)
-        : (isClosed ? const Color(0xFFE2E8F0) : const Color(0xFFFDE68A));
-    final badgeColor = hasActiveShift
-        ? const Color(0xFF0284C7)
-        : (isClosed ? const Color(0xFF64748B) : const Color(0xFFB45309));
-    final badgeIconColor = hasActiveShift
-        ? const Color(0xFF0284C7)
-        : (isClosed ? const Color(0xFF64748B) : const Color(0xFFD97706));
-    final dotColor = hasActiveShift
-        ? const Color(0xFF10B981)
-        : (isClosed ? const Color(0xFF94A3B8) : const Color(0xFFF59E0B));
-    final badgeText = hasActiveShift
-        ? 'Laci Kas'
-        : (isClosed ? 'Shift Ditutup' : 'Shift Belum Dibuka');
-
-    return [
-      // Compact Cash Drawer / Shift Status Badge
-      InkWell(
-        onTap: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift).then((_) => _loadDashboard()),
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: badgeBg,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: badgeBorder),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.point_of_sale_rounded, size: 15, color: badgeIconColor),
-              const SizedBox(width: 6),
-              Text(
-                badgeText,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: badgeColor,
-                ),
-              ),
-              const SizedBox(width: 5),
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: dotColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      const SizedBox(width: 8),
-
-      // Compact Printer Connectivity Status Badge
-      AnimatedBuilder(
-        animation: Listenable.merge([
-          printService.activePrinterNotifier,
-          printService.isConnectedNotifier,
-        ]),
-        builder: (context, _) {
-          final isConnected = printService.isConnectedNotifier.value;
-          final statusColor = isConnected ? const Color(0xFF047857) : const Color(0xFFDC2626);
-          final statusBg = isConnected ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2);
-          final statusBorder = isConnected ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA);
-
-          return InkWell(
-            onTap: () async {
-              unfocusSearch();
-              await Navigator.pushNamed(context, AppRoutes.printerSettings);
-              if (mounted) setState(() {});
-            },
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: statusBg,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: statusBorder),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.print_outlined, size: 15, color: statusColor),
-                  const SizedBox(width: 6),
-                  Text(
-                    isConnected ? 'Printer On' : 'Printer Off',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: statusColor,
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: isConnected ? AppTheme.success : AppTheme.error,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    ];
   }
 
   void _sortQueueItems(List<BookingModel> items) {
@@ -1120,21 +1002,44 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     List<BookingModel> pickupItems,
     List<BookingModel> returnItems,
   ) {
-    final totalUnits = (metrics['totalUnits'] as num?)?.toInt() ?? 30;
-    final availableUnits = (metrics['availableUnits'] as num?)?.toInt() ?? 12;
-    final rentedUnits = (metrics['rentedUnits'] as num?)?.toInt() ?? (totalUnits - availableUnits);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final rentedItems = allQueue.where((b) {
+      if (b.status == BookingStatus.returned || b.status == BookingStatus.cancelled) return false;
+      if (b.status == BookingStatus.rented) return true;
+      if (b.isCurrentlyOverdue || b.endDate.isBefore(now)) {
+        return b.status == BookingStatus.confirmed || b.status == BookingStatus.rented;
+      }
+      return false;
+    }).toList();
+
+    final totalUnits = (metrics['totalUnits'] as num?)?.toInt() ??
+        (metrics['total_units'] as num?)?.toInt() ?? 30;
+    final rentedUnits = rentedItems.isNotEmpty
+        ? rentedItems.length
+        : ((metrics['rentedUnits'] as num?)?.toInt() ??
+            (metrics['rented_units'] as num?)?.toInt() ?? 0);
     final utilizationFraction = totalUnits > 0 ? (rentedUnits / totalUnits).clamp(0.0, 1.0) : 0.0;
     final utilizationPercent = (utilizationFraction * 100).toInt();
 
-    final bookingToday = (metrics['bookingToday'] as num?)?.toInt() ??
-        (metrics['todayPickups'] as num?)?.toInt() ?? pickupItems.length;
-    final waitingPickups = pickupItems.where((b) => b.status == BookingStatus.pending).length;
-    final completedPickups = (bookingToday - waitingPickups).clamp(0, bookingToday);
+    final bookingToday = pickupItems.isNotEmpty
+        ? pickupItems.length
+        : ((metrics['bookingToday'] as num?)?.toInt() ??
+            (metrics['todayPickups'] as num?)?.toInt() ?? 0);
+    final waitingPickups = pickupItems.length;
+    final completedPickups = allQueue.where((b) {
+      final isToday = b.startDate.year == today.year &&
+          b.startDate.month == today.month &&
+          b.startDate.day == today.day;
+      return isToday && (b.status == BookingStatus.rented || b.status == BookingStatus.returned);
+    }).length;
 
-    final unreturnedUnits = (metrics['unreturnedUnits'] as num?)?.toInt() ??
-        (metrics['todayReturns'] as num?)?.toInt() ?? returnItems.length;
-    final overdueReturns = (metrics['overdueReturns'] as num?)?.toInt() ??
-        returnItems.where((b) => b.status == BookingStatus.rented && b.endDate.isBefore(DateTime.now())).length;
+    final unreturnedUnits = returnItems.isNotEmpty
+        ? returnItems.length
+        : ((metrics['unreturnedUnits'] as num?)?.toInt() ??
+            (metrics['todayReturns'] as num?)?.toInt() ?? 0);
+    final overdueReturns = returnItems.where((b) => b.isCurrentlyOverdue || b.endDate.isBefore(now)).length;
     final onTimeReturns = (unreturnedUnits - overdueReturns).clamp(0, unreturnedUnits);
 
     final revenueToday = (metrics['revenueToday'] as num?)?.toDouble() ??
@@ -1194,6 +1099,13 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 icon: Icons.inbox_rounded,
                 iconColor: const Color(0xFF2563EB),
                 iconBg: const Color(0xFFEFF6FF),
+                onTap: () => _openOperationalMetricDetail(
+                  OperationalMetricType.pickup,
+                  metrics: metrics,
+                  allQueue: allQueue,
+                  pickupItems: pickupItems,
+                  returnItems: returnItems,
+                ),
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1243,6 +1155,13 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 icon: Icons.outbox_rounded,
                 iconColor: const Color(0xFFEF4444),
                 iconBg: const Color(0xFFFEE2E2),
+                onTap: () => _openOperationalMetricDetail(
+                  OperationalMetricType.returnToday,
+                  metrics: metrics,
+                  allQueue: allQueue,
+                  pickupItems: pickupItems,
+                  returnItems: returnItems,
+                ),
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1293,6 +1212,13 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 icon: Icons.pie_chart_outline_rounded,
                 iconColor: const Color(0xFF2563EB),
                 iconBg: const Color(0xFFEFF6FF),
+                onTap: () => _openOperationalMetricDetail(
+                  OperationalMetricType.rentedUnits,
+                  metrics: metrics,
+                  allQueue: allQueue,
+                  pickupItems: pickupItems,
+                  returnItems: returnItems,
+                ),
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1356,6 +1282,13 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 icon: Icons.account_balance_wallet_rounded,
                 iconColor: const Color(0xFF047857),
                 iconBg: const Color(0xFFDCFCE7),
+                onTap: () => _openOperationalMetricDetail(
+                  OperationalMetricType.revenueToday,
+                  metrics: metrics,
+                  allQueue: allQueue,
+                  pickupItems: pickupItems,
+                  returnItems: returnItems,
+                ),
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1409,59 +1342,169 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     );
   }
 
+  void _openOperationalMetricDetail(
+    OperationalMetricType type, {
+    required Map<String, dynamic> metrics,
+    required List<BookingModel> allQueue,
+    required List<BookingModel> pickupItems,
+    required List<BookingModel> returnItems,
+  }) {
+    unfocusSearch();
+    final screenSize = MediaQuery.of(context).size;
+    final isTabletLandscape = screenSize.width >= 900 && screenSize.width > screenSize.height;
+    final drawerWidth = isTabletLandscape
+        ? 640.0
+        : (screenSize.width >= 600 ? 540.0 : screenSize.width);
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Tutup Detail',
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      transitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (dialogCtx, anim1, anim2) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: drawerWidth,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.14),
+                    blurRadius: 24,
+                    offset: const Offset(-6, 0),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                left: false,
+                child: OperationalMetricDetailSheet(
+                  initialType: type,
+                  metrics: metrics,
+                  allQueue: allQueue,
+                  pickupItems: pickupItems,
+                  returnItems: returnItems,
+                  repository: widget.repository,
+                  onClose: () => Navigator.of(dialogCtx).pop(),
+                  onProcessReturn: (booking) async {
+                    final hasShift = await widget.repository.checkHasActiveShift();
+                    if (!hasShift && mounted) {
+                      await showShiftWarningDialog(context);
+                      return;
+                    }
+                    Navigator.of(dialogCtx).pop();
+                    _navigateAndRefresh(AppRoutes.returnSummary, arguments: booking);
+                  },
+                  onProcessPickup: (booking) {
+                    Navigator.of(dialogCtx).pop();
+                    _navigateAndRefresh(AppRoutes.pickup, arguments: booking);
+                  },
+                  onViewDetail: (booking) {
+                    Navigator.of(dialogCtx).pop();
+                    _navigateAndRefresh(AppRoutes.bookingDetail, arguments: booking);
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (dialogCtx, anim, secondaryAnim, child) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
+  }
+
   Widget _buildTabletMetricCard({
     required String title,
     required IconData icon,
     required Color iconColor,
     required Color iconBg,
     required Widget content,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 4,
-            offset: const Offset(0, 1.5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: Icon(icon, size: 15, color: iconColor),
+        hoverColor: iconColor.withValues(alpha: 0.04),
+        splashColor: iconColor.withValues(alpha: 0.08),
+        highlightColor: iconColor.withValues(alpha: 0.04),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.cardBorder),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 4,
+                offset: const Offset(0, 1.5),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          content,
-        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (onTap != null) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 9,
+                            color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: iconBg,
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: Icon(icon, size: 15, color: iconColor),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              content,
+            ],
+          ),
+        ),
       ),
     );
   }

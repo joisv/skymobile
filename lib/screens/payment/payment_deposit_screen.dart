@@ -13,6 +13,7 @@ import '../../services/thermal_print_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_header.dart';
+import '../../widgets/shift_warning_dialog.dart';
 import '../receipt/widgets/printer_connection_dialog.dart';
 
 enum PaymentTypeOption {
@@ -595,6 +596,8 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
   }
 
   Future<void> _confirmPayment() async {
+    if (_isConfirming) return;
+
     if (_amount <= 0) {
       _showSnackbar('Nominal pembayaran harus lebih besar dari Rp 0!', isError: true);
       return;
@@ -606,6 +609,15 @@ class _PaymentDepositScreenState extends State<PaymentDepositScreen> {
     if (_activeBooking == null) {
       _showSnackbar('Tidak ada data booking yang dipilih!', isError: true);
       return;
+    }
+
+    // Shift guard: Pastikan shift kasir terbuka untuk denda & pengembalian unit
+    if (widget.isReturnFlow || _paymentType == PaymentTypeOption.penalty) {
+      final hasShift = await widget.repository.checkHasActiveShift();
+      if (!hasShift && mounted) {
+        await showShiftWarningDialog(context);
+        return;
+      }
     }
 
     setState(() => _isConfirming = true);

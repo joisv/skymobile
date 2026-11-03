@@ -128,6 +128,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   /// Slim vertical navigation rail / sidebar on the left side for landscape tablets.
   /// Maximizes vertical screen real estate while keeping active route indicators minimal and touch-friendly.
   Widget _buildTabletNavRail(BuildContext context) {
+    final themeColor = Theme.of(context).colorScheme.primary;
+    final isDark = ThemeData.estimateBrightnessForColor(themeColor) == Brightness.dark;
+    final onThemeColor = isDark ? Colors.white : const Color(0xFF0F172A);
+
     return Container(
       width: 76,
       decoration: const BoxDecoration(
@@ -140,66 +144,58 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         right: false,
         child: Column(
           children: [
-            const SizedBox(height: 12),
-            // Top App / POS Brand Mark
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
+            // Vertically center the entire navigation items list
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildTabletNavRailItem(
+                        icon: Icons.dashboard_outlined,
+                        activeIcon: Icons.dashboard_rounded,
+                        label: 'Dashboard',
+                        isActive: _currentIndex == 0,
+                        themeColor: themeColor,
+                        onThemeColor: onThemeColor,
+                        onTap: () => _onTabSelected(0),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildTabletNavRailItem(
+                        icon: Icons.assessment_outlined,
+                        activeIcon: Icons.assessment_rounded,
+                        label: 'Report',
+                        isActive: _currentIndex == 1,
+                        themeColor: themeColor,
+                        onThemeColor: onThemeColor,
+                        onTap: () => _onTabSelected(1),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildTabletNavRailItem(
+                        icon: Icons.phone_iphone_outlined,
+                        activeIcon: Icons.phone_iphone_rounded,
+                        label: 'Unit iPhone',
+                        isActive: _currentIndex == 2,
+                        themeColor: themeColor,
+                        onThemeColor: onThemeColor,
+                        onTap: () => _onTabSelected(2),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildTabletNavRailItem(
+                        icon: Icons.settings_outlined,
+                        activeIcon: Icons.settings_rounded,
+                        label: 'Settings',
+                        isActive: _currentIndex == 3,
+                        themeColor: themeColor,
+                        onThemeColor: onThemeColor,
+                        onTap: () => _onTabSelected(3),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: const Center(
-                child: Icon(
-                  Icons.storefront_rounded,
-                  color: Colors.white,
-                  size: 22,
                 ),
               ),
             ),
-            const SizedBox(height: 20),
 
-            // Navigation Items
-            _buildTabletNavRailItem(
-              icon: Icons.dashboard_outlined,
-              activeIcon: Icons.dashboard_rounded,
-              label: 'Dashboard',
-              isActive: _currentIndex == 0,
-              onTap: () => _onTabSelected(0),
-            ),
-            const SizedBox(height: 8),
-            _buildTabletNavRailItem(
-              icon: Icons.assessment_outlined,
-              activeIcon: Icons.assessment_rounded,
-              label: 'Report',
-              isActive: _currentIndex == 1,
-              onTap: () => _onTabSelected(1),
-            ),
-            const SizedBox(height: 8),
-            _buildTabletNavRailItem(
-              icon: Icons.phone_iphone_outlined,
-              activeIcon: Icons.phone_iphone_rounded,
-              label: 'Unit iPhone',
-              isActive: _currentIndex == 2,
-              onTap: () => _onTabSelected(2),
-            ),
-            const SizedBox(height: 8),
-            _buildTabletNavRailItem(
-              icon: Icons.settings_outlined,
-              activeIcon: Icons.settings_rounded,
-              label: 'Settings',
-              isActive: _currentIndex == 3,
-              onTap: () => _onTabSelected(3),
-            ),
-
-            const Spacer(),
             // Bottom Status / Sync Indicator
             Container(
               width: 8,
@@ -221,6 +217,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     required IconData activeIcon,
     required String label,
     required bool isActive,
+    required Color themeColor,
+    required Color onThemeColor,
     required VoidCallback onTap,
   }) {
     return Material(
@@ -230,22 +228,39 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: 64,
-          constraints: const BoxConstraints(minHeight: 52),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          decoration: BoxDecoration(
-            color: isActive ? const Color(0xFF0F172A) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-          ),
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          color: Colors.transparent,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                isActive ? activeIcon : icon,
-                size: 20,
-                color: isActive ? Colors.white : const Color(0xFF64748B),
+              // Icon Container with Theme Color Background when Active
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isActive ? themeColor : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: isActive
+                      ? [
+                          BoxShadow(
+                            color: themeColor.withValues(alpha: 0.22),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Center(
+                  child: Icon(
+                    isActive ? activeIcon : icon,
+                    size: 22,
+                    color: isActive ? onThemeColor : const Color(0xFF64748B),
+                  ),
+                ),
               ),
               const SizedBox(height: 4),
+              // Text label under active icon has NO background, styled with theme color text
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
@@ -253,7 +268,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                    color: isActive ? Colors.white : const Color(0xFF64748B),
+                    color: isActive ? themeColor : const Color(0xFF64748B),
                   ),
                   maxLines: 1,
                 ),

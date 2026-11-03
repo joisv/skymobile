@@ -108,8 +108,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
 
-      // Verify header shift status sync: reflects 'Shift Belum Dibuka' without contradiction
-      expect(find.text('Shift Belum Dibuka'), findsOneWidget);
+      // Verify header hardware and floating shift badges are removed from Dashboard
+      expect(find.text('Laci Kas'), findsNothing);
 
       // Trigger Create Booking button which triggers Shift Guard Modal
       final createBookingBtn = find.text('Booking Unit');
@@ -166,13 +166,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 1. FAB is eliminated
-      expect(find.byType(FloatingActionButton), findsNothing);
+      // 1. FAB is present for primary action
+      expect(find.byKey(const Key('btn_fab_catat_biaya')), findsOneWidget);
 
       // 2. Circular red (+) icon in header is eliminated
       expect(find.byIcon(Icons.add_circle_outline), findsNothing);
 
-      // 3. Exactly ONE standard primary action button 'Catat Biaya' in action bar
+      // 3. Exactly ONE primary action button 'Catat Biaya' via FAB
       expect(find.text('Catat Biaya'), findsOneWidget);
 
       // 4. Streamlined Filter Bar contains period chips and category dropdown

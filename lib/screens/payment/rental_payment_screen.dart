@@ -100,6 +100,8 @@ class _RentalPaymentScreenState extends State<RentalPaymentScreen> {
   }
 
   Future<void> _submitPayment() async {
+    if (_isSubmitting) return;
+
     if (_enteredAmount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -124,27 +126,42 @@ class _RentalPaymentScreenState extends State<RentalPaymentScreen> {
 
     setState(() => _isSubmitting = true);
 
-    final updated = await widget.repository.submitPayment(
-      bookingCode: _bookingCode,
-      amountPaid: _enteredAmount,
-      paymentMethod: _selectedMethod,
-      notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
-    );
-
-    if (!mounted) return;
-    setState(() => _isSubmitting = false);
-
-    if (updated != null) {
-      _showSuccessDialog(updated);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pembayaran berhasil dicatat di sistem!'),
-          backgroundColor: Color(0xFF047857),
-          behavior: SnackBarBehavior.floating,
-        ),
+    try {
+      final updated = await widget.repository.submitPayment(
+        bookingCode: _bookingCode,
+        amountPaid: _enteredAmount,
+        paymentMethod: _selectedMethod,
+        notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
       );
-      Navigator.pop(context, true);
+
+      if (!mounted) return;
+
+      if (updated != null) {
+        _showSuccessDialog(updated);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pembayaran berhasil dicatat di sistem!'),
+            backgroundColor: Color(0xFF047857),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memproses pembayaran: ${e.toString().replaceAll("Exception: ", "")}'),
+            backgroundColor: const Color(0xFFDC2626),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
 

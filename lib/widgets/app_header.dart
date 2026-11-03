@@ -177,11 +177,6 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
     final dateFormatted = '${getDayName(now)}, ${Formatters.date(now)}';
     final topPadding = MediaQuery.paddingOf(context).top;
 
-    final shiftText = (shiftName != null && shiftName.contains('('))
-        ? shiftName.split('(').first.trim()
-        : (shiftName?.trim().isNotEmpty == true ? shiftName!.trim() : 'Shift Pagi');
-    final subtitleText = subtitle ?? (shiftText.contains('•') ? shiftText : '$shiftText • POS-01');
-
     return PreferredSize(
       preferredSize: preferredSize,
       child: RepaintBoundary(
@@ -212,50 +207,36 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                         leading!,
                         const SizedBox(width: 8),
                       ],
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'SKYRental',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF0F172A),
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
-                              if (title != null && title!.isNotEmpty) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFEFF6FF),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    title!,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF2563EB),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
                           const Text(
-                            'POS Station #01',
+                            'SKYRENTAL',
                             style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF64748B),
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.5,
                             ),
                           ),
+                          if (title != null && title!.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                title!,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF2563EB),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ],
@@ -414,10 +395,6 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                                           ),
                                         ),
                                       ],
-                                    ),
-                                    Text(
-                                      subtitleText,
-                                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                                     ),
                                   ],
                                 ),

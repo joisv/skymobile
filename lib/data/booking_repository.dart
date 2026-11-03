@@ -611,15 +611,29 @@ class BookingRepository {
 
     var candidates = _inventory.where((u) => u.isAddon).toList();
 
+    // Pastikan jika candidates masih kosong (misal saat inisialisasi awal / offline), gunakan data default
+    if (candidates.isEmpty) {
+      final defaultAddons = MockBookingData.inventory.where((u) => u.isAddon).toList();
+      for (final a in defaultAddons) {
+        if (!_inventory.any((u) => u.id == a.id)) {
+          _inventory.add(a);
+        }
+      }
+      candidates = _inventory.where((u) => u.isAddon).toList();
+    }
+
+    final effectiveStart = startDate ?? DateTime.now();
+    final effectiveEnd = (endDate != null && endDate.isAfter(effectiveStart))
+        ? endDate
+        : effectiveStart.add(const Duration(hours: 24));
+
     return candidates.where((addon) {
       if (effectiveAffiliateId != null && addon.affiliateId != null && addon.affiliateId != effectiveAffiliateId) {
         return false;
       }
       final status = addon.status.toLowerCase().trim();
       if (!['tersedia', 'ready'].contains(status)) return false;
-      if (startDate != null && endDate != null) {
-        if (!isUnitAvailableForPeriod(addon, startDate, endDate)) return false;
-      }
+      if (!isUnitAvailableForPeriod(addon, effectiveStart, effectiveEnd)) return false;
       if (query != null && query.trim().isNotEmpty) {
         final q = query.trim().toLowerCase();
         return addon.name.toLowerCase().contains(q) ||
@@ -861,7 +875,12 @@ class BookingRepository {
             .map((j) => PaymentTransactionModel.fromJson(j as Map<String, dynamic>))
             .toList();
         for (final item in list) {
-          final idx = _paymentTransactions.indexWhere((t) => t.id == item.id || (t.bookingCode == item.bookingCode && t.transactionDate == item.transactionDate));
+          final idx = _paymentTransactions.indexWhere((t) =>
+              t.id == item.id ||
+              (t.bookingCode.toLowerCase() == item.bookingCode.toLowerCase() &&
+                  t.paidAmount == item.paidAmount &&
+                  t.paymentMethod.toLowerCase() == item.paymentMethod.toLowerCase() &&
+                  t.transactionDate.difference(item.transactionDate).inMinutes.abs() < 2));
           if (idx != -1) {
             _paymentTransactions[idx] = item;
           } else {
@@ -915,7 +934,12 @@ class BookingRepository {
             .map((j) => PaymentTransactionModel.fromJson(j as Map<String, dynamic>))
             .toList();
         for (final item in list) {
-          final idx = _paymentTransactions.indexWhere((t) => t.id == item.id || (t.bookingCode == item.bookingCode && t.transactionDate == item.transactionDate));
+          final idx = _paymentTransactions.indexWhere((t) =>
+              t.id == item.id ||
+              (t.bookingCode.toLowerCase() == item.bookingCode.toLowerCase() &&
+                  t.paidAmount == item.paidAmount &&
+                  t.paymentMethod.toLowerCase() == item.paymentMethod.toLowerCase() &&
+                  t.transactionDate.difference(item.transactionDate).inMinutes.abs() < 2));
           if (idx != -1) {
             _paymentTransactions[idx] = item;
           } else {
@@ -1569,15 +1593,26 @@ class BookingRepository {
           status: 'tersedia',
           batteryHealth: batteryHealthFinal,
         );
+        final updatedAddons = existing.addonDevices.map((a) => a.copyWith(status: 'tersedia')).toList();
         final updatedBooking = existing.copyWith(
           status: BookingStatus.returned,
           iphone: updatedIphone,
+          addonDevices: updatedAddons,
           notes: 'Pengembalian selesai. ${staffNotes ?? ''}',
         );
         _bookings[bIdx] = updatedBooking;
         final invIdx = _inventory.indexWhere((u) => u.assetCode == updatedIphone.assetCode);
         if (invIdx != -1) {
           _inventory[invIdx] = updatedIphone;
+        }
+        for (final addon in updatedAddons) {
+          final aIdx = _inventory.indexWhere((u) =>
+              (u.id > 0 && addon.id > 0 && u.id == addon.id) ||
+              (addon.serialNumber.isNotEmpty && addon.serialNumber != '-' && u.serialNumber.toLowerCase() == addon.serialNumber.toLowerCase()) ||
+              (addon.assetCode.isNotEmpty && addon.assetCode != '-' && u.assetCode.toLowerCase() == addon.assetCode.toLowerCase()));
+          if (aIdx != -1) {
+            _inventory[aIdx] = _inventory[aIdx].copyWith(status: 'tersedia');
+          }
         }
         return updatedBooking;
       }
@@ -1629,6 +1664,15 @@ class BookingRepository {
       if (invIdx != -1) {
         _inventory[invIdx] = updatedFromApi.iphone;
       }
+      for (final addon in updatedFromApi.addonDevices) {
+        final aIdx = _inventory.indexWhere((u) =>
+            (u.id > 0 && addon.id > 0 && u.id == addon.id) ||
+            (addon.serialNumber.isNotEmpty && addon.serialNumber != '-' && u.serialNumber.toLowerCase() == addon.serialNumber.toLowerCase()) ||
+            (addon.assetCode.isNotEmpty && addon.assetCode != '-' && u.assetCode.toLowerCase() == addon.assetCode.toLowerCase()));
+        if (aIdx != -1) {
+          _inventory[aIdx] = _inventory[aIdx].copyWith(status: 'tersedia');
+        }
+      }
 
       return updatedFromApi;
     }
@@ -1644,15 +1688,26 @@ class BookingRepository {
         status: 'tersedia',
         batteryHealth: batteryHealthFinal,
       );
+      final updatedAddons = existing.addonDevices.map((a) => a.copyWith(status: 'tersedia')).toList();
       final updatedBooking = existing.copyWith(
         status: BookingStatus.returned,
         iphone: updatedIphone,
+        addonDevices: updatedAddons,
         notes: 'Pengembalian selesai. ${staffNotes ?? ''}',
       );
       _bookings[bIdx] = updatedBooking;
       final invIdx = _inventory.indexWhere((u) => u.assetCode == updatedIphone.assetCode);
       if (invIdx != -1) {
         _inventory[invIdx] = updatedIphone;
+      }
+      for (final addon in updatedAddons) {
+        final aIdx = _inventory.indexWhere((u) =>
+            (u.id > 0 && addon.id > 0 && u.id == addon.id) ||
+            (addon.serialNumber.isNotEmpty && addon.serialNumber != '-' && u.serialNumber.toLowerCase() == addon.serialNumber.toLowerCase()) ||
+            (addon.assetCode.isNotEmpty && addon.assetCode != '-' && u.assetCode.toLowerCase() == addon.assetCode.toLowerCase()));
+        if (aIdx != -1) {
+          _inventory[aIdx] = _inventory[aIdx].copyWith(status: 'tersedia');
+        }
       }
       return updatedBooking;
     }
@@ -1710,7 +1765,11 @@ class BookingRepository {
       final matchId = b.iphone.id > 0 && unit.id > 0 && b.iphone.id == unit.id;
       final matchAsset = unitAsset.isNotEmpty && unitAsset != '-' && bAsset == unitAsset;
       final matchSerial = unitSerial.isNotEmpty && unitSerial != '-' && bSerial == unitSerial;
-      final isSameUnit = matchId || matchAsset || matchSerial;
+      final matchAddon = b.addonDevices.any((a) =>
+          (a.id > 0 && unit.id > 0 && a.id == unit.id) ||
+          (unitAsset.isNotEmpty && unitAsset != '-' && a.assetCode.toLowerCase().trim() == unitAsset) ||
+          (unitSerial.isNotEmpty && unitSerial != '-' && a.serialNumber.toLowerCase().trim() == unitSerial));
+      final isSameUnit = matchId || matchAsset || matchSerial || matchAddon;
       if (!isSameUnit) {
         continue;
       }
@@ -2608,7 +2667,7 @@ class BookingRepository {
             // General/legacy metrics
             'activeRentals': metrics['activeRentals'] ?? metrics['active_rentals'] ?? 0,
             'todayPickups': metrics['todayPickups'] ?? metrics['today_pickups'] ?? 0,
-            'todayReturns': unreturnedUnitsVal,
+            'todayReturns': metrics['todayReturns'] ?? metrics['today_returns'] ?? (unreturnedUnitsVal - (metrics['overdueReturns'] ?? metrics['overdue_returns'] ?? 0)).clamp(0, unreturnedUnitsVal),
             'overdueReturns': metrics['overdueReturns'] ?? metrics['overdue_returns'] ?? 0,
             'rentedUnits': metrics['rentedUnits'] ?? metrics['rented_units'] ?? 0,
             'maintenanceUnits': metrics['maintenanceUnits'] ?? metrics['maintenance_units'] ?? 0,
@@ -2682,21 +2741,31 @@ class BookingRepository {
     // Hitung status booking & antrean
     int activeRentals = 0;
     int todayPickups = 0;
-    int todayReturns = unreturnedCount;
+    int todayReturns = 0;
     int overdueReturns = 0;
     final List<BookingModel> actionItems = [];
 
     for (final b in allBookings) {
-      if (b.status == BookingStatus.rented) {
+      final isRented = b.status == BookingStatus.rented;
+      final isConfirmed = b.status == BookingStatus.confirmed;
+
+      if (isRented) {
         activeRentals++;
+      }
+
+      if (isRented || isConfirmed) {
         final endDay = DateTime(b.endDate.year, b.endDate.month, b.endDate.day);
-        if (endDay.isBefore(today)) {
+        final isOverdue = b.isCurrentlyOverdue || endDay.isBefore(today) || (endDay.isAtSameMomentAs(today) && b.endDate.isBefore(now));
+        if (isOverdue) {
           overdueReturns++;
           actionItems.add(b);
         } else if (endDay.isAtSameMomentAs(today)) {
+          todayReturns++;
           actionItems.add(b);
         }
-      } else if (b.status == BookingStatus.confirmed) {
+      }
+
+      if (isConfirmed) {
         final startDay = DateTime(b.startDate.year, b.startDate.month, b.startDate.day);
         if (startDay.isAtSameMomentAs(today) || startDay.isBefore(today)) {
           todayPickups++;
@@ -2813,6 +2882,13 @@ class BookingRepository {
 
   /// Memvalidasi nomor WhatsApp menggunakan Fonnte API via backend
   Future<Map<String, dynamic>> validateWhatsApp(String phone) async {
+    if (_isTestEnvironment) {
+      return {
+        'status': 'success',
+        'registered': true,
+        'message': 'Nomor WhatsApp terverifikasi aktif.',
+      };
+    }
     try {
       return await ApiService().validateWhatsApp(phone);
     } catch (e) {
@@ -4251,6 +4327,17 @@ class BookingRepository {
   final List<ExpenseModel> _localExpenses = [];
   CashDrawerShiftModel? _activeShift;
   CashDrawerShiftModel? get activeShift => _activeShift;
+
+  /// Memeriksa secara instan apakah terdapat shift kasir yang aktif dan terbuka
+  bool get hasActiveShift =>
+      (_activeShift != null && _activeShift!.isOpen) ||
+      (MockBookingData.activeShift != null && MockBookingData.activeShift!.isOpen);
+
+  /// Memvalidasi shift kasir aktif ke server / state lokal
+  Future<bool> checkHasActiveShift({int? branchId, bool forceRefresh = false}) async {
+    final shift = await getCurrentShift(branchId: branchId, forceRefresh: forceRefresh);
+    return shift != null && shift.isOpen;
+  }
 
   void setTestShift(CashDrawerShiftModel? shift) {
     _activeShift = shift;

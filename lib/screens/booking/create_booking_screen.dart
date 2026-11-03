@@ -136,6 +136,30 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     return _customPrice;
   }
 
+  DateTime _startDate = DateTime.now();
+  TimeOfDay _startTime = TimeOfDay.now();
+
+  void _ensureDefaultSchedule() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (_startDate.isBefore(today)) {
+      _startDate = now;
+      _startTime = TimeOfDay.fromDateTime(now);
+    }
+    if (_selectedDurationOption == null) {
+      if (_selectedUnit != null && _selectedUnit!.availableDurations.isNotEmpty) {
+        _selectedDurationOption = _selectedUnit!.availableDurations.first;
+      } else {
+        _selectedDurationOption = IphoneDurationOption(
+          id: 1,
+          name: '24 Jam',
+          hours: 24,
+          price: (_selectedUnit?.dailyRate ?? 0) > 0 ? _selectedUnit!.dailyRate : 100000.0,
+        );
+      }
+    }
+  }
+
   void _selectUnit(IphoneModel unit) {
     setState(() {
       _selectedUnit = unit;
@@ -150,12 +174,10 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           price: unit.dailyRate > 0 ? unit.dailyRate : 100000.0,
         );
       }
+      _ensureDefaultSchedule();
     });
     _fetchAvailableAddons();
   }
-
-  DateTime _startDate = DateTime.now();
-  TimeOfDay _startTime = TimeOfDay.now();
 
   bool _isCustomDurationMode = false;
   int _customJumlah = 1;
@@ -249,7 +271,8 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
         matchedUnit = found;
       } else {
         matchedUnit = currentSelected;
-        if (_searchQuery.trim().isEmpty && matchedUnit != null && !updatedList.any((u) => u.id == matchedUnit!.id)) {
+        final selectedId = currentSelected.id;
+        if (_searchQuery.trim().isEmpty && !updatedList.any((u) => u.id == selectedId)) {
           updatedList.insert(0, matchedUnit);
         }
       }
@@ -283,10 +306,16 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
 
   Future<void> _fetchAvailableAddons() async {
     if (mounted) setState(() => _isLoadingAddons = true);
+    _ensureDefaultSchedule();
     try {
+      final effectiveStart = _startDateTime;
+      final effectiveEnd = _endDateTime.isAfter(effectiveStart)
+          ? _endDateTime
+          : effectiveStart.add(Duration(hours: _durationHoursToSubmit > 0 ? _durationHoursToSubmit : 24));
+
       final addons = await widget.repository.getAvailableAddonUnits(
-        startDate: _startDateTime,
-        endDate: _endDateTime,
+        startDate: effectiveStart,
+        endDate: effectiveEnd,
       );
       if (mounted) {
         setState(() {
@@ -947,7 +976,13 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
       if (mounted) setState(() => _isValidatingPhone = false);
     }
 
-    if (mounted) setState(() => _currentStep = 2);
+    if (mounted) {
+      setState(() {
+        _currentStep = 2;
+        _ensureDefaultSchedule();
+      });
+      _fetchAvailableAddons();
+    }
   }
 
   void _nextStep() {
@@ -967,7 +1002,13 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
     if (targetStep < _currentStep) {
       setState(() => _currentStep = targetStep);
     } else if (targetStep == 2) {
-      if (_validateSection1()) setState(() => _currentStep = 2);
+      if (_validateSection1()) {
+        setState(() {
+          _currentStep = 2;
+          _ensureDefaultSchedule();
+        });
+        _fetchAvailableAddons();
+      }
     } else if (targetStep == 3) {
       if (_validateSection1() && _validateSection2()) setState(() => _currentStep = 3);
     }
@@ -3250,15 +3291,31 @@ class _CreateBookingScreenState extends State<CreateBookingScreen> {
           else if (_availableAddons.isEmpty)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
-              child: const Text(
-                'Tidak ada perangkat add-on tersedia untuk jadwal sewa ini.',
-                style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Tidak ada perangkat add-on tersedia untuk jadwal sewa ini.',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _fetchAvailableAddons,
+                    icon: const Icon(Icons.refresh_rounded, size: 14),
+                    label: const Text('Muat Ulang', style: TextStyle(fontSize: 11)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
               ),
             )
           else

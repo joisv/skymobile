@@ -28,6 +28,9 @@ enum BookingStatus {
         return BookingStatus.confirmed;
       case 'rented':
       case 'disewa':
+      case 'active':
+      case 'overdue':
+      case 'terlambat':
         return BookingStatus.rented;
       case 'returned':
         return BookingStatus.returned;

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/booking_repository.dart';
 import '../../models/affiliate_model.dart';
+import '../../models/cash_drawer_shift_model.dart';
 import '../../models/payment_model.dart';
 import '../../routes/app_routes.dart';
 import '../../services/auth_service.dart';
@@ -36,6 +37,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
   bool _simulateEmpty = false;
 
   int? _selectedAffiliateId;
+  CashDrawerShiftModel? _activeShift;
 
   int _currentPage = 1;
   int _lastPage = 1;
@@ -126,6 +128,14 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
     }
 
     try {
+      CashDrawerShiftModel? activeShift;
+      try {
+        activeShift = await widget.repository.getCurrentShift(
+          branchId: _selectedAffiliateId,
+          forceRefresh: true,
+        );
+      } catch (_) {}
+
       final data = await widget.repository.getSalesReportData(
         period: _selectedPeriod,
         startDate: start,
@@ -149,6 +159,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
 
       if (mounted) {
         setState(() {
+          _activeShift = activeShift;
           _reportData = data;
           _affiliates = affiliateList;
           _currentPage = curPage;
@@ -1538,6 +1549,114 @@ Status Kasir: Telah Ditutup & Sesuai.
   // REKONSILIASI KAS LACI & PENGELUARAN CABANG
   // =========================================================================
 
+  Widget _buildShiftStatusBanner({required bool isTablet}) {
+    final hasActiveShift = _activeShift != null && _activeShift!.isOpen;
+
+    final bgColor = hasActiveShift ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB);
+    final borderColor = hasActiveShift ? const Color(0xFFA7F3D0) : const Color(0xFFFDE68A);
+    final iconColor = hasActiveShift ? const Color(0xFF059669) : const Color(0xFFD97706);
+    final titleColor = hasActiveShift ? const Color(0xFF065F46) : const Color(0xFF92400E);
+    final subColor = hasActiveShift ? const Color(0xFF047857) : const Color(0xFFB45309);
+
+    final title = hasActiveShift ? 'Shift Kasir Sedang Aktif' : 'Shift Kasir Belum Dibuka';
+    final subtitle = hasActiveShift
+        ? 'Shift #${_activeShift!.shiftNumber} • Kasir: ${_activeShift!.openedByName}'
+        : 'Buka shift kasir untuk memulai sesi pencatatan kas dan transaksi laci.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  hasActiveShift ? Icons.check_circle_rounded : Icons.point_of_sale_rounded,
+                  color: iconColor,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                    color: titleColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: hasActiveShift ? const Color(0xFFD1FAE5) : const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  hasActiveShift ? 'Shift Aktif' : 'Belum Dibuka',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.bold,
+                    color: subColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: TextStyle(fontSize: 11, color: subColor),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: hasActiveShift ? const Color(0xFF059669) : const Color(0xFFD97706),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              icon: Icon(
+                hasActiveShift ? Icons.tune_rounded : Icons.lock_open_rounded,
+                size: 14,
+              ),
+              label: Text(
+                hasActiveShift ? 'Kelola Shift' : 'Buka Shift Kasir',
+                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+              ),
+              onPressed: () {
+                Navigator.pushNamed(context, AppRoutes.cashierShift).then((_) {
+                  _loadReport(page: _currentPage);
+                });
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildExpensesReconciliationCard({
     required double grossCash,
     required double totalExpenses,
@@ -1562,6 +1681,9 @@ Status Kasir: Telah Ditutup & Sesuai.
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Contextual Shift Status Notification Banner
+          _buildShiftStatusBanner(isTablet: isTablet),
+          const SizedBox(height: 14),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

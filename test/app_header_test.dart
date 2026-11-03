@@ -136,12 +136,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('SKYRental'), findsOneWidget);
+      expect(find.text('SKYRENTAL'), findsOneWidget);
       expect(find.text('Unit iPhone'), findsOneWidget);
       expect(find.text('John Doe'), findsOneWidget);
       expect(find.text('AFFILIATE ADMIN'), findsOneWidget);
       expect(find.text('JD'), findsOneWidget);
-      expect(find.text('Shift Pagi • POS-01'), findsOneWidget);
 
       // Verify NO printer connection status
       expect(find.textContaining('Printer'), findsNothing);
@@ -308,7 +307,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.byType(AppHeader), findsOneWidget);
-      expect(find.text('SKYRental'), findsOneWidget);
+      expect(find.text('SKYRENTAL'), findsOneWidget);
       expect(find.text('Buat Booking Baru'), findsWidgets);
       expect(find.text('Budi Santoso'), findsOneWidget);
       expect(find.text('BS'), findsOneWidget);

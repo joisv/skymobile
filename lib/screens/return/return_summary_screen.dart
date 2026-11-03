@@ -4,6 +4,7 @@ import '../../models/booking_model.dart';
 import '../../routes/app_routes.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/shift_warning_dialog.dart';
 import '../payment/payment_deposit_screen.dart';
 
 class ReturnSummaryScreen extends StatefulWidget {
@@ -31,7 +32,13 @@ class _ReturnSummaryScreenState extends State<ReturnSummaryScreen> {
 
   double get _lateFee => b.estimatedLateFee;
 
-  void _onProceedToInspection() {
+  Future<void> _onProceedToInspection() async {
+    final hasShift = await widget.repository.checkHasActiveShift();
+    if (!hasShift && mounted) {
+      await showShiftWarningDialog(context);
+      return;
+    }
+
     if (_isOverdue && _lateFee > 0) {
       Navigator.pushNamed(
         context,

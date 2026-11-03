@@ -263,36 +263,39 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final isDark = ThemeData.estimateBrightnessForColor(primaryColor) == Brightness.dark;
+    final onPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppHeader(
         title: 'Biaya Operasional',
         subtitle: _selectedBranchName,
         showBackButton: true,
-        actions: [
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.error,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              elevation: 0,
-            ),
-            onPressed: _openAddExpenseModal,
-            icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text(
-              'Catat Biaya',
-              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
       ),
-      floatingActionButton: null,
+      floatingActionButton: FloatingActionButton.extended(
+        key: const Key('btn_fab_catat_biaya'),
+        onPressed: _openAddExpenseModal,
+        backgroundColor: primaryColor,
+        foregroundColor: onPrimary,
+        elevation: 3,
+        icon: Icon(Icons.add_rounded, size: 20, color: onPrimary),
+        label: Text(
+          'Catat Biaya',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.2,
+            color: onPrimary,
+          ),
+        ),
+      ),
       body: RefreshIndicator(
         onRefresh: _loadExpenses,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 40),
+          padding: const EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 96),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
