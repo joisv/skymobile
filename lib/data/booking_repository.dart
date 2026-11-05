@@ -145,6 +145,40 @@ class BookingRepository {
       if (_users.isEmpty) {
         _users.addAll(_mockUsers);
       }
+      if (_affiliates.isEmpty) {
+        _affiliates.addAll(const [
+          AffiliateModel(
+            id: 4,
+            name: 'Genteng Pusat',
+            code: 'CGN',
+            slug: 'genteng-pusat',
+            city: 'Banyuwangi',
+            isActive: true,
+            bookingsCount: 15,
+            totalRevenue: 4500000,
+          ),
+          AffiliateModel(
+            id: 5,
+            name: 'Purwoharjo Branch',
+            code: 'PWJ',
+            slug: 'purwoharjo-branch',
+            city: 'Banyuwangi',
+            isActive: true,
+            bookingsCount: 8,
+            totalRevenue: 2400000,
+          ),
+          AffiliateModel(
+            id: 6,
+            name: 'Rogojampi Outlet',
+            code: 'RGJ',
+            slug: 'rogojampi-outlet',
+            city: 'Banyuwangi',
+            isActive: true,
+            bookingsCount: 12,
+            totalRevenue: 3600000,
+          ),
+        ]);
+      }
     }
   }
 
@@ -4358,6 +4392,15 @@ class BookingRepository {
   Future<CashDrawerShiftModel?> getCurrentShift({int? branchId, bool forceRefresh = false}) async {
     final effectiveBranchId = branchId ?? AuthService().affiliateId;
 
+    if (_isTestEnvironment) {
+      final shift = _activeShift ?? MockBookingData.activeShift;
+      if (shift != null && shift.isOpen) {
+        _recalculateActiveShiftMetrics();
+        return shift;
+      }
+      return null;
+    }
+
     if (!forceRefresh && _activeShift != null && _activeShift!.isOpen) {
       if (_paymentTransactions.isNotEmpty || _localExpenses.isNotEmpty) {
         _recalculateActiveShiftMetrics();
@@ -4720,7 +4763,7 @@ class BookingRepository {
     final effectiveBranchId = branchId ?? AuthService().affiliateId;
 
     if (_isTestEnvironment) {
-      final active = await getCurrentShift(branchId: effectiveBranchId);
+      final active = await getCurrentShift(branchId: effectiveBranchId, forceRefresh: forceRefresh);
       return ShiftScheduleModel.resolveLocal(
         activeShift: active,
         openingTime: MockBookingData.shiftOpeningTime,
@@ -4742,7 +4785,7 @@ class BookingRepository {
     }
 
     // Fallback local resolution
-    final active = await getCurrentShift(branchId: effectiveBranchId);
+    final active = await getCurrentShift(branchId: effectiveBranchId, forceRefresh: forceRefresh);
     return ShiftScheduleModel.resolveLocal(
       activeShift: active,
       openingTime: MockBookingData.shiftOpeningTime,

@@ -319,26 +319,62 @@ class BookingModel {
 
     List<IphoneModel> parsedAddons = [];
     if (json['addon_devices'] is List) {
-      parsedAddons = (json['addon_devices'] as List)
-          .whereType<Map<String, dynamic>>()
-          .map((m) => IphoneModel.fromJson(m))
-          .toList();
+      for (final item in json['addon_devices'] as List) {
+        if (item is Map) {
+          final itemMap = Map<String, dynamic>.from(item);
+          if (itemMap['asset'] is Map) {
+            final assetMap = Map<String, dynamic>.from(itemMap['asset'] as Map);
+            assetMap['price'] ??= itemMap['price'] ?? itemMap['rate'] ?? itemMap['pivot']?['price'] ?? itemMap['subtotal'];
+            assetMap['subtotal'] ??= itemMap['subtotal'] ?? itemMap['pivot']?['subtotal'];
+            assetMap['pivot'] ??= itemMap['pivot'];
+            parsedAddons.add(IphoneModel.fromJson(assetMap));
+          } else {
+            parsedAddons.add(IphoneModel.fromJson(itemMap));
+          }
+        }
+      }
     } else if (json['addon_items'] is List) {
       for (final item in json['addon_items'] as List) {
-        if (item is Map<String, dynamic>) {
-          if (item['asset'] is Map<String, dynamic>) {
-            parsedAddons.add(IphoneModel.fromJson(item['asset'] as Map<String, dynamic>));
+        if (item is Map) {
+          final itemMap = Map<String, dynamic>.from(item);
+          if (itemMap['asset'] is Map) {
+            final assetMap = Map<String, dynamic>.from(itemMap['asset'] as Map);
+            assetMap['price'] ??= itemMap['price'] ?? itemMap['rate'] ?? itemMap['pivot']?['price'] ?? itemMap['subtotal'];
+            assetMap['subtotal'] ??= itemMap['subtotal'] ?? itemMap['pivot']?['subtotal'];
+            assetMap['pivot'] ??= itemMap['pivot'];
+            parsedAddons.add(IphoneModel.fromJson(assetMap));
           } else {
-            parsedAddons.add(IphoneModel.fromJson(item));
+            parsedAddons.add(IphoneModel.fromJson(itemMap));
+          }
+        }
+      }
+    } else if (json['addons'] is List) {
+      for (final item in json['addons'] as List) {
+        if (item is Map) {
+          final itemMap = Map<String, dynamic>.from(item);
+          if (itemMap['asset'] is Map) {
+            final assetMap = Map<String, dynamic>.from(itemMap['asset'] as Map);
+            assetMap['price'] ??= itemMap['price'] ?? itemMap['rate'] ?? itemMap['pivot']?['price'] ?? itemMap['subtotal'];
+            assetMap['subtotal'] ??= itemMap['subtotal'] ?? itemMap['pivot']?['subtotal'];
+            assetMap['pivot'] ??= itemMap['pivot'];
+            parsedAddons.add(IphoneModel.fromJson(assetMap));
+          } else {
+            parsedAddons.add(IphoneModel.fromJson(itemMap));
           }
         }
       }
     }
 
     final parsedPrice = double.tryParse(json['price']?.toString() ?? '0') ?? 0.0;
-    final parsedAddonSubtotal = double.tryParse(json['addon_subtotal']?.toString() ?? '0') ?? 0.0;
+    var parsedAddonSubtotal = double.tryParse(json['addon_subtotal']?.toString() ?? '0') ?? 0.0;
+    if (parsedAddonSubtotal <= 0 && parsedAddons.isNotEmpty) {
+      parsedAddonSubtotal = parsedAddons.fold<double>(
+        0.0,
+        (sum, a) => sum + (a.price ?? a.subtotal ?? (a.pivot?['price'] as num?)?.toDouble() ?? (a.dailyRate > 0 ? a.dailyRate : 0.0)),
+      );
+    }
     final parsedPrimarySubtotal = double.tryParse(json['primary_subtotal']?.toString() ?? '') ??
-        (parsedPrice >= parsedAddonSubtotal ? (parsedPrice - parsedAddonSubtotal) : parsedPrice);
+        (parsedPrice >= parsedAddonSubtotal && parsedAddonSubtotal > 0 ? (parsedPrice - parsedAddonSubtotal) : parsedPrice);
 
     return BookingModel(
       id: json['id'] is int

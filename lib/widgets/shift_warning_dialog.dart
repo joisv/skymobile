@@ -63,11 +63,12 @@ Future<void> showShiftWarningDialog(
                   children: [
                     Expanded(
                       child: SizedBox(
-                        height: 44,
+                        height: 48,
                         child: OutlinedButton(
                           key: const Key('btn_batal_shift_dialog'),
                           onPressed: () => Navigator.pop(ctx),
                           style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(44),
                             side: const BorderSide(color: Color(0xFFCBD5E1)),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             foregroundColor: const Color(0xFF475569),
@@ -82,8 +83,8 @@ Future<void> showShiftWarningDialog(
                     const SizedBox(width: 12),
                     Expanded(
                       child: SizedBox(
-                        height: 44,
-                        child: ElevatedButton.icon(
+                        height: 48,
+                        child: ElevatedButton(
                           key: const Key('btn_buka_shift_kasir'),
                           onPressed: () {
                             Navigator.pop(ctx);
@@ -93,16 +94,28 @@ Future<void> showShiftWarningDialog(
                               Navigator.pushNamed(context, AppRoutes.cashierShift);
                             }
                           },
-                          icon: const Icon(Icons.vpn_key_rounded, size: 16),
-                          label: const Text(
-                            'Buka Shift Kasir',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primary,
                             foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             elevation: 0,
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.vpn_key_rounded, size: 16),
+                              SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  'Buka Shift',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

@@ -192,11 +192,25 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
 
     // Physical cash input must default to 0; denomination calculator opens automatically
     final actualCashController = TextEditingController(text: '0');
+    final actualCashFocusNode = FocusNode();
     final reasonController = TextEditingController();
     final closingNotesController = TextEditingController();
 
+    actualCashFocusNode.addListener(() {
+      if (actualCashFocusNode.hasFocus) {
+        if (actualCashController.text == '0') {
+          actualCashController.clear();
+        }
+      } else {
+        if (actualCashController.text.trim().isEmpty) {
+          actualCashController.text = '0';
+        }
+      }
+    });
+
     final counter = DenominationCounter();
     bool showCounter = true;
+    bool hasEnteredCash = false;
 
     final c100k = TextEditingController(text: '0');
     final c50k = TextEditingController(text: '0');
@@ -223,9 +237,44 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
           builder: (ctx, setModalState) {
             final cleanActual = actualCashController.text.replaceAll(RegExp(r'\D'), '');
             final double actualCounted = double.tryParse(cleanActual) ?? 0.0;
+            final bool hasCounted = hasEnteredCash || actualCounted > 0 || counter.total > 0;
             final double difference = actualCounted - expectedCash;
-            final bool hasShortageOrSurplus = difference.abs() > 0.01;
-            final bool requiresReason = difference.abs() > 5000;
+            final bool hasDiscrepancy = hasCounted && difference.abs() > 0.01;
+            final bool requiresReason = hasCounted && difference.abs() > 5000;
+
+            Future<void> submitCloseShift() async {
+              if (!hasCounted) {
+                setModalState(() {
+                  hasEnteredCash = true;
+                });
+                if (expectedCash > 5000 && reasonController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Alasan selisih kas fisik wajib diisi sebelum shift dapat ditutup.'),
+                      backgroundColor: Color(0xFFDC2626),
+                    ),
+                  );
+                  return;
+                }
+              }
+
+              if (requiresReason && reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Alasan selisih kas fisik wajib diisi sebelum shift dapat ditutup.'),
+                    backgroundColor: Color(0xFFDC2626),
+                  ),
+                );
+                return;
+              }
+
+              Navigator.pop(ctx);
+              await _executeCloseShift(
+                actualCash: actualCounted,
+                reason: reasonController.text.trim().isNotEmpty ? reasonController.text.trim() : null,
+                notes: closingNotesController.text.trim().isNotEmpty ? closingNotesController.text.trim() : null,
+              );
+            }
 
             final leftColumn = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -251,6 +300,7 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
                 const SizedBox(height: 6),
                 TextField(
                   controller: actualCashController,
+                  focusNode: actualCashFocusNode,
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
@@ -260,7 +310,11 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
                     filled: true,
                     fillColor: Colors.white,
                   ),
-                  onChanged: (_) => setModalState(() {}),
+                  onChanged: (_) {
+                    setModalState(() {
+                      hasEnteredCash = true;
+                    });
+                  },
                 ),
                 if (showCounter) ...[
                   const SizedBox(height: 12),
@@ -292,78 +346,85 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
                           ],
                         ),
                         const SizedBox(height: 8),
-                        _buildDenomRow(
+                        _DenomInputRow(
                           label: 'Rp 100.000',
-                          count: counter.n100k,
+                          unitValue: 100000,
                           controller: c100k,
                           onChanged: (v) {
                             setModalState(() {
+                              hasEnteredCash = true;
                               counter.n100k = v;
                               actualCashController.text = counter.total.toInt().toString();
                             });
                           },
                         ),
-                        _buildDenomRow(
+                        _DenomInputRow(
                           label: 'Rp 50.000',
-                          count: counter.n50k,
+                          unitValue: 50000,
                           controller: c50k,
                           onChanged: (v) {
                             setModalState(() {
+                              hasEnteredCash = true;
                               counter.n50k = v;
                               actualCashController.text = counter.total.toInt().toString();
                             });
                           },
                         ),
-                        _buildDenomRow(
+                        _DenomInputRow(
                           label: 'Rp 20.000',
-                          count: counter.n20k,
+                          unitValue: 20000,
                           controller: c20k,
                           onChanged: (v) {
                             setModalState(() {
+                              hasEnteredCash = true;
                               counter.n20k = v;
                               actualCashController.text = counter.total.toInt().toString();
                             });
                           },
                         ),
-                        _buildDenomRow(
+                        _DenomInputRow(
                           label: 'Rp 10.000',
-                          count: counter.n10k,
+                          unitValue: 10000,
                           controller: c10k,
                           onChanged: (v) {
                             setModalState(() {
+                              hasEnteredCash = true;
                               counter.n10k = v;
                               actualCashController.text = counter.total.toInt().toString();
                             });
                           },
                         ),
-                        _buildDenomRow(
+                        _DenomInputRow(
                           label: 'Rp 5.000',
-                          count: counter.n5k,
+                          unitValue: 5000,
                           controller: c5k,
                           onChanged: (v) {
                             setModalState(() {
+                              hasEnteredCash = true;
                               counter.n5k = v;
                               actualCashController.text = counter.total.toInt().toString();
                             });
                           },
                         ),
-                        _buildDenomRow(
+                        _DenomInputRow(
                           label: 'Rp 2.000',
-                          count: counter.n2k,
+                          unitValue: 2000,
                           controller: c2k,
                           onChanged: (v) {
                             setModalState(() {
+                              hasEnteredCash = true;
                               counter.n2k = v;
                               actualCashController.text = counter.total.toInt().toString();
                             });
                           },
                         ),
-                        _buildDenomRow(
+                        _DenomInputRow(
                           label: 'Rp 1.000',
-                          count: counter.n1k,
+                          unitValue: 1000,
                           controller: c1k,
                           onChanged: (v) {
                             setModalState(() {
+                              hasEnteredCash = true;
                               counter.n1k = v;
                               actualCashController.text = counter.total.toInt().toString();
                             });
@@ -434,69 +495,10 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
                 const SizedBox(height: 12),
 
                 // Status Selisih Kas
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: !hasShortageOrSurplus
-                        ? const Color(0xFFF0FDF4)
-                        : (difference > 0 ? const Color(0xFFEFF6FF) : const Color(0xFFFEF2F2)),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: !hasShortageOrSurplus
-                          ? const Color(0xFFBBF7D0)
-                          : (difference > 0 ? const Color(0xFFBFDBFE) : const Color(0xFFFECACA)),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              !hasShortageOrSurplus
-                                  ? Icons.check_circle_rounded
-                                  : (difference > 0 ? Icons.info_rounded : Icons.warning_amber_rounded),
-                              size: 18,
-                              color: !hasShortageOrSurplus
-                                  ? const Color(0xFF16A34A)
-                                  : (difference > 0 ? const Color(0xFF2563EB) : const Color(0xFFDC2626)),
-                            ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                !hasShortageOrSurplus
-                                    ? 'Kas Seimbang'
-                                    : (difference > 0 ? 'Surplus (Lebih Kas)' : 'Shortage (Selisih Kurang)'),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                  color: !hasShortageOrSurplus
-                                      ? const Color(0xFF15803D)
-                                      : (difference > 0 ? const Color(0xFF1D4ED8) : const Color(0xFFB91C1C)),
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        difference == 0
-                            ? 'Rp 0'
-                            : (difference > 0 ? '+${Formatters.currency(difference)}' : '-${Formatters.currency(difference.abs())}'),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: !hasShortageOrSurplus
-                              ? const Color(0xFF15803D)
-                              : (difference > 0 ? const Color(0xFF1D4ED8) : const Color(0xFFB91C1C)),
-                        ),
-                      ),
-                    ],
-                  ),
+                _buildDiscrepancyStatusCard(
+                  hasCounted: hasCounted,
+                  difference: difference,
+                  hasDiscrepancy: hasDiscrepancy,
                 ),
 
                 if (requiresReason) ...[
@@ -535,29 +537,13 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
                   width: double.infinity,
                   height: 48,
                   child: ElevatedButton.icon(
+                    key: const Key('btn_confirm_close_shift'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF0F172A),
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    onPressed: () async {
-                      if (requiresReason && reasonController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Alasan selisih kas fisik wajib diisi sebelum shift dapat ditutup.'),
-                            backgroundColor: Color(0xFFDC2626),
-                          ),
-                        );
-                        return;
-                      }
-
-                      Navigator.pop(ctx);
-                      await _executeCloseShift(
-                        actualCash: actualCounted,
-                        reason: reasonController.text.trim().isNotEmpty ? reasonController.text.trim() : null,
-                        notes: closingNotesController.text.trim().isNotEmpty ? closingNotesController.text.trim() : null,
-                      );
-                    },
+                    onPressed: submitCloseShift,
                     icon: const Icon(Icons.lock_clock_rounded, size: 18),
                     label: const Text('Konfirmasi & Tutup Shift', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
@@ -565,225 +551,258 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
               ],
             );
 
-            return Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                constraints: BoxConstraints(
-                  maxWidth: isTablet ? 960 : double.infinity,
-                  maxHeight: screenHeight * (isTablet ? 0.90 : 0.92),
-                ),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                padding: EdgeInsets.only(
-                  left: 20,
-                  right: 20,
-                  top: 20,
-                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Tutup Shift Kasir (Close Shift)',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => Navigator.pop(ctx),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        'Shift: ${shift.shiftNumber} • Kasir: ${shift.openedByName}',
-                        style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                      ),
-                      const Divider(height: 24),
-
-                      if (isTablet)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+            return AnimatedPadding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: isTablet ? 960 : double.infinity,
+                    maxHeight: screenHeight * (isTablet ? 0.90 : 0.92),
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: isTablet
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Expanded(
-                              flex: 5,
-                              child: leftColumn,
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 16, 12, 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Tutup Shift Kasir (Close Shift)',
+                                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.close),
+                                        onPressed: () => Navigator.pop(ctx),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    'Shift: ${shift.shiftNumber} • Kasir: ${shift.openedByName}',
+                                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                                  ),
+                                ],
+                              ),
                             ),
-                            const SizedBox(width: 20),
+                            const Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
                             Expanded(
-                              flex: 5,
-                              child: rightColumn,
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.all(20),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(flex: 5, child: leftColumn),
+                                    const SizedBox(width: 20),
+                                    Expanded(flex: 5, child: rightColumn),
+                                  ],
+                                ),
+                              ),
                             ),
                           ],
                         )
-                      else ...[
-                        // Mobile Layout: Estimasi Kas Sistem
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFCBD5E1)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Expanded(
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // 1. Mobile Fixed Top Bar
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 16, 12, 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Tutup Shift Kasir (Close Shift)',
+                                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.close),
+                                        onPressed: () => Navigator.pop(ctx),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    'Shift: ${shift.shiftNumber} • Kasir: ${shift.openedByName}',
+                                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
+
+                            // 2. Mobile Scrollable Middle Body
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('ESTIMASI KAS SISTEM', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                                    SizedBox(height: 2),
-                                    Text('Berdasarkan modal awal, transaksi, & biaya', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                Formatters.currency(expectedCash),
-                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        leftColumn,
-                        const SizedBox(height: 14),
-                        // Status Selisih Kas
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: !hasShortageOrSurplus
-                                ? const Color(0xFFF0FDF4)
-                                : (difference > 0 ? const Color(0xFFEFF6FF) : const Color(0xFFFEF2F2)),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: !hasShortageOrSurplus
-                                  ? const Color(0xFFBBF7D0)
-                                  : (difference > 0 ? const Color(0xFFBFDBFE) : const Color(0xFFFECACA)),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      !hasShortageOrSurplus
-                                          ? Icons.check_circle_rounded
-                                          : (difference > 0 ? Icons.info_rounded : Icons.warning_amber_rounded),
-                                      size: 18,
-                                      color: !hasShortageOrSurplus
-                                          ? const Color(0xFF16A34A)
-                                          : (difference > 0 ? const Color(0xFF2563EB) : const Color(0xFFDC2626)),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        !hasShortageOrSurplus
-                                            ? 'Kas Seimbang'
-                                            : (difference > 0 ? 'Surplus (Lebih Kas)' : 'Shortage (Selisih Kurang)'),
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: !hasShortageOrSurplus
-                                              ? const Color(0xFF15803D)
-                                              : (difference > 0 ? const Color(0xFF1D4ED8) : const Color(0xFFB91C1C)),
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
+                                    // Estimasi Kas Sistem
+                                    Container(
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text('ESTIMASI KAS SISTEM', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                                                SizedBox(height: 2),
+                                                Text('Berdasarkan modal awal, transaksi, & biaya', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            Formatters.currency(expectedCash),
+                                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                          ),
+                                        ],
                                       ),
                                     ),
+                                    const SizedBox(height: 14),
+                                    leftColumn,
+                                    if (requiresReason) ...[
+                                      const SizedBox(height: 14),
+                                      const Text(
+                                        'Alasan Selisih Kas (Wajib diisi jika > Rp 5.000) *',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      TextField(
+                                        controller: reasonController,
+                                        maxLines: 2,
+                                        decoration: InputDecoration(
+                                          hintText: 'Contoh: Selisih uang kembalian receh parkir / pembulatan',
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                          filled: true,
+                                          fillColor: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 14),
+                                    const Text('Catatan Penutupan Shift (Opsional)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 4),
+                                    TextField(
+                                      controller: closingNotesController,
+                                      maxLines: 2,
+                                      decoration: InputDecoration(
+                                        hintText: 'Catatan serah terima kasir ke shift berikutnya...',
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                difference == 0
-                                    ? 'Rp 0'
-                                    : (difference > 0 ? '+${Formatters.currency(difference)}' : '-${Formatters.currency(difference.abs())}'),
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w900,
-                                  color: !hasShortageOrSurplus
-                                      ? const Color(0xFF15803D)
-                                      : (difference > 0 ? const Color(0xFF1D4ED8) : const Color(0xFFB91C1C)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (requiresReason) ...[
-                          const SizedBox(height: 12),
-                          const Text('Alasan Selisih Kas (Wajib diisi jika > Rp 5.000) *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
-                          const SizedBox(height: 4),
-                          TextField(
-                            controller: reasonController,
-                            maxLines: 2,
-                            decoration: InputDecoration(
-                              hintText: 'Contoh: Selisih uang kembalian receh parkir / pembulatan',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                              filled: true,
-                              fillColor: Colors.white,
                             ),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        const Text('Catatan Penutupan Shift (Opsional)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 4),
-                        TextField(
-                          controller: closingNotesController,
-                          maxLines: 2,
-                          decoration: InputDecoration(
-                            hintText: 'Catatan serah terima kasir ke shift berikutnya...',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                            filled: true,
-                            fillColor: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 48,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F172A),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                            onPressed: () async {
-                              if (requiresReason && reasonController.text.trim().isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Alasan selisih kas fisik wajib diisi sebelum shift dapat ditutup.'),
-                                    backgroundColor: Color(0xFFDC2626),
-                                  ),
-                                );
-                                return;
-                              }
 
-                              Navigator.pop(ctx);
-                              await _executeCloseShift(
-                                actualCash: actualCounted,
-                                reason: reasonController.text.trim().isNotEmpty ? reasonController.text.trim() : null,
-                                notes: closingNotesController.text.trim().isNotEmpty ? closingNotesController.text.trim() : null,
-                              );
-                            },
-                            icon: const Icon(Icons.lock_clock_rounded, size: 18),
-                            label: const Text('Konfirmasi & Tutup Shift', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
+                            // 3. Mobile Sticky Bottom Footer
+                            Container(
+                              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: const Border(
+                                  top: BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    offset: const Offset(0, -2),
+                                    blurRadius: 6,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Summary Card: Total Dihitung & Status Selisih
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF8FAFC),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            const Expanded(
+                                              child: Text(
+                                                'Total Kas Dihitung',
+                                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              Formatters.currency(actualCounted),
+                                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        _buildDiscrepancyStatusCard(
+                                          hasCounted: hasCounted,
+                                          difference: difference,
+                                          hasDiscrepancy: hasDiscrepancy,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 48,
+                                    child: ElevatedButton.icon(
+                                      key: const Key('btn_confirm_close_shift'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF0F172A),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        elevation: 0,
+                                      ),
+                                      onPressed: submitCloseShift,
+                                      icon: const Icon(Icons.lock_clock_rounded, size: 18),
+                                      label: const Text('Konfirmasi & Tutup Shift', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ],
-                  ),
                 ),
               ),
             );
@@ -793,83 +812,90 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
     );
   }
 
-  Widget _buildDenomRow({
-    required String label,
-    required int count,
-    required TextEditingController controller,
-    required ValueChanged<int> onChanged,
+  Widget _buildDiscrepancyStatusCard({
+    required bool hasCounted,
+    required double difference,
+    required bool hasDiscrepancy,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.5),
+    Color bgColor;
+    Color borderColor;
+    Color textColor;
+    Color iconColor;
+    IconData icon;
+    String label;
+    String diffText;
+
+    if (!hasCounted) {
+      bgColor = const Color(0xFFF8FAFC);
+      borderColor = const Color(0xFFE2E8F0);
+      textColor = const Color(0xFF64748B);
+      iconColor = const Color(0xFF64748B);
+      icon = Icons.hourglass_empty_rounded;
+      label = 'Belum Dihitung';
+      diffText = '-';
+    } else if (!hasDiscrepancy) {
+      bgColor = const Color(0xFFF0FDF4);
+      borderColor = const Color(0xFFBBF7D0);
+      textColor = const Color(0xFF15803D);
+      iconColor = const Color(0xFF16A34A);
+      icon = Icons.check_circle_rounded;
+      label = 'Kas Seimbang';
+      diffText = 'Rp 0';
+    } else if (difference > 0) {
+      bgColor = const Color(0xFFEFF6FF);
+      borderColor = const Color(0xFFBFDBFE);
+      textColor = const Color(0xFF1D4ED8);
+      iconColor = const Color(0xFF2563EB);
+      icon = Icons.info_rounded;
+      label = 'Surplus (Lebih Kas)';
+      diffText = '+${Formatters.currency(difference)}';
+    } else {
+      bgColor = const Color(0xFFFEF2F2);
+      borderColor = const Color(0xFFFECACA);
+      textColor = const Color(0xFFB91C1C);
+      iconColor = const Color(0xFFDC2626);
+      icon = Icons.warning_amber_rounded;
+      label = 'Shortage (Selisih Kurang)';
+      diffText = '-${Formatters.currency(difference.abs())}';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              overflow: TextOverflow.ellipsis,
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: iconColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: textColor,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 6),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                icon: const Icon(Icons.remove_circle_outline, size: 18),
-                onPressed: count > 0
-                    ? () {
-                        final next = count - 1;
-                        controller.text = next.toString();
-                        onChanged(next);
-                      }
-                    : null,
-              ),
-              Container(
-                width: 44,
-                height: 28,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                child: TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                  ),
-                  onChanged: (val) {
-                    final next = int.tryParse(val) ?? 0;
-                    onChanged(next);
-                  },
-                ),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                icon: const Icon(Icons.add_circle_outline, size: 18),
-                onPressed: () {
-                  final next = count + 1;
-                  controller.text = next.toString();
-                  onChanged(next);
-                },
-              ),
-            ],
+          const SizedBox(width: 8),
+          Text(
+            diffText,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: textColor,
+            ),
           ),
         ],
       ),
@@ -1105,51 +1131,161 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
     }
   }
 
+  @visibleForTesting
+  void showClosingSuccessDialogForTest(CashDrawerShiftModel shift) => _showClosingSuccessDialog(shift);
+
   void _showClosingSuccessDialog(CashDrawerShiftModel closedShift) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        return AlertDialog(
+        final double selisih = closedShift.cashDifference ?? 0.0;
+        final bool hasDiscrepancy = selisih.abs() > 0.01;
+        final Color selisihColor = hasDiscrepancy
+            ? (selisih < 0 ? const Color(0xFFDC2626) : const Color(0xFF059669))
+            : const Color(0xFF0F172A);
+
+        return Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle_rounded, color: Color(0xFF10B981)),
-              SizedBox(width: 8),
-              Text('Shift Berhasil Ditutup'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Shift #${closedShift.shiftNumber} telah resmi ditutup dan dicatat ke sistem.'),
-              const SizedBox(height: 12),
-              _buildKeyValue('Modal Awal', Formatters.currency(closedShift.openingCashFloat)),
-              _buildKeyValue('Kas Masuk', Formatters.currency(closedShift.currentCashInflow)),
-              _buildKeyValue('Pengeluaran', '-${Formatters.currency(closedShift.currentCashExpenses)}'),
-              _buildKeyValue('Estimasi Kas', Formatters.currency(closedShift.effectiveExpectedCash)),
-              _buildKeyValue('Kas Fisik Dihitung', Formatters.currency(closedShift.actualCashCounted ?? 0)),
-              _buildKeyValue('Selisih Kas', Formatters.currency(closedShift.cashDifference ?? 0)),
-            ],
-          ),
-          actions: [
-            OutlinedButton.icon(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await _printClosingReceipt(closedShift);
-              },
-              icon: const Icon(Icons.print_rounded, size: 16),
-              label: const Text('Cetak Struk 58mm'),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. Header with Checkmark Icon and Title (Wrapped in Expanded to eliminate subpixel overflow)
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                        ),
+                        child: const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 22),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Shift Berhasil Ditutup',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Shift #${closedShift.shiftNumber} telah resmi ditutup dan dicatat ke sistem.',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 2. Clean Detailed Metrics Card (Monospace numeric values, compact typography)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      children: [
+                        _buildClosingMetricRow('Modal Awal', Formatters.currency(closedShift.openingCashFloat)),
+                        const SizedBox(height: 4),
+                        _buildClosingMetricRow('Kas Masuk', Formatters.currency(closedShift.currentCashInflow), valueColor: const Color(0xFF059669)),
+                        const SizedBox(height: 4),
+                        _buildClosingMetricRow('Pengeluaran', '-${Formatters.currency(closedShift.currentCashExpenses)}', valueColor: const Color(0xFFDC2626)),
+                        const Divider(height: 12, thickness: 1, color: Color(0xFFE2E8F0)),
+                        _buildClosingMetricRow('Estimasi Kas', Formatters.currency(closedShift.effectiveExpectedCash)),
+                        const SizedBox(height: 4),
+                        _buildClosingMetricRow('Kas Fisik Dihitung', Formatters.currency(closedShift.actualCashCounted ?? 0), isBold: true),
+                        const SizedBox(height: 4),
+                        _buildClosingMetricRow('Selisih Kas', Formatters.currency(selisih), valueColor: selisihColor, isBold: hasDiscrepancy),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // 3. Vertical Button Stacking (Preserve Both Actions)
+                  // Primary Top Button: "Cetak Struk 58mm" in filled high-contrast primary theme color
+                  ElevatedButton.icon(
+                    key: const Key('closing_dialog_print_btn'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(46),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await _printClosingReceipt(closedShift);
+                    },
+                    icon: const Icon(Icons.print_rounded, size: 18),
+                    label: const Text(
+                      'Cetak Struk 58mm',
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Secondary Bottom Button: "Selesai" as outline button
+                  OutlinedButton(
+                    key: const Key('closing_dialog_done_btn'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF475569),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      minimumSize: const Size.fromHeight(44),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text(
+                      'Selesai',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Selesai'),
-            ),
-          ],
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildClosingMetricRow(String label, String value, {Color? valueColor, bool isBold = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontFamily: 'monospace',
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+            color: valueColor ?? const Color(0xFF0F172A),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1210,11 +1346,17 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Segarkan Data',
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             onPressed: () => _loadShiftData(forceRefresh: true),
           ),
           IconButton(
             icon: const Icon(Icons.schedule_rounded),
             tooltip: 'Setelan Jadwal Shift',
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             onPressed: _showScheduleSettingsDialog,
           ),
         ],
@@ -1568,15 +1710,29 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(shift.shiftNumber, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                        const SizedBox(height: 2),
-                        Text('${shift.branchName} • Dibuka oleh ${shift.openedByName}', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                      ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            shift.shiftNumber,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${shift.branchName} • Dibuka oleh ${shift.openedByName}',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
@@ -1585,6 +1741,7 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
                         border: Border.all(color: const Color(0xFF86EFAC)),
                       ),
                       child: const Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.fiber_manual_record, size: 10, color: Color(0xFF16A34A)),
                           SizedBox(width: 4),
@@ -1713,17 +1870,20 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('ESTIMASI KAS FISIK DI LACI', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFE2E8F0))),
-                    SizedBox(height: 4),
-                    Text('Saldo fisik yang harus ada di drawer saat ini', style: TextStyle(fontSize: 10.5, color: Color(0xFFCBD5E1))),
-                  ],
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('ESTIMASI KAS FISIK DI LACI', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFE2E8F0))),
+                      SizedBox(height: 4),
+                      Text('Saldo fisik yang harus ada di drawer saat ini', style: TextStyle(fontSize: 10.5, color: Color(0xFFCBD5E1))),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   Formatters.currency(shift.effectiveExpectedCash),
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF38BDF8)),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF38BDF8)),
                 ),
               ],
             ),
@@ -1756,69 +1916,134 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
           const SizedBox(height: 16),
 
           // 5. Action Buttons (Tutup Shift & Rekonsiliasi, Cetak Struk, Catat Kas Keluar)
-          Row(
-            children: [
-              Expanded(
-                flex: isTablet ? 3 : 2,
-                child: SizedBox(
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      side: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    onPressed: () => _printClosingReceipt(shift),
-                    icon: const Icon(Icons.print_rounded, size: 16, color: Color(0xFF475569)),
-                    label: const Text('Cetak Struk 58mm', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)), overflow: TextOverflow.ellipsis),
-                  ),
+          if (!isTablet) ...[
+            // Mobile 2-Tier Layout: Full-Width Primary Action on Top, 2 Equal Secondary Actions Below
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                key: const Key('btn_close_shift'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F172A),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                onPressed: _showCloseShiftDialog,
+                icon: const Icon(Icons.lock_clock_rounded, size: 18),
+                label: const Text(
+                  'Tutup Shift Kasir',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: isTablet ? 3 : 2,
-                child: SizedBox(
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    key: const Key('btn_record_expense'),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      side: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    onPressed: _showRecordExpenseDialog,
-                    icon: const Icon(Icons.money_off_rounded, size: 16, color: Color(0xFFDC2626)),
-                    label: const Text(
-                      '+ Kas Keluar / Biaya',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: isTablet ? 4 : 3,
-                child: SizedBox(
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    key: const Key('btn_close_shift'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F172A),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: 0,
-                    ),
-                    onPressed: _showCloseShiftDialog,
-                    icon: const Icon(Icons.lock_clock_rounded, size: 18),
-                    label: const Text(
-                      'Tutup Shift Kasir',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 44,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      onPressed: () => _printClosingReceipt(shift),
+                      icon: const Icon(Icons.receipt_long_rounded, size: 16, color: Color(0xFF475569)),
+                      label: const Text(
+                        'Cetak Ringkasan',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 44,
+                    child: OutlinedButton.icon(
+                      key: const Key('btn_record_expense'),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      onPressed: _showRecordExpenseDialog,
+                      icon: const Icon(Icons.payments_outlined, size: 16, color: Color(0xFFDC2626)),
+                      label: const Text(
+                        '+ Catat Kas',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            // Tablet Layout: 3-Button Row
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: SizedBox(
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      onPressed: () => _printClosingReceipt(shift),
+                      icon: const Icon(Icons.receipt_long_rounded, size: 16, color: Color(0xFF475569)),
+                      label: const Text('Cetak Ringkasan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 3,
+                  child: SizedBox(
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      key: const Key('btn_record_expense'),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      onPressed: _showRecordExpenseDialog,
+                      icon: const Icon(Icons.payments_outlined, size: 16, color: Color(0xFFDC2626)),
+                      label: const Text(
+                        '+ Catat Kas',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 4,
+                  child: SizedBox(
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      key: const Key('btn_close_shift'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F172A),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
+                      ),
+                      onPressed: _showCloseShiftDialog,
+                      icon: const Icon(Icons.lock_clock_rounded, size: 18),
+                      label: const Text(
+                        'Tutup Shift Kasir',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
 
           const SizedBox(height: 24),
 
@@ -1878,6 +2103,8 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
           Text(
             isNegative && amount > 0 ? '-${Formatters.currency(amount)}' : Formatters.currency(amount),
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -2054,9 +2281,12 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      '${Formatters.date(now)}, ${Formatters.time(now)} WIB',
-                      style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+                    Flexible(
+                      child: Text(
+                        '${Formatters.date(now)}, ${Formatters.time(now)} WIB',
+                        style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -2589,8 +2819,152 @@ class _CashierShiftScreenState extends State<CashierShiftScreen> with SingleTick
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(key, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+          Expanded(
+            child: Text(
+              key,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
           Text(value, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+        ],
+      ),
+    );
+  }
+}
+
+/// Row input denominasi uang Rupiah tanpa tombol stepper.
+/// Mendukung auto-clear angka '0' saat fokus dan subtotal monospace otomatis.
+class _DenomInputRow extends StatefulWidget {
+  final String label;
+  final int unitValue;
+  final TextEditingController controller;
+  final ValueChanged<int> onChanged;
+
+  const _DenomInputRow({
+    required this.label,
+    required this.unitValue,
+    required this.controller,
+    required this.onChanged,
+  });
+
+  @override
+  State<_DenomInputRow> createState() => _DenomInputRowState();
+}
+
+class _DenomInputRowState extends State<_DenomInputRow> {
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+    _focusNode.addListener(_handleFocusChange);
+    widget.controller.addListener(_handleControllerChange);
+  }
+
+  void _handleFocusChange() {
+    if (_focusNode.hasFocus) {
+      if (widget.controller.text == '0') {
+        widget.controller.clear();
+      }
+    } else {
+      if (widget.controller.text.trim().isEmpty) {
+        widget.controller.text = '0';
+        widget.onChanged(0);
+      }
+    }
+  }
+
+  void _handleControllerChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_handleFocusChange);
+    _focusNode.dispose();
+    widget.controller.removeListener(_handleControllerChange);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = int.tryParse(widget.controller.text.replaceAll(RegExp(r'\D'), '')) ?? 0;
+    final subtotal = count * widget.unitValue;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          // Left: Currency label (e.g. Rp 100.000)
+          SizedBox(
+            width: 84,
+            child: Text(
+              widget.label,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF334155),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Center: Clean numeric text input field (auto-clears initial 0 on focus)
+          SizedBox(
+            width: 60,
+            height: 36,
+            child: TextFormField(
+              controller: widget.controller,
+              focusNode: _focusNode,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                hintText: '0',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              onChanged: (val) {
+                final c = int.tryParse(val.replaceAll(RegExp(r'\D'), '')) ?? 0;
+                widget.onChanged(c);
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Right: Auto-calculated total right-aligned in monospace styling
+          Expanded(
+            child: Text(
+              Formatters.currency(subtotal.toDouble()),
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -2501,9 +2501,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // 1. Verify Header Elements (AppHeader consistent with Dashboard)
-    expect(find.text('SKYRental'), findsWidgets);
+    expect(find.text('SKYRENTAL'), findsWidgets);
     expect(find.text('Status Unit iPhone'), findsOneWidget);
-    expect(find.textContaining('Shift Pagi • POS-01'), findsWidgets);
 
     // 2. Verify Sub-header Bar
     expect(find.text('Status Unit & Inventaris iPhone'), findsOneWidget);
@@ -2590,8 +2589,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify Title & Subtitle
-    expect(find.text('Tambah iPhone Baru'), findsOneWidget);
-    expect(find.text('Sistem Katalog & Sinkronisasi Web SKYRental'), findsOneWidget);
+    expect(find.text('Tambah Unit Baru'), findsOneWidget);
+    expect(find.text('Sistem Katalog & Sinkronisasi Web SKYRental'), findsNothing);
 
     // Verify Model Name Input and Placeholder
     expect(find.text('MODEL UNIT IPHONE *'), findsOneWidget);
@@ -2610,18 +2609,18 @@ void main() {
     // Verify Upload Foto dari Penyimpanan HP / Memori is present
     expect(find.text('Upload dari HP'), findsWidgets);
 
-    // Verify Setelan Series & Registrasi (matching Livewire/Iphones/Create.php)
-    expect(find.text('Setelan Series & Registrasi'), findsOneWidget);
+    // Verify Unified Form Sections
     expect(find.text('Poster / Foto Unit'), findsOneWidget);
-    expect(find.text('Tanggal Registrasi'), findsOneWidget);
-    expect(find.text('Permalink (Slug)'), findsOneWidget);
-    expect(find.text('Serial & Asset Code *'), findsOneWidget);
-    expect(find.text('Paket Durasi & Tarif'), findsOneWidget);
+    expect(find.text('Identitas & Kode Aset *'), findsOneWidget);
+    expect(find.text('Nomor Seri (SN)'), findsOneWidget);
+    expect(find.text('Kode Aset'), findsOneWidget);
+    expect(find.text('Tgl Registrasi'), findsOneWidget);
+    expect(find.text('Paket Durasi & Tarif *'), findsOneWidget);
 
     // Verify Dynamic Duration Repeater components
-    expect(find.text('Tambah Baris'), findsOneWidget);
+    expect(find.byKey(const Key('create_iphone_add_duration_btn')), findsOneWidget);
     expect(find.text('24'), findsWidgets);
-    expect(find.text('100000'), findsWidgets);
+    expect(find.text('100.000'), findsWidgets);
 
     // Test entering model name and check auto-slug update
     final nameField = find.widgetWithText(TextFormField, 'iPhone 16 pro MAX');
@@ -2629,11 +2628,12 @@ void main() {
     await tester.enterText(nameField, 'iPhone 16 Pro Max');
     await tester.pump();
 
-    expect(find.text('iphone-16-pro-max'), findsWidgets);
+    expect(find.textContaining('iphone-16-pro-max'), findsWidgets);
 
     // Test adding a duration row
-    await tester.tap(find.text('Tambah Baris'));
-    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('create_iphone_add_duration_btn')));
+    await tester.tap(find.byKey(const Key('create_iphone_add_duration_btn')));
+    await tester.pumpAndSettle();
 
     // Now there should be multiple duration rows
     expect(find.text('Jam'), findsWidgets);
@@ -2714,6 +2714,10 @@ void main() {
 
     // Test invalid slug format
     await tester.enterText(nameField, 'iPhone 16 Pro Max');
+    await tester.ensureVisible(find.byKey(const Key('toggle_slug_accordion')));
+    await tester.tap(find.byKey(const Key('toggle_slug_accordion')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(slugField);
     await tester.enterText(slugField, 'invalid slug with spaces!');
     await tester.tap(saveButton);
     await tester.pumpAndSettle();
@@ -2772,13 +2776,13 @@ void main() {
     await tester.pump();
 
     // 2. Test duplicate duration repeater packages
-    await tester.tap(find.text('Tambah Baris'));
+    await tester.ensureVisible(find.byKey(const Key('create_iphone_add_duration_btn')));
+    await tester.tap(find.byKey(const Key('create_iphone_add_duration_btn')));
     await tester.pumpAndSettle();
 
     // Both rows initially are 24 jam and 12 jam. Set second row to 24 jam as well:
-    final hourFields = find.widgetWithText(TextFormField, 'Jam');
-    expect(hourFields, findsNWidgets(2));
-    await tester.enterText(hourFields.at(1), '24');
+    await tester.ensureVisible(find.byKey(const Key('create_iphone_duration_hours_1')));
+    await tester.enterText(find.byKey(const Key('create_iphone_duration_hours_1')), '24');
     await tester.pump();
 
     await tester.tap(saveButton);

@@ -73,6 +73,9 @@ class IphoneModel {
   final DateTime? createdDate;
   final bool isAvailable;
   final bool isAddon;
+  final double? price;
+  final double? subtotal;
+  final Map<String, dynamic>? pivot;
 
   const IphoneModel({
     required this.id,
@@ -98,6 +101,9 @@ class IphoneModel {
     this.createdDate,
     this.isAvailable = true,
     this.isAddon = false,
+    this.price,
+    this.subtotal,
+    this.pivot,
   });
 
   String get fullName => storage.trim().isNotEmpty ? '$name $storage' : name;
@@ -124,12 +130,22 @@ class IphoneModel {
     ];
   }
   double get dailyRate {
+    if (price != null && price! > 0) return price!;
+    if (subtotal != null && subtotal! > 0) return subtotal!;
+    if (pivot != null) {
+      final pPrice = (pivot!['price'] as num?)?.toDouble() ??
+          (pivot!['subtotal'] as num?)?.toDouble() ??
+          (pivot!['rate'] as num?)?.toDouble() ??
+          double.tryParse(pivot!['price']?.toString() ?? '') ??
+          double.tryParse(pivot!['subtotal']?.toString() ?? '');
+      if (pPrice != null && pPrice > 0) return pPrice;
+    }
     if (durations.isNotEmpty) {
       final d24 = durations.where((d) => d.hours == 24).firstOrNull;
       if (d24 != null) return d24.price;
       return durations.first.price;
     }
-    return 100000.0;
+    return isAddon ? 0.0 : 100000.0;
   }
   double get depositRequired => 200000.0;
   String get statusLabel {
@@ -239,6 +255,9 @@ class IphoneModel {
     DateTime? createdDate,
     bool? isAvailable,
     bool? isAddon,
+    double? price,
+    double? subtotal,
+    Map<String, dynamic>? pivot,
   }) {
     return IphoneModel(
       id: id ?? this.id,
@@ -264,6 +283,9 @@ class IphoneModel {
       createdDate: createdDate ?? this.createdDate,
       isAvailable: isAvailable ?? this.isAvailable,
       isAddon: isAddon ?? this.isAddon,
+      price: price ?? this.price,
+      subtotal: subtotal ?? this.subtotal,
+      pivot: pivot ?? this.pivot,
     );
   }
 
@@ -390,6 +412,15 @@ class IphoneModel {
               ((json['model'] as Map)['category'] is Map && ((json['model'] as Map)['category']['is_addon'] == true || (json['model'] as Map)['category']['is_addon']?.toString() == '1'))));
     }
 
+    final rawPrice = (json['price'] as num?)?.toDouble() ??
+        (json['rate'] as num?)?.toDouble() ??
+        double.tryParse(json['price']?.toString() ?? '');
+    final rawSubtotal = (json['subtotal'] as num?)?.toDouble() ??
+        double.tryParse(json['subtotal']?.toString() ?? '');
+    final rawPivot = json['pivot'] is Map<String, dynamic>
+        ? json['pivot'] as Map<String, dynamic>
+        : (json['pivot'] is Map ? Map<String, dynamic>.from(json['pivot'] as Map) : null);
+
     return IphoneModel(
       id: json['id'] is int
           ? json['id'] as int
@@ -422,6 +453,9 @@ class IphoneModel {
       createdDate: parsedDate,
       isAvailable: rawAvailable,
       isAddon: rawIsAddon,
+      price: rawPrice,
+      subtotal: rawSubtotal,
+      pivot: rawPivot,
     );
   }
 
@@ -447,6 +481,9 @@ class IphoneModel {
       'return_schedule_text': returnScheduleText,
       'is_available': isAvailable,
       'is_addon': isAddon,
+      if (price != null) 'price': price,
+      if (subtotal != null) 'subtotal': subtotal,
+      if (pivot != null) 'pivot': pivot,
       if (slug != null) 'slug': slug,
       if (description != null) 'description': description,
       if (galleryId != null) 'gallery_id': galleryId,

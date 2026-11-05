@@ -1486,6 +1486,36 @@ class BookingDetailScreen extends StatelessWidget {
     );
   }
 
+  double _getAddonItemPrice(IphoneModel addon, BookingModel booking) {
+    if (addon.price != null && addon.price! > 0) return addon.price!;
+    if (addon.subtotal != null && addon.subtotal! > 0) return addon.subtotal!;
+    if (addon.pivot != null) {
+      final p = addon.pivot!;
+      final pVal = (p['price'] as num?)?.toDouble() ??
+          (p['subtotal'] as num?)?.toDouble() ??
+          (p['rate'] as num?)?.toDouble() ??
+          double.tryParse(p['price']?.toString() ?? '') ??
+          double.tryParse(p['subtotal']?.toString() ?? '');
+      if (pVal != null && pVal > 0) return pVal;
+    }
+    if (addon.durations.isNotEmpty) {
+      final hours = booking.durationDays;
+      final match = addon.durations.where((d) => d.hours == hours).firstOrNull;
+      if (match != null && match.price > 0) return match.price;
+      return addon.dailyRate;
+    }
+    if (addon.dailyRate > 0) return addon.dailyRate;
+    return 0.0;
+  }
+
+  double _getEffectiveAddonSubtotal(BookingModel booking) {
+    if (booking.addonSubtotal > 0) return booking.addonSubtotal;
+    if (booking.addonDevices.isNotEmpty) {
+      return booking.addonDevices.fold(0.0, (sum, a) => sum + _getAddonItemPrice(a, booking));
+    }
+    return 0.0;
+  }
+
   Widget _buildTabletFinancialSection(BuildContext context) {
     final isPaid = booking.paymentStatus == PaymentStatus.paid;
     final durationText = booking.durationDays % 24 == 0
@@ -1569,7 +1599,7 @@ class BookingDetailScreen extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                Formatters.formatCurrency(booking.hasAddons ? booking.primarySubtotal : booking.price),
+                Formatters.formatCurrency(booking.hasAddons ? (booking.primarySubtotal > 0 ? booking.primarySubtotal : (booking.price - _getEffectiveAddonSubtotal(booking))) : booking.price),
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
               ),
             ],
@@ -1578,7 +1608,7 @@ class BookingDetailScreen extends StatelessWidget {
           if (booking.hasAddons) ...[
             const SizedBox(height: 10),
             ...booking.addonDevices.map((addon) {
-              final itemRate = addon.dailyRate > 0 ? addon.dailyRate : 10000.0;
+              final itemRate = _getAddonItemPrice(addon, booking);
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: Row(
@@ -1624,7 +1654,10 @@ class BookingDetailScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Subtotal Sewa iPhone', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                Text(Formatters.formatCurrency(booking.primarySubtotal), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                Text(
+                  Formatters.formatCurrency(booking.primarySubtotal > 0 ? booking.primarySubtotal : (booking.price - _getEffectiveAddonSubtotal(booking))),
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                ),
               ],
             ),
             const SizedBox(height: 2),
@@ -1632,7 +1665,10 @@ class BookingDetailScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Subtotal Add-on', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                Text(Formatters.formatCurrency(booking.addonSubtotal), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF15803D))),
+                Text(
+                  Formatters.formatCurrency(_getEffectiveAddonSubtotal(booking)),
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF15803D)),
+                ),
               ],
             ),
           ],
@@ -2286,48 +2322,54 @@ class BookingDetailScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'KODE BOOKING',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF64748B),
-                      letterSpacing: 0.5,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'KODE BOOKING',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF64748B),
+                        letterSpacing: 0.5,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  InkWell(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: booking.bookingCode));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Kode booking ${booking.bookingCode} berhasil disalin'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          booking.bookingCode,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                            letterSpacing: 0.5,
+                    const SizedBox(height: 4),
+                    InkWell(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: booking.bookingCode));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Kode booking ${booking.bookingCode} berhasil disalin'),
+                            behavior: SnackBarBehavior.floating,
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF0284C7)),
-                      ],
+                        );
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              booking.bookingCode,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                                letterSpacing: 0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF0284C7)),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -2411,28 +2453,34 @@ class BookingDetailScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(8),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.person_outline_rounded, color: Color(0xFF2563EB), size: 18),
                     ),
-                    child: const Icon(Icons.person_outline_rounded, color: Color(0xFF2563EB), size: 18),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Informasi Pelanggan',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
+                    const SizedBox(width: 8),
+                    const Flexible(
+                      child: Text(
+                        'Informasi Pelanggan',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -2467,12 +2515,15 @@ class BookingDetailScreen extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text(
-                      booking.customerPhone,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                    Flexible(
+                      child: Text(
+                        booking.customerPhone,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -2541,10 +2592,13 @@ class BookingDetailScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Jaminan Dititipkan',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              const Expanded(
+                child: Text(
+                  'Jaminan Dititipkan',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -2600,28 +2654,34 @@ class BookingDetailScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(8),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.phone_iphone_rounded, color: Color(0xFF2563EB), size: 18),
                     ),
-                    child: const Icon(Icons.phone_iphone_rounded, color: Color(0xFF2563EB), size: 18),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Unit iPhone & Hardware',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
+                    const SizedBox(width: 8),
+                    const Flexible(
+                      child: Text(
+                        'Unit iPhone & Hardware',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -2939,12 +2999,12 @@ class BookingDetailScreen extends StatelessWidget {
           if (booking.hasAddons) ...[
             _buildFinancialRow(
               'Sewa iPhone (${booking.iphone.fullName})',
-              Formatters.currency(booking.primarySubtotal),
+              Formatters.currency(booking.primarySubtotal > 0 ? booking.primarySubtotal : (booking.price - _getEffectiveAddonSubtotal(booking))),
               isBold: true,
             ),
             const SizedBox(height: 6),
             ...booking.addonDevices.map((addon) {
-              final itemRate = addon.dailyRate > 0 ? addon.dailyRate : 10000.0;
+              final itemRate = _getAddonItemPrice(addon, booking);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: _buildFinancialRow(
@@ -2955,8 +3015,14 @@ class BookingDetailScreen extends StatelessWidget {
               );
             }),
             _buildFinancialRow(
+              'Subtotal Add-on',
+              Formatters.currency(_getEffectiveAddonSubtotal(booking)),
+              color: const Color(0xFF15803D),
+              isBold: true,
+            ),
+            _buildFinancialRow(
               'Total Tarif Sewa (${booking.durationDays} Jam)',
-              Formatters.currency(booking.price),
+              Formatters.currency(booking.price > 0 ? booking.price : ((booking.primarySubtotal > 0 ? booking.primarySubtotal : 0.0) + _getEffectiveAddonSubtotal(booking))),
               isBold: true,
             ),
           ] else ...[
@@ -3389,19 +3455,25 @@ class BookingDetailScreen extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          ),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: isBold ? FontWeight.w700 : (isHighlight ? FontWeight.w700 : FontWeight.w500),
-            color: color ??
-                (isHighlight
-                    ? const Color(0xFF0284C7)
-                    : (isBold ? const Color(0xFF0F172A) : const Color(0xFF334155))),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isBold ? FontWeight.w700 : (isHighlight ? FontWeight.w700 : FontWeight.w500),
+              color: color ??
+                  (isHighlight
+                      ? const Color(0xFF0284C7)
+                      : (isBold ? const Color(0xFF0F172A) : const Color(0xFF334155))),
+            ),
           ),
         ),
       ],
@@ -3417,16 +3489,20 @@ class BookingDetailScreen extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF64748B),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF64748B),
+            ),
           ),
         ),
+        const SizedBox(width: 8),
         Text(
           value,
+          textAlign: TextAlign.right,
           style: TextStyle(
             fontSize: 12,
             fontWeight: isBold ? FontWeight.w700 : FontWeight.w600,

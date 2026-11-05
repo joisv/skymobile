@@ -11,7 +11,6 @@ import '../../utils/formatters.dart';
 import '../../widgets/app_header.dart';
 import '../payment/payment_deposit_screen.dart';
 import 'widgets/create_iphone_dialog.dart';
-import 'widgets/unit_status_filter_chips.dart';
 import 'widgets/unit_status_skeleton.dart';
 
 class UnitStatusListScreen extends StatefulWidget {
@@ -997,6 +996,24 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         isTablet: isTablet,
         title: 'Status Unit iPhone',
       ),
+      floatingActionButton: (!isTablet && AuthService().canCreateIphone)
+          ? FloatingActionButton.extended(
+              onPressed: _showAddUnitDialog,
+              backgroundColor: const Color(0xFF0F172A),
+              elevation: 4,
+              heroTag: 'fab_add_iphone_unit',
+              icon: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+              label: const Text(
+                'Tambah Unit',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: _loadData,
         child: isTablet ? _buildTabletBody() : _buildMobileBody(),
@@ -2080,135 +2097,140 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   Widget _buildMobileBody() {
     return Column(
       children: [
-        // Mobile summary row
+        // Top Section: 4 Metric Cards as Status Filter Selectors
         Container(
           color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
           child: Row(
             children: [
-              _buildMobileMetricCard('Total Unit', _summary['total'] ?? _units.length, Icons.devices_rounded, const Color(0xFF7C3AED)),
+              _buildMobileMetricCard(
+                label: 'Total Unit',
+                count: _summary['total'] ?? _units.length,
+                icon: Icons.devices_rounded,
+                color: const Color(0xFF7C3AED),
+                isSelected: _selectedStatus.toLowerCase() == 'semua',
+                onTap: () {
+                  setState(() => _selectedStatus = 'Semua');
+                  _loadData(resetPagination: true);
+                },
+              ),
               const SizedBox(width: 6),
-              _buildMobileMetricCard('Tersedia', _summary['tersedia'] ?? 0, Icons.check_circle_outline_rounded, const Color(0xFF059669)),
+              _buildMobileMetricCard(
+                label: 'Tersedia',
+                count: _summary['tersedia'] ?? 0,
+                icon: Icons.check_circle_outline_rounded,
+                color: const Color(0xFF059669),
+                isSelected: _selectedStatus.toLowerCase() == 'tersedia',
+                onTap: () {
+                  setState(() => _selectedStatus = 'Tersedia');
+                  _loadData(resetPagination: true);
+                },
+              ),
               const SizedBox(width: 6),
-              _buildMobileMetricCard('Disewa', _summary['disewa'] ?? 0, Icons.access_time_rounded, const Color(0xFFD97706)),
+              _buildMobileMetricCard(
+                label: 'Disewa',
+                count: _summary['disewa'] ?? 0,
+                icon: Icons.access_time_rounded,
+                color: const Color(0xFFD97706),
+                isSelected: _selectedStatus.toLowerCase() == 'disewa',
+                onTap: () {
+                  setState(() => _selectedStatus = 'Disewa');
+                  _loadData(resetPagination: true);
+                },
+              ),
               const SizedBox(width: 6),
-              _buildMobileMetricCard('Terlambat', _summary['terlambat'] ?? 0, Icons.warning_amber_rounded, const Color(0xFFDC2626)),
+              _buildMobileMetricCard(
+                label: 'Terlambat',
+                count: _summary['terlambat'] ?? 0,
+                icon: Icons.warning_amber_rounded,
+                color: const Color(0xFFDC2626),
+                isSelected: _selectedStatus.toLowerCase() == 'terlambat' || _selectedStatus.toLowerCase() == 'overdue',
+                onTap: () {
+                  setState(() => _selectedStatus = 'Terlambat');
+                  _loadData(resetPagination: true);
+                },
+              ),
               if ((_summary['maintenance'] ?? 0) > 0) ...[
                 const SizedBox(width: 6),
-                _buildMobileMetricCard('Perawatan', _summary['maintenance'] ?? 0, Icons.block_flipped, const Color(0xFFE11D48)),
+                _buildMobileMetricCard(
+                  label: 'Perawatan',
+                  count: _summary['maintenance'] ?? 0,
+                  icon: Icons.block_flipped,
+                  color: const Color(0xFFE11D48),
+                  isSelected: _selectedStatus.toLowerCase() == 'perawatan' || _selectedStatus.toLowerCase() == 'maintenance',
+                  onTap: () {
+                    setState(() => _selectedStatus = 'Perawatan');
+                    _loadData(resetPagination: true);
+                  },
+                ),
               ],
             ],
           ),
         ),
 
-        // Search bar
+        // Search bar (Full width with integrated QR and Sort button)
         Container(
           color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 12),
-                      const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: _onSearchChanged,
-                          style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
-                          decoration: const InputDecoration(
-                            hintText: 'Cari iPhone, kode aset, SN, penyewa...',
-                            hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ),
-                      if (_searchController.text.isNotEmpty)
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF94A3B8)),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                          onPressed: () {
-                            _searchDebounceTimer?.cancel();
-                            _searchController.clear();
-                            _loadData(resetPagination: true);
-                          },
-                        ),
-                      IconButton(
-                        icon: const Icon(Icons.qr_code_scanner_rounded, size: 20, color: Color(0xFF475569)),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                        tooltip: 'Scan Barcode',
-                        onPressed: _openBarcodeScannerModal,
-                      ),
-                      const SizedBox(width: 4),
-                    ],
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+          child: Container(
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 12),
+                const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _onSearchChanged,
+                    style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
+                    decoration: const InputDecoration(
+                      hintText: 'Cari iPhone, kode aset, SN, penyewa...',
+                      hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
                 ),
-              ),
-              if (AuthService().canCreateIphone) ...[
-                const SizedBox(width: 10),
-                Container(
-                  height: 46,
-                  width: 46,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
+                if (_searchController.text.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF94A3B8)),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    onPressed: () {
+                      _searchDebounceTimer?.cancel();
+                      _searchController.clear();
+                      _loadData(resetPagination: true);
+                    },
                   ),
-                  child: IconButton(
-                    icon: const Icon(Icons.add_rounded, size: 22, color: Colors.white),
-                    tooltip: 'Tambah iPhone',
-                    onPressed: _showAddUnitDialog,
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.qr_code_scanner_rounded, size: 20, color: Color(0xFF475569)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  tooltip: 'Scan Barcode',
+                  onPressed: _openBarcodeScannerModal,
                 ),
+                _buildMobileSortIconButton(),
+                const SizedBox(width: 4),
               ],
-            ],
+            ),
           ),
         ),
 
-        // Filter status
-        UnitStatusFilterChips(
-          selectedStatus: _selectedStatus,
-          counts: _summary,
-          onStatusSelected: (status) {
-            setState(() => _selectedStatus = status);
-            _loadData();
-          },
+        // Sleek "Semua Cabang (X)" Dropdown beneath search row (compact, height: 40px)
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: _buildBranchDropdown(isCompact: true, height: 40),
         ),
 
-        // Branch & Sort Controls
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(
-            children: [
-              Expanded(
-                child: _buildBranchDropdown(isCompact: true),
-              ),
-              const SizedBox(width: 8),
-              _buildMobileSortButton(),
-            ],
-          ),
-        ),
-
-        // Unit list
+        // Unit list (with 80px bottom padding so FAB never obscures last card)
         Expanded(
           child: _isLoading
               ? const UnitStatusListSkeleton(itemCount: 4)
@@ -2219,9 +2241,9 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                       : ListView.separated(
                           controller: _scrollController,
                           physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          padding: const EdgeInsets.fromLTRB(16, 6, 16, 80),
                           itemCount: _units.length + ((_hasMore || _isLoadingMore) ? 1 : 0),
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
                           itemBuilder: (context, index) {
                             if (index >= _units.length) {
                               return Center(
@@ -2248,42 +2270,110 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
     );
   }
 
-  Widget _buildMobileMetricCard(String label, int count, IconData icon, Color color) {
+  Widget _buildMobileMetricCard({
+    required String label,
+    required int count,
+    required IconData icon,
+    required Color color,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-        ),
-        child: Column(
-          children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 12, color: color),
-                  const SizedBox(width: 3),
-                  Text(
-                    count.toString(),
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
-                  ),
-                ],
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            decoration: BoxDecoration(
+              color: isSelected ? color.withValues(alpha: 0.12) : color.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected ? color : color.withValues(alpha: 0.18),
+                width: isSelected ? 2.0 : 1.0,
               ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.20),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: color.withValues(alpha: 0.85)),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, size: 12, color: color),
+                      const SizedBox(width: 3),
+                      Text(
+                        count.toString(),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w900 : FontWeight.bold,
+                          color: color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: isSelected ? color : color.withValues(alpha: 0.85),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildMobileSortIconButton() {
+    return PopupMenuButton<String>(
+      tooltip: 'Urutkan',
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+      icon: const Icon(Icons.sort_rounded, size: 20, color: Color(0xFF475569)),
+      onSelected: (val) {
+        setState(() => _selectedSort = val);
+        _loadData(resetPagination: true);
+      },
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      itemBuilder: (ctx) => [
+        const PopupMenuItem(
+          value: 'bh_desc',
+          child: Text('Battery Health (Tertinggi)', style: TextStyle(fontSize: 12.5)),
+        ),
+        const PopupMenuItem(
+          value: 'bh_asc',
+          child: Text('Battery Health (Terendah)', style: TextStyle(fontSize: 12.5)),
+        ),
+        const PopupMenuItem(
+          value: 'name_asc',
+          child: Text('Model iPhone (A - Z)', style: TextStyle(fontSize: 12.5)),
+        ),
+        const PopupMenuItem(
+          value: 'asset_asc',
+          child: Text('Kode Aset (A - Z)', style: TextStyle(fontSize: 12.5)),
+        ),
+      ],
     );
   }
 
@@ -2335,7 +2425,7 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
   // BRANCH DROPDOWN & SORT CONTROLS
   // =========================================================================
 
-  Widget _buildBranchDropdown({bool isCompact = false}) {
+  Widget _buildBranchDropdown({bool isCompact = false, double? height}) {
     final totalUnits = _affiliates.isNotEmpty
         ? _affiliates.fold<int>(0, (sum, a) => sum + a.iphonesCount)
         : (_summary['total'] ?? _units.length);
@@ -2381,12 +2471,12 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
         : (validValues.isNotEmpty ? validValues.first : 'Semua Cabang');
 
     return Container(
-      height: isCompact ? 36 : 38,
+      height: height ?? (isCompact ? 36 : 38),
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         color: isAffAdmin ? const Color(0xFFF1F5F9) : Colors.white,
         border: Border.all(color: const Color(0xFFCBD5E1)),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -2413,58 +2503,6 @@ class _UnitStatusListScreenState extends State<UnitStatusListScreen> {
                     _loadData();
                   }
                 },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMobileSortButton() {
-    return PopupMenuButton<String>(
-      onSelected: (val) {
-        setState(() => _selectedSort = val);
-        _loadData();
-      },
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      itemBuilder: (ctx) => [
-        const PopupMenuItem(
-          value: 'bh_desc',
-          child: Text('Battery Health (Tertinggi)', style: TextStyle(fontSize: 12.5)),
-        ),
-        const PopupMenuItem(
-          value: 'bh_asc',
-          child: Text('Battery Health (Terendah)', style: TextStyle(fontSize: 12.5)),
-        ),
-        const PopupMenuItem(
-          value: 'name_asc',
-          child: Text('Model iPhone (A - Z)', style: TextStyle(fontSize: 12.5)),
-        ),
-        const PopupMenuItem(
-          value: 'asset_asc',
-          child: Text('Kode Aset (A - Z)', style: TextStyle(fontSize: 12.5)),
-        ),
-      ],
-      child: Container(
-        height: 36,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: const Color(0xFFCBD5E1)),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.sort_rounded, size: 16, color: Color(0xFF64748B)),
-            SizedBox(width: 4),
-            Text(
-              'Urutkan',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF334155),
-              ),
-            ),
-          ],
         ),
       ),
     );

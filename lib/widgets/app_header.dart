@@ -479,7 +479,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                             child: Text(
                               userName,
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: 14,
                                 fontWeight: FontWeight.bold,
                                 color: AppTheme.textPrimary,
                                 letterSpacing: -0.3,
@@ -489,24 +489,22 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          Flexible(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppTheme.surfaceContainer,
-                                borderRadius: BorderRadius.circular(4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.surfaceContainer,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              roleBadge,
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textSecondary,
+                                letterSpacing: 0.5,
                               ),
-                              child: Text(
-                                roleBadge,
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.textSecondary,
-                                  letterSpacing: 0.5,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],

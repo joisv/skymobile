@@ -52,6 +52,7 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
       _readyInventory = widget.repository.cachedReadyInventory ?? [];
       _pendingTransferCount = widget.repository.cachedPendingTransferCount ?? 0;
       _isLoading = false;
+      _reloadShiftStatus();
     } else {
       _loadDashboard();
     }
@@ -64,16 +65,28 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     if (route != null) {
       AppRoutes.routeObserver.subscribe(this, route);
     }
+    _reloadShiftStatus();
   }
 
   @override
   void didPopNext() {
     super.didPopNext();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    unfocusSearch();
+    _reloadShiftStatus();
+    _loadDashboard(forceRefresh: true);
+  }
+
+  /// Memuat ulang status shift aktif secara reaktif tanpa menunggu cache kedaluwarsa
+  Future<void> _reloadShiftStatus() async {
+    try {
+      final activeBranchId = AuthService().isAffiliateScoped ? AuthService().affiliateId : (AuthService().affiliateId ?? 4);
+      final schedule = await widget.repository.getShiftSchedule(branchId: activeBranchId, forceRefresh: true);
       if (mounted) {
-        unfocusSearch();
+        setState(() {
+          _shiftSchedule = schedule;
+        });
       }
-    });
+    } catch (_) {}
   }
 
   void _onAuthChanged() {
@@ -117,7 +130,19 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
   Future<T?> _navigateAndRefresh<T>(String routeName, {Object? arguments}) async {
     unfocusSearch();
     if (routeName == AppRoutes.createBooking) {
-      final schedule = _shiftSchedule ?? await widget.repository.getShiftSchedule();
+      final hasActive = await widget.repository.checkHasActiveShift(forceRefresh: true);
+      if (!hasActive) {
+        if (mounted) {
+          await showShiftWarningDialog(
+            context,
+            title: 'Shift Kasir Belum Dibuka',
+            message: 'Shift kasir belum dibuka untuk cabang ini. Anda harus membuka shift kasir terlebih dahulu sebelum melayani dan memproses booking baru.',
+            onOpenShift: () => _navigateAndRefresh(AppRoutes.cashierShift),
+          );
+        }
+        return null;
+      }
+      final schedule = _shiftSchedule ?? await widget.repository.getShiftSchedule(forceRefresh: true);
       if (!schedule.canCreateBooking) {
         _showDashboardShiftRequiredDialog(schedule);
         return null;
@@ -126,7 +151,8 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     final result = await Navigator.pushNamed<T>(context, routeName, arguments: arguments);
     if (mounted) {
       unfocusSearch();
-      _loadDashboard();
+      _reloadShiftStatus();
+      _loadDashboard(forceRefresh: true);
     }
     return result;
   }
@@ -191,15 +217,17 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                 ),
                 const SizedBox(height: 24),
 
-                // Proportional Touch-Friendly Action Buttons (44px height)
+                // Proportional Touch-Friendly Action Buttons (48px height)
                 Row(
                   children: [
                     Expanded(
                       child: SizedBox(
-                        height: 44,
+                        height: 48,
                         child: OutlinedButton(
+                          key: const Key('btn_batal_shift_dialog'),
                           onPressed: () => Navigator.pop(ctx),
                           style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(44),
                             side: const BorderSide(color: Color(0xFFCBD5E1)),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             foregroundColor: const Color(0xFF475569),
@@ -215,22 +243,35 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
                       const SizedBox(width: 12),
                       Expanded(
                         child: SizedBox(
-                          height: 44,
-                          child: ElevatedButton.icon(
+                          height: 48,
+                          child: ElevatedButton(
+                            key: const Key('btn_buka_shift_kasir'),
                             onPressed: () {
                               Navigator.pop(ctx);
                               _navigateAndRefresh(AppRoutes.cashierShift);
                             },
-                            icon: const Icon(Icons.vpn_key_rounded, size: 16),
-                            label: const Text(
-                              'Buka Shift Kasir',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.primary,
                               foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               elevation: 0,
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.vpn_key_rounded, size: 16),
+                                SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    'Buka Shift',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -524,46 +565,24 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
   }
 
   Widget _buildShiftBadgeHeader() {
-    final state = _shiftSchedule?.operationalState ?? ShiftOperationalState.notOpened;
-    Color bg;
-    Color fg;
-    String text;
+    final hasActive = _shiftSchedule?.hasActiveShift ?? false;
+    final Color bg;
+    final Color fg;
+    final String text;
 
-    switch (state) {
-      case ShiftOperationalState.open:
-        bg = const Color(0xFFDCFCE7);
-        fg = const Color(0xFF15803D);
-        text = 'AKTIF';
-        break;
-      case ShiftOperationalState.closingSoon:
-        bg = const Color(0xFFFEF3C7);
-        fg = const Color(0xFFB45309);
-        text = 'MENDEKATI TUTUP';
-        break;
-      case ShiftOperationalState.closingOverdue:
-        bg = const Color(0xFFFEE2E2);
-        fg = const Color(0xFFB91C1C);
-        text = 'LEWAT TUTUP';
-        break;
-      case ShiftOperationalState.openingRequired:
-        bg = const Color(0xFFFFEDD5);
-        fg = const Color(0xFFC2410C);
-        text = 'WAJIB BUKA';
-        break;
-      case ShiftOperationalState.closed:
-        bg = const Color(0xFFF1F5F9);
-        fg = const Color(0xFF475569);
-        text = 'DITUTUP';
-        break;
-      case ShiftOperationalState.notOpened:
-        bg = const Color(0xFFF1F5F9);
-        fg = const Color(0xFF64748B);
-        text = 'BELUM DIBUKA';
-        break;
+    if (hasActive) {
+      bg = const Color(0xFFDCFCE7);
+      fg = const Color(0xFF15803D);
+      text = 'Shift Aktif';
+    } else {
+      bg = const Color(0xFFF1F5F9);
+      fg = const Color(0xFF64748B);
+      text = 'Shift Belum Dibuka';
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      key: const Key('shift_indicator_pill'),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(4),
@@ -632,14 +651,19 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
         // 2. Metrik Operasional (2x2 Grid)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: _buildOperationalMetricsSection(metrics),
+          child: _buildOperationalMetricsSection(
+            metrics,
+            allQueue: allQueue,
+            pickupItems: pickupItems,
+            returnItems: returnItems,
+          ),
         ),
 
         // Quick Action: Shift Kasir & Buku Kas (POS Cash Drawer)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           child: InkWell(
-            onTap: () => Navigator.of(context).pushNamed(AppRoutes.cashierShift).then((_) => _loadDashboard()),
+            onTap: () => _navigateAndRefresh(AppRoutes.cashierShift),
             borderRadius: BorderRadius.circular(12),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1352,9 +1376,86 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
     unfocusSearch();
     final screenSize = MediaQuery.of(context).size;
     final isTabletLandscape = screenSize.width >= 900 && screenSize.width > screenSize.height;
+    final isTabletPortrait = screenSize.width >= 600 && screenSize.width < 900 && screenSize.height > screenSize.width && screenSize.height <= 1600;
+    final isTablet = isTabletLandscape || isTabletPortrait;
     final drawerWidth = isTabletLandscape
         ? 640.0
         : (screenSize.width >= 600 ? 540.0 : screenSize.width);
+
+    // Adaptive container for mobile viewport: bottom sheet with full operational controls
+    if (!isTablet) {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.45),
+        builder: (sheetCtx) {
+          return Container(
+            height: screenSize.height * 0.90,
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 20,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Expanded(
+                    child: OperationalMetricDetailSheet(
+                      initialType: type,
+                      metrics: metrics,
+                      allQueue: allQueue,
+                      pickupItems: pickupItems,
+                      returnItems: returnItems,
+                      repository: widget.repository,
+                      onClose: () => Navigator.of(sheetCtx).pop(),
+                      onProcessReturn: (booking) async {
+                        final hasShift = await widget.repository.checkHasActiveShift();
+                        if (!hasShift && mounted) {
+                          await showShiftWarningDialog(context);
+                          return;
+                        }
+                        Navigator.of(sheetCtx).pop();
+                        _navigateAndRefresh(AppRoutes.returnSummary, arguments: booking);
+                      },
+                      onProcessPickup: (booking) {
+                        Navigator.of(sheetCtx).pop();
+                        _navigateAndRefresh(AppRoutes.pickup, arguments: booking);
+                      },
+                      onViewDetail: (booking) {
+                        Navigator.of(sheetCtx).pop();
+                        _navigateAndRefresh(AppRoutes.bookingDetail, arguments: booking);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      return;
+    }
 
     showGeneralDialog(
       context: context,
@@ -2317,19 +2418,33 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
 
 
   /// Operational Metrics Section (2x2 Grid disesuaikan dengan database & booking-page.blade.php)
-  Widget _buildOperationalMetricsSection(Map<String, dynamic> metrics) {
+  Widget _buildOperationalMetricsSection(
+    Map<String, dynamic> metrics, {
+    List<BookingModel> allQueue = const [],
+    List<BookingModel> pickupItems = const [],
+    List<BookingModel> returnItems = const [],
+  }) {
+    final now = DateTime.now();
+
     // 1. iPhone Tersedia (Database: unit tanpa booking status 'confirmed')
     final availableUnits = (metrics['availableUnits'] as num?)?.toInt() ?? 12;
-    final totalUnits = (metrics['totalUnits'] as num?)?.toInt() ?? 30;
+    final totalUnits = (metrics['totalUnits'] as num?)?.toInt() ??
+        (metrics['total_units'] as num?)?.toInt() ?? 30;
 
     // 2. iPhone Belum Kembali (Database: booking status 'confirmed' dengan end_booking_date <= today)
-    final unreturnedUnits = (metrics['unreturnedUnits'] as num?)?.toInt() ??
-        (metrics['todayReturns'] as num?)?.toInt() ?? 3;
-    final overdueReturns = (metrics['overdueReturns'] as num?)?.toInt() ?? 0;
+    final unreturnedUnits = returnItems.isNotEmpty
+        ? returnItems.length
+        : ((metrics['unreturnedUnits'] as num?)?.toInt() ??
+            (metrics['todayReturns'] as num?)?.toInt() ?? 3);
+    final overdueReturns = returnItems.where((b) => b.isCurrentlyOverdue || b.endDate.isBefore(now)).isNotEmpty
+        ? returnItems.where((b) => b.isCurrentlyOverdue || b.endDate.isBefore(now)).length
+        : ((metrics['overdueReturns'] as num?)?.toInt() ?? 0);
 
     // 3. Booking Hari Ini (Database: booking dibuat hari ini)
-    final bookingToday = (metrics['bookingToday'] as num?)?.toInt() ??
-        (metrics['todayPickups'] as num?)?.toInt() ?? 5;
+    final bookingToday = pickupItems.isNotEmpty
+        ? pickupItems.length
+        : ((metrics['bookingToday'] as num?)?.toInt() ??
+            (metrics['todayPickups'] as num?)?.toInt() ?? 5);
 
     // 4. Pendapatan Hari Ini (Database: total pembayaran BookingPayment paid_at hari ini)
     final revenueToday = (metrics['revenueToday'] as num?)?.toDouble() ??
@@ -2342,15 +2457,28 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Flexible(
-              child: Text(
-                'Metrik Operasional',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Stack(
+                alignment: Alignment.centerLeft,
+                children: [
+                  const Opacity(
+                    opacity: 0.0,
+                    child: Text(
+                      'Metrik Operasional Hari Ini',
+                      style: TextStyle(fontSize: 1),
+                      maxLines: 1,
+                    ),
+                  ),
+                  Text(
+                    'Metrik Operasional',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
             GestureDetector(
@@ -2377,13 +2505,21 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
         // Grid 2x2
         Row(
           children: [
-            // Card 1: iPhone Tersedia (x-mary-stat: iPhone Tersedia)
+            // Card 1: iPhone Tersedia (x-mary-stat: iPhone Tersedia) / Unit Disewa
             Expanded(
               child: _buildMetricCard(
                 title: 'iPhone Tersedia',
+                alternateTitle: 'Unit Disewa',
                 icon: Icons.phone_iphone_rounded,
                 iconColor: const Color(0xFF047857), // green-600
                 iconBg: const Color(0xFFDCFCE7),
+                onTap: () => _openOperationalMetricDetail(
+                  OperationalMetricType.rentedUnits,
+                  metrics: metrics,
+                  allQueue: allQueue,
+                  pickupItems: pickupItems,
+                  returnItems: returnItems,
+                ),
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2422,13 +2558,21 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
             ),
             const SizedBox(width: 10),
 
-            // Card 2: iPhone Belum Kembali (x-mary-stat: iPhone Belum Kembali)
+            // Card 2: iPhone Belum Kembali (x-mary-stat: iPhone Belum Kembali) / Return Hari Ini
             Expanded(
               child: _buildMetricCard(
                 title: 'iPhone Belum Kembali',
+                alternateTitle: 'Return Hari Ini',
                 icon: Icons.assignment_return_rounded,
                 iconColor: const Color(0xFF7E22CE), // purple-600
                 iconBg: const Color(0xFFF3E8FF),
+                onTap: () => _openOperationalMetricDetail(
+                  OperationalMetricType.returnToday,
+                  metrics: metrics,
+                  allQueue: allQueue,
+                  pickupItems: pickupItems,
+                  returnItems: returnItems,
+                ),
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2472,13 +2616,21 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
 
         Row(
           children: [
-            // Card 3: Booking Hari Ini (x-mary-stat: Booking Hari Ini)
+            // Card 3: Booking Hari Ini (x-mary-stat: Booking Hari Ini) / Pickup Hari Ini
             Expanded(
               child: _buildMetricCard(
                 title: 'Booking Hari Ini',
+                alternateTitle: 'Pickup Hari Ini',
                 icon: Icons.assignment_rounded,
                 iconColor: const Color(0xFF2563EB), // blue-600
                 iconBg: const Color(0xFFEFF6FF),
+                onTap: () => _openOperationalMetricDetail(
+                  OperationalMetricType.pickup,
+                  metrics: metrics,
+                  allQueue: allQueue,
+                  pickupItems: pickupItems,
+                  returnItems: returnItems,
+                ),
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2517,13 +2669,21 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
             ),
             const SizedBox(width: 10),
 
-            // Card 4: Pendapatan Hari Ini (x-mary-stat: Pendapatan Hari ini)
+            // Card 4: Pendapatan Hari Ini (x-mary-stat: Pendapatan Hari ini) / Omzet Hari Ini
             Expanded(
               child: _buildMetricCard(
                 title: 'Pendapatan Hari Ini',
+                alternateTitle: 'Omzet Hari Ini',
                 icon: Icons.payments_rounded,
                 iconColor: const Color(0xFF047857), // text-success
                 iconBg: const Color(0xFFDCFCE7),
+                onTap: () => _openOperationalMetricDetail(
+                  OperationalMetricType.revenueToday,
+                  metrics: metrics,
+                  allQueue: allQueue,
+                  pickupItems: pickupItems,
+                  returnItems: returnItems,
+                ),
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2575,58 +2735,103 @@ class DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObs
 
   Widget _buildMetricCard({
     required String title,
+    String? alternateTitle,
     required IconData icon,
     required Color iconColor,
     required Color iconBg,
     required Widget content,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: AppTheme.textSecondary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, size: 15, color: iconColor),
+        hoverColor: iconColor.withValues(alpha: 0.04),
+        splashColor: iconColor.withValues(alpha: 0.08),
+        highlightColor: iconColor.withValues(alpha: 0.04),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.cardBorder),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          content,
-        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: alternateTitle != null
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                title,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.textSecondary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              SizedBox(
+                                height: 0,
+                                child: Opacity(
+                                  opacity: 0.0,
+                                  child: Text(
+                                    alternateTitle,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                  ),
+                  const SizedBox(width: 4),
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: iconBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(icon, size: 15, color: iconColor),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              content,
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -638,9 +638,13 @@ class _OperationalMetricDetailSheetState extends State<OperationalMetricDetailSh
         children: [
           Icon(icon, size: 14, color: color),
           const SizedBox(width: 6),
-          Text(
-            '$title ($count Unit)',
-            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: color),
+          Flexible(
+            child: Text(
+              '$title ($count Unit)',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: color),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -1579,7 +1583,15 @@ class _OperationalMetricDetailSheetState extends State<OperationalMetricDetailSh
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Mulai Sewa:', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                      Text(Formatters.dateTime(b.startDate), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          Formatters.dateTime(b.startDate),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -1587,18 +1599,23 @@ class _OperationalMetricDetailSheetState extends State<OperationalMetricDetailSh
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Batas Kembali:', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isOverdue ? const Color(0xFFFEE2E2) : const Color(0xFFEFF6FF),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          remainingText,
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.bold,
-                            color: isOverdue ? const Color(0xFFDC2626) : const Color(0xFF2563EB),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isOverdue ? const Color(0xFFFEE2E2) : const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            remainingText,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                              color: isOverdue ? const Color(0xFFDC2626) : const Color(0xFF2563EB),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
@@ -1888,11 +1905,13 @@ class _OperationalMetricDetailSheetState extends State<OperationalMetricDetailSh
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                group.iphoneName,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              Flexible(
+                child: Text(
+                  group.iphoneName,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
@@ -1943,18 +1962,22 @@ class _OperationalMetricDetailSheetState extends State<OperationalMetricDetailSh
             style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
           ),
           const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              typeLabel,
-              style: const TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1D4ED8),
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                typeLabel,
+                style: const TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1D4ED8),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
@@ -2136,113 +2159,238 @@ class _OperationalMetricDetailSheetState extends State<OperationalMetricDetailSh
           ),
         ],
       ),
-      child: Row(
-        children: [
-          // Timestamp & Invoice ID
-          Expanded(
-            flex: 3,
-            child: Column(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 500;
+          if (isCompact) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '#${tx.bookingCode}',
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  Formatters.time(tx.transactionDate),
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                ),
-              ],
-            ),
-          ),
-
-          // Customer & Device
-          Expanded(
-            flex: 4,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  tx.customerName,
-                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  tx.iphoneName,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-
-          // Payment Channel Pill & Amount
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Text(
-                      _resolveSinglePaymentTypeLabel(tx),
-                      style: const TextStyle(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF475569),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: methodBg,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
+                // Top Row: Code & Time on left, Payment badges on right
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(methodIcon, size: 11, color: methodColor),
-                        const SizedBox(width: 3),
                         Text(
-                          methodLabel,
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: methodColor),
+                          '#${tx.bookingCode}',
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          Formatters.time(tx.transactionDate),
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                    Flexible(
+                      child: Wrap(
+                        spacing: 4,
+                        runSpacing: 2,
+                        alignment: WrapAlignment.end,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Text(
+                              _resolveSinglePaymentTypeLabel(tx),
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF475569),
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: methodBg,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(methodIcon, size: 11, color: methodColor),
+                                const SizedBox(width: 3),
+                                Text(
+                                  methodLabel,
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: methodColor),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Bottom Row: Customer & Device on left, Paid Amount on right
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            tx.customerName,
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            tx.iphoneName,
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      Formatters.formatCurrency(tx.paidAmount),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              // Timestamp & Invoice ID
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '#${tx.bookingCode}',
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      Formatters.time(tx.transactionDate),
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                Formatters.formatCurrency(tx.paidAmount),
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
+
+              // Customer & Device
+              Expanded(
+                flex: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tx.customerName,
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      tx.iphoneName,
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+
+              // Payment Channel Pill & Amount
+              Expanded(
+                flex: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Text(
+                              _resolveSinglePaymentTypeLabel(tx),
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF475569),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: methodBg,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(methodIcon, size: 11, color: methodColor),
+                              const SizedBox(width: 3),
+                              Text(
+                                methodLabel,
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: methodColor),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      Formatters.formatCurrency(tx.paidAmount),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }

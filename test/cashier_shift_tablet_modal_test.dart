@@ -152,13 +152,15 @@ void main() {
       // Anchored confirm button is visible
       expect(find.text('Konfirmasi & Tutup Shift'), findsOneWidget);
 
-      // Initially 0 cash vs 300,000 expected -> shortage > 5000 -> requires reason
-      expect(find.text('Shortage (Selisih Kurang)'), findsOneWidget);
-      expect(find.textContaining('Alasan Selisih Kas'), findsOneWidget);
+      // Initially 0 cash count -> neutral state "Belum Dihitung" (not red shortage, reason not shown)
+      expect(find.text('Belum Dihitung'), findsOneWidget);
+      expect(find.textContaining('Alasan Selisih Kas'), findsNothing);
 
-      // Attempt to confirm without reason should show snackbar
+      // Attempt to confirm without entering cash triggers validation -> shortage & reason required
       await tester.tap(find.text('Konfirmasi & Tutup Shift'));
       await tester.pumpAndSettle();
+      expect(find.text('Shortage (Selisih Kurang)'), findsOneWidget);
+      expect(find.textContaining('Alasan Selisih Kas'), findsOneWidget);
       expect(find.text('Alasan selisih kas fisik wajib diisi sebelum shift dapat ditutup.'), findsOneWidget);
 
       // Enter 300000 in actualCashController

@@ -481,7 +481,14 @@ Status Kasir: Telah Ditutup & Sesuai.
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-          Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            ),
+          ),
         ],
       ),
     );
@@ -971,94 +978,97 @@ Status Kasir: Telah Ditutup & Sesuai.
               ),
             ],
           ),
-          child: Row(
-            children: [
-              _buildBranchSelector(isMobile: false),
-              const SizedBox(width: 12),
-              Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
-              const SizedBox(width: 12),
-              // Segmented Period Filter
-              Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: _periodOptions.map((period) {
-                    final isSelected = _selectedPeriod == period && _customDateRange == null;
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _selectedPeriod = period;
-                          _customDateRange = null;
-                          _currentPage = 1;
-                        });
-                        _loadReport(page: 1);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFF0F172A) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          period,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                            color: isSelected ? Colors.white : const Color(0xFF475569),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
-              const SizedBox(width: 12),
-              // Date Range Picker Button
-              InkWell(
-                onTap: _pickCustomDateRange,
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildBranchSelector(isMobile: false),
+                const SizedBox(width: 12),
+                Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
+                const SizedBox(width: 12),
+                // Segmented Period Filter
+                Container(
+                  padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
-                    color: _customDateRange != null ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _customDateRange != null ? AppTheme.accent : const Color(0xFFCBD5E1)),
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.calendar_today_outlined,
-                        size: 13,
-                        color: _customDateRange != null ? AppTheme.accent : const Color(0xFF64748B),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        dateLabel,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: _customDateRange != null ? AppTheme.accent : const Color(0xFF334155),
+                    children: _periodOptions.map((period) {
+                      final isSelected = _selectedPeriod == period && _customDateRange == null;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedPeriod = period;
+                            _customDateRange = null;
+                            _currentPage = 1;
+                          });
+                          _loadReport(page: 1);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFF0F172A) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            period,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                              color: isSelected ? Colors.white : const Color(0xFF475569),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      );
+                    }).toList(),
                   ),
                 ),
-              ),
-              const Spacer(),
-              // Quick refresh indicator
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded, size: 18, color: Color(0xFF64748B)),
-                tooltip: 'Muat Ulang Laporan',
-                onPressed: () => _loadReport(page: _currentPage),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
+                const SizedBox(width: 12),
+                // Date Range Picker Button
+                InkWell(
+                  onTap: _pickCustomDateRange,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: _customDateRange != null ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _customDateRange != null ? AppTheme.accent : const Color(0xFFCBD5E1)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.calendar_today_outlined,
+                          size: 13,
+                          color: _customDateRange != null ? AppTheme.accent : const Color(0xFF64748B),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          dateLabel,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: _customDateRange != null ? AppTheme.accent : const Color(0xFF334155),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Quick refresh indicator
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, size: 18, color: Color(0xFF64748B)),
+                  tooltip: 'Muat Ulang Laporan',
+                  onPressed: () => _loadReport(page: _currentPage),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -1145,13 +1155,16 @@ Status Kasir: Telah Ditutup & Sesuai.
       children: [
         Row(
           children: [
-            const Text(
-              'Laporan Penjualan & Kasir',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0F172A),
-                letterSpacing: -0.4,
+            const Flexible(
+              child: Text(
+                'Laporan Penjualan & Kasir',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F172A),
+                  letterSpacing: -0.4,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             if (AuthService().isStaff) ...[
@@ -2209,14 +2222,26 @@ Status Kasir: Telah Ditutup & Sesuai.
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        Text(
-          '${pct.toStringAsFixed(1)}%',
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-        ),
         const SizedBox(width: 4),
-        Text(
-          '($nominalStr)',
-          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${pct.toStringAsFixed(1)}%',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '($nominalStr)',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -2247,14 +2272,18 @@ Status Kasir: Telah Ditutup & Sesuai.
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Jenis Pembayaran',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
+              const Expanded(
+                child: Text(
+                  'Jenis Pembayaran',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
@@ -2694,8 +2723,10 @@ Status Kasir: Telah Ditutup & Sesuai.
   // =========================================================================
 
   Widget _buildTransactionsTableCard(List<PaymentTransactionModel> transactions, int txCount) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isMobile ? 14 : 20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -2733,7 +2764,20 @@ Status Kasir: Telah Ditutup & Sesuai.
           else ...[
             Opacity(
               opacity: _isLoadingPage ? 0.5 : 1.0,
-              child: _buildTransactionTableView(transactions),
+              child: isMobile
+                  ? _buildMobileTransactionCardList(transactions)
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        final tableWidth = math.max(700.0, constraints.maxWidth);
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            width: tableWidth,
+                            child: _buildTransactionTableView(transactions),
+                          ),
+                        );
+                      },
+                    ),
             ),
             if (_lastPage > 1 || (_totalTransactions > 0 && _totalTransactions > _perPage)) ...[
               const SizedBox(height: 12),
@@ -2844,6 +2888,283 @@ Status Kasir: Telah Ditutup & Sesuai.
           );
         },
       ),
+    );
+  }
+
+  Widget _buildMobileTransactionCardList(List<PaymentTransactionModel> transactions) {
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: transactions.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final tx = transactions[index];
+        final String codeDisplay = tx.bookingCode.startsWith('#')
+            ? tx.bookingCode
+            : (tx.bookingCode.isNotEmpty && tx.bookingCode != '-' ? '#${tx.bookingCode}' : '#SKY-${tx.id}');
+
+        final isSameDay = tx.transactionDate.year == DateTime.now().year &&
+            tx.transactionDate.month == DateTime.now().month &&
+            tx.transactionDate.day == DateTime.now().day;
+        final timeStr = isSameDay
+            ? '${tx.transactionDate.hour.toString().padLeft(2, '0')}:${tx.transactionDate.minute.toString().padLeft(2, '0')} WIB'
+            : '${tx.transactionDate.day.toString().padLeft(2, '0')}/${tx.transactionDate.month.toString().padLeft(2, '0')} ${tx.transactionDate.hour.toString().padLeft(2, '0')}:${tx.transactionDate.minute.toString().padLeft(2, '0')} WIB';
+
+        String typeTag = 'Pelunasan';
+        String verificationTag = 'KTP Terverifikasi';
+        if (tx.notes != null && tx.notes!.contains('|')) {
+          final parts = tx.notes!.split('|');
+          typeTag = parts[0];
+          verificationTag = parts[1];
+        } else if (tx.notes != null && tx.notes!.isNotEmpty) {
+          typeTag = tx.notes!;
+        }
+
+        final phoneText = tx.customerPhone.isNotEmpty && tx.customerPhone != '-' ? tx.customerPhone : '';
+        final customerSub = phoneText.isNotEmpty ? '$phoneText • $verificationTag' : verificationTag;
+
+        Color badgeBg = const Color(0xFFEFF6FF);
+        Color badgeColor = const Color(0xFF2563EB);
+        if (typeTag.toLowerCase().contains('denda') || typeTag.toLowerCase().contains('penalty')) {
+          badgeBg = const Color(0xFFFEF2F2);
+          badgeColor = const Color(0xFFDC2626);
+        } else if (typeTag.toLowerCase().contains('extend')) {
+          badgeBg = const Color(0xFFFFF7ED);
+          badgeColor = const Color(0xFFEA580C);
+        } else if (typeTag.toLowerCase().contains('dp')) {
+          badgeBg = const Color(0xFFECFDF5);
+          badgeColor = const Color(0xFF059669);
+        }
+
+        IconData methodIcon = Icons.payments_outlined;
+        Color methodColor = const Color(0xFF16A34A);
+        String methodLabel = tx.paymentMethod;
+        final pmLower = tx.paymentMethod.toLowerCase();
+        if (pmLower.contains('qris')) {
+          methodIcon = Icons.qr_code_2_rounded;
+          methodColor = const Color(0xFF9333EA);
+          methodLabel = 'QRIS';
+        } else if (pmLower.contains('mandiri')) {
+          methodIcon = Icons.account_balance_outlined;
+          methodColor = const Color(0xFF2563EB);
+          methodLabel = 'Mandiri';
+        } else if (pmLower.contains('bca') || pmLower.contains('transfer') || pmLower.contains('va')) {
+          methodIcon = Icons.account_balance_outlined;
+          methodColor = const Color(0xFF2563EB);
+          methodLabel = pmLower.contains('va') ? 'Transfer / VA' : 'Transfer';
+        } else {
+          methodIcon = Icons.payments_outlined;
+          methodColor = const Color(0xFF16A34A);
+          methodLabel = 'Tunai';
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Card Header: Timestamp & Invoice ID + Payment Method Badge
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      '$codeDisplay • $timeStr',
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.2,
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: methodColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(methodIcon, size: 12, color: methodColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          methodLabel,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: methodColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
+              ),
+              // Card Body: Customer Name & Phone, Rented Unit & Add-on tag, Payment Type pill
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          tx.customerName,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (customerSub.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            customerSub,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF64748B),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      typeTag,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: badgeColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Rented Unit & Add-on tag
+              Row(
+                children: [
+                  const Icon(Icons.phone_iphone_rounded, size: 14, color: Color(0xFF64748B)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        text: tx.iphoneName,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E293B),
+                        ),
+                        children: [
+                          if (tx.hasAddons && tx.addonName != null && tx.addonName!.isNotEmpty)
+                            TextSpan(
+                              text: ' + Add-on (${tx.addonName})',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0D9488),
+                              ),
+                            ),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
+              ),
+              // Card Footer: Breakdown, Total Amount prominent on the right, Print receipt button
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: tx.hasAddons && (tx.addonFee != null && tx.addonFee! > 0)
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'iPhone: ${Formatters.currency(tx.primaryRentFee ?? (tx.paidAmount - (tx.addonFee ?? 0)))}',
+                                style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+                              ),
+                              Text(
+                                'Add-on: ${Formatters.currency(tx.addonFee!)}',
+                                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0D9488)),
+                              ),
+                            ],
+                          )
+                        : const Text(
+                            'Total Bayar',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                          ),
+                  ),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        Formatters.currency(tx.paidAmount),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: IconButton(
+                          key: Key('btn_print_tx_${tx.id}'),
+                          icon: const Icon(Icons.print_outlined, size: 18, color: Color(0xFF334155)),
+                          tooltip: 'Cetak Struk',
+                          padding: const EdgeInsets.all(6),
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                          splashRadius: 18,
+                          onPressed: () => _printReceiptForTransaction(tx),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -3195,7 +3516,7 @@ Status Kasir: Telah Ditutup & Sesuai.
     final totalAffBookings = items.fold(0, (sum, i) => sum + ((i['booking_count'] as num?)?.toInt() ?? 0));
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isTablet ? 20 : 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -3214,9 +3535,11 @@ Status Kasir: Telah Ditutup & Sesuai.
           // Section Title & Super-Admin Badge
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
                       width: 36,
@@ -3236,20 +3559,19 @@ Status Kasir: Telah Ditutup & Sesuai.
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 6,
+                            runSpacing: 4,
                             children: [
-                              const Flexible(
-                                child: Text(
-                                  'Penghasilan Cabang & Affiliate',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
+                              const Text(
+                                'Penghasilan Cabang & Affiliate',
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
                                 ),
                               ),
-                              const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
@@ -3268,10 +3590,11 @@ Status Kasir: Telah Ditutup & Sesuai.
                               ),
                             ],
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 3),
                           const Text(
                             'Breakdown omzet & transaksi dari tiap-tiap cabang affiliate',
                             style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
@@ -3284,13 +3607,14 @@ Status Kasir: Telah Ditutup & Sesuai.
               TextButton.icon(
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFF4F46E5),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  visualDensity: VisualDensity.compact,
                 ),
                 onPressed: () => Navigator.pushNamed(context, AppRoutes.affiliateList),
-                icon: const Icon(Icons.hub_outlined, size: 15),
+                icon: const Icon(Icons.hub_outlined, size: 14),
                 label: const Text(
                   'Kelola Cabang',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
                 ),
               ),
             ],
@@ -3306,40 +3630,48 @@ Status Kasir: Telah Ditutup & Sesuai.
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.business_center_outlined, size: 14, color: Color(0xFF64748B)),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${items.length} Cabang Terdata',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Icon(Icons.receipt_outlined, size: 14, color: Color(0xFF64748B)),
-                    const SizedBox(width: 6),
-                    Text(
-                      '$totalAffBookings Booking',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Icon(Icons.account_balance_wallet_rounded, size: 14, color: Color(0xFF10B981)),
-                    const SizedBox(width: 6),
-                    Text(
-                      Formatters.currency(totalAffRevenue),
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                    ),
-                  ],
-                ),
-              ],
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.business_center_outlined, size: 14, color: Color(0xFF64748B)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${items.length} Cabang Terdata',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.receipt_outlined, size: 14, color: Color(0xFF64748B)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$totalAffBookings Booking',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.account_balance_wallet_rounded, size: 14, color: Color(0xFF10B981)),
+                      const SizedBox(width: 6),
+                      Text(
+                        Formatters.currency(totalAffRevenue),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
 
@@ -3403,45 +3735,44 @@ Status Kasir: Telah Ditutup & Sesuai.
                       border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Code Badge
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: isActive
-                                  ? [const Color(0xFF4F46E5), const Color(0xFF3730A3)]
-                                  : [Colors.grey.shade400, Colors.grey.shade600],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            code.length > 5 ? code.substring(0, 5) : code,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // Name & City
+                        // Left Column (Wrapped in Expanded)
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // Top row: Avatar thumbnail [CGN] + Branch Name with ellipsis
                               Row(
                                 children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: isActive
+                                            ? [const Color(0xFF4F46E5), const Color(0xFF3730A3)]
+                                            : [Colors.grey.shade400, Colors.grey.shade600],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      code.length > 5 ? code.substring(0, 5) : code,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       name,
                                       style: const TextStyle(
-                                        fontSize: 13.5,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.bold,
                                         color: Color(0xFF0F172A),
                                       ),
@@ -3449,43 +3780,24 @@ Status Kasir: Telah Ditutup & Sesuai.
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  if (isActive)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFECFDF5),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: const Color(0xFFA7F3D0)),
-                                      ),
-                                      child: const Text(
-                                        'Aktif',
-                                        style: TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF059669),
-                                        ),
-                                      ),
-                                    ),
                                 ],
                               ),
-                              const SizedBox(height: 3),
+                              const SizedBox(height: 6),
+                              // Bottom row: Location and transaction count in small, muted text (clean dot separator)
                               Row(
                                 children: [
-                                  Icon(Icons.location_on_outlined, size: 12, color: AppTheme.textMuted),
+                                  const Icon(Icons.location_on_outlined, size: 12, color: Color(0xFF94A3B8)),
                                   const SizedBox(width: 3),
-                                  Text(
-                                    city,
-                                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text('•', style: TextStyle(color: AppTheme.textMuted)),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '$bCount Transaksi',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.indigo.shade700,
+                                  Expanded(
+                                    child: Text(
+                                      '$city • $bCount Transaksi',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF64748B),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ],
@@ -3493,11 +3805,13 @@ Status Kasir: Telah Ditutup & Sesuai.
                             ],
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        // Revenue & Detail Link
+                        const SizedBox(width: 12),
+                        // Right Column (Large amount + separate Laporan Omset > button with sufficient vertical padding)
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
+                            // Top: Large, aligned amount
                             Text(
                               Formatters.currency(rev),
                               style: const TextStyle(
@@ -3505,8 +3819,10 @@ Status Kasir: Telah Ditutup & Sesuai.
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFF0F172A),
                               ),
+                              textAlign: TextAlign.right,
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 6),
+                            // Bottom: Separate "Laporan Omset >" text button right-aligned
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
